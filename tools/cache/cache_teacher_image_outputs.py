@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 from pathlib import Path
 
@@ -43,6 +44,71 @@ def checkpoint_sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def parse_shard_ids(value: str) -> list[int]:
+    shard_ids: list[int] = []
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_text, end_text = part.split("-", 1)
+            start = int(start_text)
+            end = int(end_text)
+            if end < start:
+                raise ValueError(f"invalid shard range: {part}")
+            shard_ids.extend(range(start, end + 1))
+        else:
+            shard_ids.append(int(part))
+    return sorted(set(shard_ids))
+
+
+def distributed_context(args: argparse.Namespace) -> tuple[int, int, int]:
+    rank = args.rank
+    world_size = args.world_size
+    local_rank = args.local_rank
+
+    if rank is None:
+        rank = int(os.environ.get("RANK", "0"))
+    if world_size is None:
+        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if local_rank is None:
+        local_rank = int(os.environ.get("LOCAL_RANK", str(rank)))
+
+    if rank < 0 or world_size < 1 or rank >= world_size:
+        raise ValueError(f"invalid distributed context: rank={rank}, world_size={world_size}")
+    return rank, world_size, local_rank
+
+
+def resolve_device(requested: str, local_rank: int) -> str:
+    if requested == "auto":
+        return f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu"
+    if requested == "cuda":
+        return f"cuda:{local_rank}" if torch.cuda.is_available() else "cuda"
+    return requested
+
+
+def build_shard_plan(
+    num_total_shards: int,
+    start_shard: int,
+    num_shards: int | None,
+    shard_ids: str | None,
+    rank: int,
+    world_size: int,
+) -> list[int]:
+    if shard_ids:
+        candidates = parse_shard_ids(shard_ids)
+    else:
+        end_shard = num_total_shards
+        if num_shards is not None:
+            end_shard = min(end_shard, start_shard + num_shards)
+        candidates = list(range(start_shard, end_shard))
+
+    candidates = [sid for sid in candidates if 0 <= sid < num_total_shards]
+    if world_size == 1:
+        return candidates
+    return [sid for sid in candidates if sid % world_size == rank]
 
 
 def load_teacher(config: str, checkpoint: Path, device: str):
@@ -84,62 +150,75 @@ def write_shard(
         print(f"skip_completed={shard_dir}")
         return
 
+    lock_dir = shard_dir.parent / f"{shard_dir.name}.lock"
+    try:
+        lock_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        print(f"skip_locked={shard_dir}")
+        return
+
     shard_dir.mkdir(parents=True, exist_ok=True)
-    root = zarr.open_group(str(shard_dir), mode="w")
-    n = len(rows)
+    try:
+        root = zarr.open_group(str(shard_dir), mode="w")
+        n = len(rows)
 
-    image_embed = create_array(root, "image_embed", (n, 256, 64, 64), (1, 256, 64, 64))
-    high_res_s0 = create_array(root, "high_res_s0", (n, 32, 256, 256), (1, 32, 256, 256))
-    high_res_s1 = create_array(root, "high_res_s1", (n, 64, 128, 128), (1, 64, 128, 128))
+        image_embed = create_array(root, "image_embed", (n, 256, 64, 64), (1, 256, 64, 64))
+        high_res_s0 = create_array(root, "high_res_s0", (n, 32, 256, 256), (1, 32, 256, 256))
+        high_res_s1 = create_array(root, "high_res_s1", (n, 64, 128, 128), (1, 64, 128, 128))
 
-    root.attrs.update(
-        {
-            "schema_version": "sam2_stage1_teacher_cache_v1",
-            "teacher_config": args.config,
-            "teacher_checkpoint": str(args.checkpoint),
-            "teacher_checkpoint_sha256": checkpoint_hash,
-            "dtype": "float16",
-            "image_size": 1024,
-            "git_commit": git_commit(),
-            "shard_id": shard_id,
-            "num_rows": n,
-        }
-    )
+        root.attrs.update(
+            {
+                "schema_version": "sam2_stage1_teacher_cache_v1",
+                "teacher_config": args.config,
+                "teacher_checkpoint": str(args.checkpoint),
+                "teacher_checkpoint_sha256": checkpoint_hash,
+                "dtype": "float16",
+                "image_size": 1024,
+                "git_commit": git_commit(),
+                "shard_id": shard_id,
+                "num_rows": n,
+            }
+        )
 
-    index_rows = []
-    offset = 0
-    with torch.inference_mode():
-        for start in tqdm(range(0, n, args.batch_size), desc=f"shard {shard_id}"):
-            batch = rows.iloc[start : start + args.batch_size]
-            images = [read_rgb(path) for path in batch["image_path"].tolist()]
-            predictor.set_image_batch(images)
-            features = predictor._features
+        index_rows = []
+        offset = 0
+        with torch.inference_mode():
+            for start in tqdm(range(0, n, args.batch_size), desc=f"shard {shard_id}"):
+                batch = rows.iloc[start : start + args.batch_size]
+                images = [read_rgb(path) for path in batch["image_path"].tolist()]
+                predictor.set_image_batch(images)
+                features = predictor._features
 
-            batch_image_embed = features["image_embed"].detach().cpu().to(torch.float16).numpy()
-            high_res = features["high_res_feats"]
-            batch_s0 = high_res[0].detach().cpu().to(torch.float16).numpy()
-            batch_s1 = high_res[1].detach().cpu().to(torch.float16).numpy()
+                batch_image_embed = features["image_embed"].detach().cpu().to(torch.float16).numpy()
+                high_res = features["high_res_feats"]
+                batch_s0 = high_res[0].detach().cpu().to(torch.float16).numpy()
+                batch_s1 = high_res[1].detach().cpu().to(torch.float16).numpy()
 
-            end = offset + len(batch)
-            image_embed[offset:end] = batch_image_embed
-            high_res_s0[offset:end] = batch_s0
-            high_res_s1[offset:end] = batch_s1
+                end = offset + len(batch)
+                image_embed[offset:end] = batch_image_embed
+                high_res_s0[offset:end] = batch_s0
+                high_res_s1[offset:end] = batch_s1
 
-            for local_i, (_, row) in enumerate(batch.iterrows(), start=offset):
-                index_rows.append(
-                    {
-                        "sample_id": row["sample_id"],
-                        "source": row["source"],
-                        "image_path": row["image_path"],
-                        "split": row["split"],
-                        "shard_id": shard_id,
-                        "row_in_shard": local_i,
-                    }
-                )
-            offset = end
+                for local_i, (_, row) in enumerate(batch.iterrows(), start=offset):
+                    index_rows.append(
+                        {
+                            "sample_id": row["sample_id"],
+                            "source": row["source"],
+                            "image_path": row["image_path"],
+                            "split": row["split"],
+                            "shard_id": shard_id,
+                            "row_in_shard": local_i,
+                        }
+                    )
+                offset = end
 
-    pd.DataFrame(index_rows).to_parquet(shard_dir / "index.parquet", index=False)
-    done_path.write_text(json.dumps({"rows": n}, indent=2) + "\n")
+        pd.DataFrame(index_rows).to_parquet(shard_dir / "index.parquet", index=False)
+        done_path.write_text(json.dumps({"rows": n}, indent=2) + "\n")
+    finally:
+        try:
+            lock_dir.rmdir()
+        except OSError:
+            pass
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,10 +230,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=8, help="Reserved for company job wrappers.")
     parser.add_argument("--shard-size", type=int, default=512)
-    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or cuda:N.")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--start-shard", type=int, default=0)
     parser.add_argument("--num-shards", type=int)
+    parser.add_argument(
+        "--shard-ids",
+        help="Comma/range list of shard ids to process, e.g. 0,2,5-8. Overrides start/num shard selection.",
+    )
+    parser.add_argument("--rank", type=int, help="Manual data-parallel rank. Defaults to torchrun RANK.")
+    parser.add_argument("--world-size", type=int, help="Manual data-parallel world size. Defaults to torchrun WORLD_SIZE.")
+    parser.add_argument("--local-rank", type=int, help="Manual local rank. Defaults to torchrun LOCAL_RANK.")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
@@ -173,18 +259,29 @@ def main() -> None:
     if args.limit:
         df = df.head(args.limit).copy()
 
-    if args.device == "cuda" and not torch.cuda.is_available():
+    rank, world_size, local_rank = distributed_context(args)
+    device = resolve_device(args.device, local_rank)
+    if device.startswith("cuda") and not torch.cuda.is_available():
         raise SystemExit("CUDA requested but not available. Use --device cpu only for tiny smoke tests.")
 
     checkpoint_hash = checkpoint_sha256(args.checkpoint)
-    predictor = load_teacher(args.config, args.checkpoint, args.device)
+    predictor = load_teacher(args.config, args.checkpoint, device)
 
     num_total_shards = math.ceil(len(df) / args.shard_size)
-    end_shard = num_total_shards
-    if args.num_shards is not None:
-        end_shard = min(end_shard, args.start_shard + args.num_shards)
+    shard_plan = build_shard_plan(
+        num_total_shards=num_total_shards,
+        start_shard=args.start_shard,
+        num_shards=args.num_shards,
+        shard_ids=args.shard_ids,
+        rank=rank,
+        world_size=world_size,
+    )
+    print(
+        f"rank={rank} world_size={world_size} local_rank={local_rank} "
+        f"device={device} shards={shard_plan}"
+    )
 
-    for shard_id in range(args.start_shard, end_shard):
+    for shard_id in shard_plan:
         start = shard_id * args.shard_size
         end = min(len(df), start + args.shard_size)
         shard_rows = df.iloc[start:end].reset_index(drop=True)

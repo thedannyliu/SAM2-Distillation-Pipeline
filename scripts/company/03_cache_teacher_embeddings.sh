@@ -11,6 +11,10 @@ SHARD_SIZE=512
 LIMIT=""
 START_SHARD=0
 NUM_SHARDS=""
+SHARD_IDS=""
+GPUS=""
+DEVICE="auto"
+OVERWRITE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,6 +58,22 @@ while [[ $# -gt 0 ]]; do
       NUM_SHARDS="$2"
       shift 2
       ;;
+    --shard-ids)
+      SHARD_IDS="$2"
+      shift 2
+      ;;
+    --gpus)
+      GPUS="$2"
+      shift 2
+      ;;
+    --device)
+      DEVICE="$2"
+      shift 2
+      ;;
+    --overwrite)
+      OVERWRITE=1
+      shift
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 2
@@ -90,6 +110,7 @@ ARGS=(
   --num-workers "${NUM_WORKERS}"
   --shard-size "${SHARD_SIZE}"
   --start-shard "${START_SHARD}"
+  --device "${DEVICE}"
 )
 
 if [[ -n "${LIMIT}" ]]; then
@@ -100,4 +121,30 @@ if [[ -n "${NUM_SHARDS}" ]]; then
   ARGS+=(--num-shards "${NUM_SHARDS}")
 fi
 
-python tools/cache/cache_teacher_image_outputs.py "${ARGS[@]}"
+if [[ -n "${SHARD_IDS}" ]]; then
+  ARGS+=(--shard-ids "${SHARD_IDS}")
+fi
+
+if [[ "${OVERWRITE}" -eq 1 ]]; then
+  ARGS+=(--overwrite)
+fi
+
+if [[ -n "${GPUS}" ]]; then
+  NPROC="$(python - "${GPUS}" <<'PY'
+import sys
+
+gpus = [part.strip() for part in sys.argv[1].split(",") if part.strip()]
+print(len(gpus))
+PY
+)"
+  if [[ "${NPROC}" -gt 1 ]]; then
+    CUDA_VISIBLE_DEVICES="${GPUS}" torchrun \
+      --standalone \
+      --nproc-per-node "${NPROC}" \
+      tools/cache/cache_teacher_image_outputs.py "${ARGS[@]}"
+  else
+    CUDA_VISIBLE_DEVICES="${GPUS}" python tools/cache/cache_teacher_image_outputs.py "${ARGS[@]}"
+  fi
+else
+  python tools/cache/cache_teacher_image_outputs.py "${ARGS[@]}"
+fi

@@ -128,6 +128,15 @@ PACE policy:
 - PACE is for script, import, manifest, and tiny smoke validation only.
 - Do not run full SA-1B teacher embedding cache or full Stage 1 training on PACE; put those compute-heavy jobs on the company cluster.
 
+Multi-GPU teacher cache policy:
+- Teacher embedding cache uses shard-level data parallelism, not gradient DDP.
+- Use `scripts/company/03_cache_teacher_embeddings.sh --gpus 0,1,2,3` for single-node multi-GPU cache jobs.
+- Use `--shard-ids 0-127` to assign an explicit shard range to one job.
+- Use `tools/cache/plan_cache_shards.py --manifest <manifest> --shard-size 512 --num-jobs N` to compute shard ranges for multiple jobs/nodes.
+- Under `torchrun`, each rank writes only shards where `shard_id % WORLD_SIZE == RANK`.
+- For Slurm arrays, use `--start-shard $SLURM_ARRAY_TASK_ID --num-shards 1`.
+- Cache writes use per-shard lock directories, so overlapping assignments skip locked shards instead of concurrently writing the same zarr shard.
+
 Stage 1 data defaults:
 - Use a deterministic fixed 1% SA-1B image subset.
 - Manifest name: `sa1b_1pct_v1.parquet`

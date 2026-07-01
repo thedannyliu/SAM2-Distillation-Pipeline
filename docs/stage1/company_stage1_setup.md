@@ -167,7 +167,74 @@ bash scripts/company/03_cache_teacher_embeddings.sh \
   --shard-size 512
 ```
 
-For array jobs, pass `--start-shard $SLURM_ARRAY_TASK_ID --num-shards 1`.
+Plan shard ranges for multiple jobs or nodes:
+
+```bash
+python tools/cache/plan_cache_shards.py \
+  --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+  --shard-size 512 \
+  --num-jobs 4
+```
+
+Single-node multi-GPU cache job:
+
+```bash
+bash scripts/company/03_cache_teacher_embeddings.sh \
+  --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+  --teacher large \
+  --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
+  --batch-size 8 \
+  --shard-size 512 \
+  --gpus 0,1,2,3
+```
+
+This launches `torchrun --nproc-per-node 4`. Each process loads one teacher on its visible GPU and writes different shards. Assignment is deterministic:
+
+```text
+rank r handles shard_id where shard_id % world_size == r
+```
+
+Explicit shard assignment for one job:
+
+```bash
+bash scripts/company/03_cache_teacher_embeddings.sh \
+  --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+  --teacher large \
+  --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
+  --batch-size 8 \
+  --shard-size 512 \
+  --gpus 0,1 \
+  --shard-ids 0-63
+```
+
+One manual GPU:
+
+```bash
+bash scripts/company/03_cache_teacher_embeddings.sh \
+  --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+  --teacher large \
+  --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
+  --batch-size 8 \
+  --shard-size 512 \
+  --gpus 2 \
+  --shard-ids 64-95
+```
+
+For Slurm array jobs, pass `--start-shard $SLURM_ARRAY_TASK_ID --num-shards 1`. For example:
+
+```bash
+bash scripts/company/03_cache_teacher_embeddings.sh \
+  --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+  --teacher large \
+  --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
+  --batch-size 8 \
+  --shard-size 512 \
+  --gpus 0 \
+  --start-shard $SLURM_ARRAY_TASK_ID \
+  --num-shards 1
+```
+
+Each shard has a `.lock` directory while it is being written and a `.done` file after completion. Re-running the same command skips completed shards unless `--overwrite` is passed. If a job is killed and leaves a stale `.lock`, inspect that shard directory before manually removing the lock.
 
 Cache schema per shard:
 
