@@ -137,6 +137,13 @@ Stage 1 weights:
 - Teacher primary: SAM2.1 Hiera Large checkpoint `sam2.1_hiera_large.pt`.
 - Teacher smoke/fallback: SAM2.1 Hiera Base Plus checkpoint `sam2.1_hiera_base_plus.pt`.
 - Student init: TinyViT-21M 512 distillation checkpoint from timm/Hugging Face, preferably downloaded with a no-login direct URL or manually mirrored if company blocks Hugging Face.
+- Hugging Face login works on the company cluster. Minimal test:
+  - `python -m pip install -U huggingface_hub`
+  - `huggingface-cli login`
+  - `huggingface-cli whoami`
+- TinyViT HF fallback download:
+  - `hf_hub_download(repo_id="timm/tiny_vit_21m_512.dist_in22k_ft_in1k", filename="model.safetensors")`
+  - Copy the downloaded file to `/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors`.
 
 Teacher cache defaults:
 - SAM2 input size is 1024.
