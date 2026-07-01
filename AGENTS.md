@@ -1,0 +1,151 @@
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## Testing Guidelines
+
+There is no formal unit-test suite. Validate with the smallest workflow that exercises your change: import/package checks for library edits, manifest generation for experiment tooling, and one smoke row or Slurm array for training/eval changes. Record task, seed, manifest path, GPU type, checkpoint/output directory, and any W&B project in PR notes.
+
+## Commit & Pull Request Guidelines
+
+Recent history uses imperative subjects: `Add ...` for new utilities or experiment flows, `Document ...` and `Record ...` for status/results, `Fix ...` for behavior corrections, and `Update ...` for refreshed job records. Keep commits narrow and separate code from large generated artifacts. PRs should state the research or pipeline impact, list validation commands or smoke runs, link relevant docs, and call out cluster-resource, checkpoint, dataset, or W&B implications.
+
+Use git like machine learning engineer to update. For example, when there is new development, open a new branch a develop there then merge it back.
+For company-side SAM2 distillation work, use TensorBoard instead of W&B because the company environment does not currently have W&B. Make each training process continuable; when resuming, write to the same TensorBoard log directory and checkpoint directory.
+
+## Cluster & QOS Policy
+
+Current runs should target PACE-Phoenix by default. Use the `embers` QOS for GPU jobs because it is not charged to the account, though it has lower priority. Do not submit with `inferno` unless the user explicitly approves it; `inferno` has normal priority but incurs account charges.
+
+Default Slurm account for H100、H200、A100 work: `gts-agarg35`.
+Default Slurm account for L40S work: `gts-agarg35-ideas_l40s`.
+
+Usually current node is home node, and don't have GPUs. GPU must be accessed from submitting a job.
+Don't do any GPU job, env setup at $HOME, keep it clean.
+Construct venv or conda env and record it in this doc, and develop on the virtual environment afterwards.
+
+## 5. AI Research
+
+As a senior & rigorous AI researcher, always check with fact. Come up with hypothesis -> design experiments -> record metrics -> gain research signal -> further shape our research idea and directions.
+
+Please document and keep updating experiments tables, each table should answer it's own question.
+
+Design documentation system under docs/ and record how it's designed on this doc.
+
+Focus on TOP AI venue's best papers' criteria, do mearningful work. Have research novelty. Keep idea tide and elegant, don't just integrate different ideas and think it'll be novel. Good idea should shape people's perspective. Do a great and thorough literature review and document it. Always keep updating but keep it concise and precise.
+
+## 6. Collaboration with Company's Development Environment
+
+You are currently running on Georgia Tech's PACE GPU cluster, and this repo is intended to develop for company's use. So when writing documentation on instructions of running on company's dev env, we should follow company's data storage system:
+
+catagory | path | note
+code | /user-volume/repo/<repo> | code should be store here
+env | container image | reproducibility
+small personal files | /user-volume | 50G, personal use
+shared small files | /group-volume | 300G, shared between group
+large datasets | data lake: /danny-dataset | ~10 TB, for large data, checkpoints...
+
+## 7. SAM2 Stage 1 Company Defaults
+
+Stage 1 means encoder-only distillation from SAM2.1 teacher image features to a TinyViT-21M student image encoder with projection/adapters. This stage prepares teacher embeddings and a shape-compatible student feature interface; it does not train box-prompt masks or video memory.
+
+Company runtime:
+- Container image: `ngc24.06/ub22/py3.10/cu12.5/cudnn9.1/pytorch2.4`
+- Keep the container PyTorch 2.4 runtime by default. Do not silently upgrade torch in setup scripts.
+- Official current SAM2 may require torch >= 2.5.1, so every environment setup must run a SAM2 compatibility smoke test. If torch 2.4 fails, report it and either pin a compatible SAM2 commit or request a separate torch 2.5.1 company image.
+
+Default paths:
+- Company code root: `/user-volume/repo/sam2-distillation`
+- Company env root: `/user-volume/env`
+- Company data/checkpoint/cache root: `/danny-dataset/sam2_distill`
+- Company TensorBoard root: `/danny-dataset/sam2_distill/logs`
+- PACE scratch simulation root: `/storage/scratch1/9/eliu354/sam2_distill`
+
+PACE policy:
+- PACE is for script, import, manifest, and tiny smoke validation only.
+- Do not run full SA-1B teacher embedding cache or full Stage 1 training on PACE; put those compute-heavy jobs on the company cluster.
+
+Stage 1 data defaults:
+- Use a deterministic fixed 1% SA-1B image subset.
+- Manifest name: `sa1b_1pct_v1.parquet`
+- Sampling seed: `sam2_stage1_sa1b_1pct_v1`
+- Manifest fields: `sample_id`, `source`, `image_path`, `height`, `width`, `sha256`, `split`.
+
+Stage 1 weights:
+- Teacher primary: SAM2.1 Hiera Large checkpoint `sam2.1_hiera_large.pt`.
+- Teacher smoke/fallback: SAM2.1 Hiera Base Plus checkpoint `sam2.1_hiera_base_plus.pt`.
+- Student init: TinyViT-21M 512 distillation checkpoint from timm/Hugging Face, preferably downloaded with a no-login direct URL or manually mirrored if company blocks Hugging Face.
+
+Teacher cache defaults:
+- SAM2 input size is 1024.
+- Cache post-neck/post-`no_mem_embed` teacher features:
+  - `image_embed`: fp16 `[N, 256, 64, 64]`
+  - `high_res_s0`: fp16 `[N, 32, 256, 256]`
+  - `high_res_s1`: fp16 `[N, 64, 128, 128]`
+- Cache backend: zarr shards plus parquet shard indexes.
+
+TinyViT student defaults:
+- Use `timm.create_model("tiny_vit_21m_512.dist_in22k_ft_in1k", features_only=True, pretrained=False, checkpoint_path=<local safetensors>)`.
+- Add projection/adapters so TinyViT feature dims and spatial sizes match the three teacher targets above.
+- Stage 1 trainable modules: TinyViT encoder plus projection/adapters.
+- Frozen modules: teacher all modules, SAM2 prompt encoder, SAM2 mask decoder, and memory modules.
