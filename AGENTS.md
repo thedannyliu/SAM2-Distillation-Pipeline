@@ -71,7 +71,7 @@ There is no formal unit-test suite. Validate with the smallest workflow that exe
 Recent history uses imperative subjects: `Add ...` for new utilities or experiment flows, `Document ...` and `Record ...` for status/results, `Fix ...` for behavior corrections, and `Update ...` for refreshed job records. Keep commits narrow and separate code from large generated artifacts. PRs should state the research or pipeline impact, list validation commands or smoke runs, link relevant docs, and call out cluster-resource, checkpoint, dataset, or W&B implications.
 
 Use git like machine learning engineer to update. For example, when there is new development, open a new branch a develop there then merge it back.
-For company-side SAM2 distillation work, use TensorBoard instead of W&B because the company environment does not currently have W&B. Make each training process continuable; when resuming, write to the same TensorBoard log directory and checkpoint directory.
+For company-side SAM2 distillation work, W&B connectivity has been verified and should be used for primary experiment tracking when allowed. TensorBoard remains useful as a local fallback or additional log. Make each training process continuable; when resuming, reuse the same W&B run ID and write to the same TensorBoard log directory and checkpoint directory.
 
 ## Cluster & QOS Policy
 
@@ -121,6 +121,7 @@ Default paths:
 - Company env root: `/user-volume/env`
 - Company data/checkpoint/cache root: `/danny-dataset/sam2_distill`
 - Company TensorBoard root: `/danny-dataset/sam2_distill/logs`
+- Company W&B project default: `sam2-distill-stage1`
 - PACE scratch simulation root: `/storage/scratch1/9/eliu354/sam2_distill`
 
 PACE policy:
@@ -144,6 +145,14 @@ Stage 1 weights:
 - TinyViT HF fallback download:
   - `hf_hub_download(repo_id="timm/tiny_vit_21m_512.dist_in22k_ft_in1k", filename="model.safetensors")`
   - Copy the downloaded file to `/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors`.
+
+W&B company smoke test:
+- `python -m pip install -U wandb`
+- `wandb login`
+- `wandb status`
+- Minimal online run:
+  - `python -c 'import wandb; r=wandb.init(project="sam2-distill-smoke", name="company-wandb-smoke"); wandb.log({"ok": 1}); r.finish()'`
+- If network is blocked for a run, use `WANDB_MODE=offline` and later `wandb sync wandb/offline-run-*`.
 
 Teacher cache defaults:
 - SAM2 input size is 1024.

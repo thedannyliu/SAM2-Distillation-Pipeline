@@ -37,6 +37,45 @@ source $SAM2D_ENV/bin/activate
 
 This repository is the distillation/preparation scaffold. The official `facebookresearch/sam2` checkout supplies the actual SAM2 package and configs. The setup script keeps the container PyTorch 2.4 runtime by installing SAM2 editable with `--no-build-isolation --no-deps` after installing the non-torch Stage 1 dependencies. If SAM2 import fails because the checked-out SAM2 version requires torch >= 2.5.1, stop and either pin a compatible SAM2 commit or request a torch >= 2.5.1 image. Do not silently upgrade torch in the shared setup script.
 
+## 1.1. Verify W&B Logging
+
+W&B connectivity has been verified on the company cluster. Use it for primary experiment tracking when allowed; keep TensorBoard as a local fallback or parallel log.
+
+Minimal online smoke:
+
+```bash
+python -m pip install -U wandb
+wandb login
+wandb status
+
+python - <<'PY'
+import wandb
+
+run = wandb.init(
+    project="sam2-distill-smoke",
+    name="company-wandb-smoke",
+    config={"test": "minimal"},
+)
+wandb.log({"ok": 1})
+run.finish()
+PY
+```
+
+For real Stage 1 runs, use project `sam2-distill-stage1`. Save the W&B run ID with the checkpoint so resume jobs can continue the same run:
+
+```bash
+export WANDB_PROJECT=sam2-distill-stage1
+export WANDB_RUN_ID=<saved-run-id>
+export WANDB_RESUME=allow
+```
+
+If online logging is temporarily blocked, run offline and sync later:
+
+```bash
+WANDB_MODE=offline python train_or_smoke.py
+wandb sync wandb/offline-run-*
+```
+
 ## 2. Download Weights
 
 The default script uses `wget` for no-login downloads first. If TinyViT direct download fails, it falls back to `huggingface_hub`, which works after `huggingface-cli login`.
