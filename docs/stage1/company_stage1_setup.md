@@ -39,7 +39,7 @@ This repository is the distillation/preparation scaffold. The official `facebook
 
 ## 2. Download Weights
 
-This path uses `wget` and no login token.
+The default script uses `wget` for no-login downloads first. If TinyViT direct download fails, it falls back to `huggingface_hub`, which works after `huggingface-cli login`.
 
 ```bash
 mkdir -p $SAM2D_ROOT/checkpoints
@@ -55,7 +55,33 @@ $SAM2D_ROOT/checkpoints/sam2.1/sam2.1_hiera_large.pt
 $SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 ```
 
-If company networking blocks Hugging Face, manually mirror `model.safetensors` from `timm/tiny_vit_21m_512.dist_in22k_ft_in1k` to the TinyViT path above.
+Minimal Hugging Face login test:
+
+```bash
+python -m pip install -U huggingface_hub
+huggingface-cli login
+huggingface-cli whoami
+```
+
+Use a read token from `https://huggingface.co/settings/tokens`.
+
+To download TinyViT through Hugging Face cache and copy it into the pipeline checkpoint path:
+
+```bash
+mkdir -p $SAM2D_ROOT/checkpoints/tinyvit
+
+cp "$(python - <<'PY'
+from huggingface_hub import hf_hub_download
+
+print(hf_hub_download(
+    repo_id="timm/tiny_vit_21m_512.dist_in22k_ft_in1k",
+    filename="model.safetensors",
+))
+PY
+)" "$SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors"
+```
+
+If both direct download and `huggingface_hub` fail, manually mirror `model.safetensors` from `timm/tiny_vit_21m_512.dist_in22k_ft_in1k` to the TinyViT path above.
 
 ## 3. Build Fixed SA-1B 1% Manifest
 
