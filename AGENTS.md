@@ -137,6 +137,13 @@ Multi-GPU teacher cache policy:
 - For Slurm arrays, use `--start-shard $SLURM_ARRAY_TASK_ID --num-shards 1`.
 - Cache writes use per-shard lock directories, so overlapping assignments skip locked shards instead of concurrently writing the same zarr shard.
 
+COCO Stage 1 pilot:
+- Company pilot root: `/group-volume/danny-dataset/sam2_distill`.
+- Use exactly 1000 COCO train images and 100 COCO val images for the quick pilot.
+- Use `docs/stage1/coco_pilot_2xh100.md` as the step-by-step runbook.
+- Use `scripts/company/04_run_coco_stage1_pilot.sh prepare|cache|train|benchmark|all` on the company cluster.
+- Store overlay mask benchmark results under `/group-volume/danny-dataset/sam2_distill/runs/stage1_coco_pilot/benchmark_val/overlays`.
+
 Stage 1 data defaults:
 - Use a deterministic fixed 1% SA-1B image subset.
 - Manifest name: `sa1b_1pct_v1.parquet`
