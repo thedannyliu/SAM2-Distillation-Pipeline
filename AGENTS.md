@@ -115,7 +115,9 @@ Company runtime:
 - Official current SAM2 may require torch >= 2.5.1, so every environment setup must run a SAM2 compatibility smoke test. If torch 2.4 fails, report it and either pin a compatible SAM2 commit or request a separate torch 2.5.1 company image.
 
 Default paths:
-- Company code root: `/user-volume/repo/sam2-distillation`
+- Company code root: `/user-volume/repo/SAM2-Distillation-Pipeline`
+- Company GitHub repo: `https://github.com/thedannyliu/SAM2-Distillation-Pipeline.git`
+- Official SAM2 upstream checkout: `/user-volume/repo/facebookresearch-sam2`
 - Company env root: `/user-volume/env`
 - Company data/checkpoint/cache root: `/danny-dataset/sam2_distill`
 - Company TensorBoard root: `/danny-dataset/sam2_distill/logs`

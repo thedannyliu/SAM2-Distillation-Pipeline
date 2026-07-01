@@ -7,7 +7,8 @@ This document prepares encoder-only distillation from SAM2.1 teacher image featu
 Company:
 
 ```bash
-export SAM2D_REPO=/user-volume/repo/sam2-distillation
+export SAM2D_REPO=/user-volume/repo/SAM2-Distillation-Pipeline
+export SAM2_UPSTREAM=/user-volume/repo/facebookresearch-sam2
 export SAM2D_ROOT=/danny-dataset/sam2_distill
 export SAM2D_ENV=/user-volume/env/sam2_stage1_torch24
 ```
@@ -24,16 +25,17 @@ Use the company container `ngc24.06/ub22/py3.10/cu12.5/cudnn9.1/pytorch2.4`.
 
 ```bash
 cd /user-volume/repo
-git clone https://github.com/facebookresearch/sam2.git sam2-distillation
+git clone https://github.com/thedannyliu/SAM2-Distillation-Pipeline.git
+git clone https://github.com/facebookresearch/sam2.git facebookresearch-sam2
 cd $SAM2D_REPO
-git checkout -b sam2-distillation-robotics
 
-# Copy this repository's scripts/tools/sam2_distill/requirements-stage1.txt into this SAM2 fork.
-bash scripts/company/00_setup_env.sh --venv $SAM2D_ENV
+bash scripts/company/00_setup_env.sh \
+  --venv $SAM2D_ENV \
+  --sam2-upstream $SAM2_UPSTREAM
 source $SAM2D_ENV/bin/activate
 ```
 
-The setup script keeps the container PyTorch 2.4 runtime by installing SAM2 editable with `--no-build-isolation --no-deps` after installing the non-torch Stage 1 dependencies. If SAM2 import fails because the checked-out SAM2 version requires torch >= 2.5.1, stop and either pin a compatible SAM2 commit or request a torch >= 2.5.1 image. Do not silently upgrade torch in the shared setup script.
+This repository is the distillation/preparation scaffold. The official `facebookresearch/sam2` checkout supplies the actual SAM2 package and configs. The setup script keeps the container PyTorch 2.4 runtime by installing SAM2 editable with `--no-build-isolation --no-deps` after installing the non-torch Stage 1 dependencies. If SAM2 import fails because the checked-out SAM2 version requires torch >= 2.5.1, stop and either pin a compatible SAM2 commit or request a torch >= 2.5.1 image. Do not silently upgrade torch in the shared setup script.
 
 ## 2. Download Weights
 

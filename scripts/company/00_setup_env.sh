@@ -3,6 +3,7 @@ set -euo pipefail
 
 VENV="/user-volume/env/sam2_stage1_torch24"
 SKIP_SAM2_SMOKE=0
+SAM2_UPSTREAM="${SAM2_UPSTREAM:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -13,6 +14,10 @@ while [[ $# -gt 0 ]]; do
     --skip-sam2-smoke)
       SKIP_SAM2_SMOKE=1
       shift
+      ;;
+    --sam2-upstream)
+      SAM2_UPSTREAM="$2"
+      shift 2
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -35,6 +40,8 @@ if [[ -f pyproject.toml || -f setup.py ]]; then
   # intentionally torch 2.4, so install the editable package without dependency
   # resolution or build isolation. The compatibility smoke below is the gate.
   python -m pip install --no-build-isolation --no-deps -e .
+elif [[ -n "${SAM2_UPSTREAM}" && -d "${SAM2_UPSTREAM}" ]]; then
+  python -m pip install --no-build-isolation --no-deps -e "${SAM2_UPSTREAM}"
 fi
 
 python - <<'PY'
