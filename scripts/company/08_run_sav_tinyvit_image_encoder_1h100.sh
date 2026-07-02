@@ -265,10 +265,10 @@ data["elapsed_sec"] = data["end_unix"] - int(data["start_unix"])
 data["return_code"] = int(sys.argv[3])
 path.write_text(json.dumps(data, indent=2) + "\n")
 PY
-  cp "${RUN_DIR}/summary.json" "${RUN_DIR}/summary_${phase}.json"
   if [[ "${rc}" -ne 0 ]]; then
     exit "${rc}"
   fi
+  cp "${RUN_DIR}/summary.json" "${RUN_DIR}/summary_${phase}.json"
 }
 
 warmup() {
