@@ -23,6 +23,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-data
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh probe-tinyvit
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh write-config
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-model-contract-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-train-config
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh stage1-feature-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh sav-eval-smoke
@@ -98,6 +99,29 @@ probe_tinyvit() {
 write_config() {
   python "${ROOT}/tools/edgetam/write_tinyvit_edgetam_config.py" \
     --out "${EDGETAM_CONFIG_OUT:-${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml}"
+}
+
+edgetam_model_contract_smoke() {
+  local config="${EDGETAM_CONTRACT_MODEL_CONFIG:-${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml}"
+  local out_dir="${EDGETAM_CONTRACT_OUT_DIR:-${SMOKE_ROOT}/edgetam_model_contract}"
+  local extra_args=()
+  if [[ ! -f "${config}" ]]; then
+    EDGETAM_CONFIG_OUT="${config}" write_config
+  fi
+  if [[ -n "${EDGETAM_TINYVIT_CHECKPOINT:-}" ]]; then
+    extra_args+=(--tinyvit-checkpoint "${EDGETAM_TINYVIT_CHECKPOINT}")
+  fi
+  if [[ -n "${EDGETAM_CONTRACT_MODEL_CHECKPOINT:-}" ]]; then
+    extra_args+=(--model-checkpoint "${EDGETAM_CONTRACT_MODEL_CHECKPOINT}")
+  fi
+  python "${ROOT}/tools/edgetam/probe_model_contract.py" \
+    --config "${config}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}" \
+    --out-json "${out_dir}/summary.json" \
+    --image-size "${EDGETAM_CONTRACT_IMAGE_SIZE:-1024}" \
+    --batch-size "${EDGETAM_CONTRACT_BATCH_SIZE:-1}" \
+    "${extra_args[@]}"
 }
 
 validate_train_config() {
@@ -558,6 +582,9 @@ case "${1:-}" in
     ;;
   write-config)
     write_config
+    ;;
+  edgetam-model-contract-smoke)
+    edgetam_model_contract_smoke
     ;;
   validate-train-config)
     validate_train_config

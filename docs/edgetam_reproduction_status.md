@@ -20,6 +20,7 @@ is the concise engineering runbook.
 | Data validation | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-data` | Decodes capped image/frame subsets and checks paths. |
 | TinyViT metadata | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh probe-tinyvit` | Reports TinyViT feature reductions/channels using known metadata for default model. |
 | EdgeTAM config | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh write-config` | Writes `runs/edgetam_smoke/configs/edgetam_tinyvit21m.yaml`. |
+| EdgeTAM model contract | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-model-contract-smoke` | Instantiates the TinyViT EdgeTAM model, checks memory/perceiver/object-pointer settings, and runs a 1024px image encoder forward. |
 | Training config validation | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-train-config` | Loads `configs/edgetam/tinyvit_video_distill_smoke.yaml` and instantiates the nested SAM2 task + EdgeTAM distillation loss. |
 | Stage 1 feature smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh stage1-feature-smoke` | Real SA-1B images through TinyViT adapter, MSE/backward, checkpoint. GPU smoke passed. |
 | SA-V evaluator smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh sav-eval-smoke` | GT-as-pred identity smoke; official SAM2 evaluator passed with J&F/J/F 100.0. |
@@ -61,6 +62,7 @@ is the concise engineering runbook.
 | `sam2_distill.edgetam.distillation_losses` | Adds EdgeTAM image/memory MSE distillation to SAM2 task loss. |
 | `configs/edgetam/tinyvit_video_distill_smoke.yaml` | Minimal full-trainer Hydra config for TinyViT video distillation smoke/adaptation. |
 | `tools/edgetam/validate_training_config.py` | Validates Hydra target paths and nested loss instantiation. |
+| `tools/edgetam/probe_model_contract.py` | Validates TinyViT EdgeTAM static model settings and 1024px image encoder feature shapes. |
 | `tools/train/make_teacher_feature_cache_smoke.py` | Writes deterministic frame-major teacher feature caches for cache-backed trainer smoke tests. |
 | `tools/train/cache_edgetam_teacher_features.py` | Instantiates the SAM2 trainer model/data path and caches real-forward `distill_F16` / `distill_F_M` features. |
 | `tools/edgetam/export_trainer_checkpoint.py` | Converts upstream SAM2 `Trainer` checkpoints to model-only EdgeTAM/SAM2 checkpoint payloads and validates strict model loading. |
@@ -84,6 +86,10 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
 
 - Data subset validation passed for SA-1B 400 images, SA-V 461 frames, and COCO 500 images.
 - TinyViT config metadata passed for reductions `[4, 8, 16, 32]` and channels `[96, 192, 384, 576]`.
+- EdgeTAM TinyViT model contract smoke passed:
+  - `10670226`: `gpu-rtx6000`, `embers`, completed in 25s.
+  - Instantiated `runs/edgetam_smoke/configs/edgetam_tinyvit21m.yaml` and checked `num_maskmem=7`, `max_obj_ptrs_in_encoder=16`, object pointers enabled, 2 memory-attention layers, memory dim 64, hidden dim 256, and 256 global + 256 2D spatial perceiver latents.
+  - A 1024px image forward produced finite `vision_features` `[1, 256, 64, 64]` and decoder high-res features `[1, 32, 256, 256]`, `[1, 64, 128, 128]`, `[1, 256, 64, 64]`.
 - SA-V identity evaluator smoke passed with official SAM2 evaluator.
 - DAVIS-style VOS layout smoke passed on real SA-V frames packed to indexed PNG masks.
 - DAVIS 2017 trainval 480p smoke passed on 2 videos / 120 frames; the 795MB archive was removed after extracting a 21MB subset.

@@ -75,6 +75,18 @@ instead of the upstream EdgeTAM wrapper because the upstream wrapper hardcodes
 should set a local `checkpoint_path` or enable pretrained loading only when the
 environment has the expected Hugging Face/timm cache.
 
+Validate the instantiated TinyViT EdgeTAM model contract with:
+
+```bash
+TASK=edgetam-model-contract-smoke \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+The probe checks the paper-critical settings (`num_maskmem=7`, object pointer
+limit 16, 2 memory-attention layers, 256 global + 256 2D perceiver latents) and
+runs a 1024px image encoder forward. Pass `EDGETAM_TINYVIT_CHECKPOINT=/path/to/model.safetensors`
+to validate a local TinyViT pretrained checkpoint load in company runs.
+
 ## Training Feature Contract
 
 `sam2_distill.edgetam.train_model.EdgeTAMTrain` extends SAM2 training outputs with:
