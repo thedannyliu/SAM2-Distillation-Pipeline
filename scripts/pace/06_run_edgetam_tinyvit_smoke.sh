@@ -43,6 +43,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-track-later-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh all-cpu
 
@@ -349,13 +350,25 @@ progressive_video_smoke() {
 }
 
 edgetam_vos_smoke() {
+  local out_dir="${EDGETAM_VOS_OUT_DIR:-${SMOKE_ROOT}/edgetam_vos_pred}"
+  local extra_args=()
+  if [[ "${EDGETAM_VOS_TRACK_LATER:-0}" == "1" ]]; then
+    extra_args+=(--track-object-appearing-later-in-video)
+  fi
   python "${ROOT}/tools/eval/run_edgetam_vos_smoke.py" \
     --edgetam-root "${EDGETAM_ROOT}" \
     --sam2-cfg "${EDGETAM_CFG}" \
     --checkpoint "${EDGETAM_CHECKPOINT}" \
     --sav-root "${SMOKE_DATA_ROOT}/sav_val_smoke" \
     --video-list-file "${SMOKE_DATA_ROOT}/sav_val_smoke/sav_val.txt" \
-    --out-dir "${SMOKE_ROOT}/edgetam_vos_pred"
+    --out-dir "${out_dir}" \
+    "${extra_args[@]}"
+}
+
+edgetam_vos_track_later_smoke() {
+  EDGETAM_VOS_TRACK_LATER=1 \
+  EDGETAM_VOS_OUT_DIR="${EDGETAM_VOS_OUT_DIR:-${SMOKE_ROOT}/edgetam_vos_track_later_pred}" \
+  edgetam_vos_smoke
 }
 
 edgetam_image_smoke() {
@@ -384,11 +397,12 @@ edgetam_sav_eval() {
     echo "SAV_EVALUATOR must point to sam2/sav_dataset/sav_evaluator.py" >&2
     exit 2
   fi
+  local pred_root="${EDGETAM_VOS_OUT_DIR:-${SMOKE_ROOT}/edgetam_vos_pred}"
   python "${ROOT}/tools/eval/run_sav_evaluator.py" \
     --evaluator "${SAV_EVALUATOR}" \
     --gt-root "${SMOKE_DATA_ROOT}/sav_val_smoke/Annotations_6fps" \
-    --pred-root "${SMOKE_ROOT}/edgetam_vos_pred" \
-    --out-json "${SMOKE_ROOT}/edgetam_vos_pred/eval_summary.json" \
+    --pred-root "${pred_root}" \
+    --out-json "${pred_root}/eval_summary.json" \
     --num-processes "${SAV_EVAL_NUM_PROCESSES:-2}" \
     --strict
 }
@@ -465,6 +479,9 @@ case "${1:-}" in
     ;;
   edgetam-vos-smoke)
     edgetam_vos_smoke
+    ;;
+  edgetam-vos-track-later-smoke)
+    edgetam_vos_track_later_smoke
     ;;
   edgetam-sav-eval)
     edgetam_sav_eval

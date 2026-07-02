@@ -303,12 +303,23 @@ EDGETAM_CHECKPOINT=/path/to/edgetam.pt \
 scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke
 ```
 
+Exercise the YouTube-VOS/LVOS late-appearing-object inference flag with the
+same bounded SA-V smoke data:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+EDGETAM_CHECKPOINT=/path/to/edgetam.pt \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-track-later-smoke
+```
+
 After predictions exist, evaluate them without rewriting the prediction root:
 
 ```bash
 SAV_EVALUATOR=/path/to/sam2/sav_dataset/sav_evaluator.py \
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval
 ```
+
+Set `EDGETAM_VOS_OUT_DIR` when evaluating a non-default prediction directory.
 
 The official image predictor can be smoke-tested on one real image:
 

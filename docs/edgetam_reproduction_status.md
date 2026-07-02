@@ -39,6 +39,7 @@ is the concise engineering runbook.
 | Official EdgeTAM image smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke` | Passed with the existing official EdgeTAM checkpoint on one COCO smoke image. |
 | Official EdgeTAM image benchmark | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark` | Passed with A100 image predictor latency/FPS/peak-memory summary. |
 | Official EdgeTAM VOS smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke` | Passed with official EdgeTAM checkpoint on the SA-V smoke video. |
+| Official EdgeTAM VOS late-object flag smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-track-later-smoke` | Passed with upstream `--track_object_appearing_later_in_video` enabled on the SA-V smoke video. |
 | Official EdgeTAM SA-V eval | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval` | Passed on existing `edgetam_vos_pred` with official SAM2 SA-V evaluator. |
 
 ## Code Modules
@@ -126,13 +127,17 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
   - Propagated one SA-V smoke video at about 40.5 iterations/s and wrote per-object masks.
   - Official SA-V evaluator returned J&F 91.5, J 89.1, F 93.9 on `sav_011944`.
   - Duplicate pending `gpu-l40s` job `10669187` was cancelled.
+- Official EdgeTAM VOS late-object flag smoke passed:
+  - `10669832`: `gpu-rtx6000`, `embers`, completed in 1m09s.
+  - Reused the SA-V smoke video while enabling upstream `--track_object_appearing_later_in_video`, the flag needed by YouTube-VOS/LVOS-style evaluation.
+  - Official SA-V evaluator on the flag-path predictions returned J&F 91.7, J 89.2, F 94.3 on `sav_011944`.
 
 ## Remaining Work
 
 | Phase | Next implementation | Smoke validation |
 | --- | --- | --- |
-| Official baseline | Run official EdgeTAM checkpoint on the SA-V smoke subset. | SA-V smoke inference and official evaluator passed; extend to full SA-V/DAVIS/MOSE/YTVOS when full datasets are available. |
+| Official baseline | Run official EdgeTAM checkpoint on the SA-V smoke subset. | SA-V smoke inference, late-object flag path, and official evaluator passed; extend to full SA-V/DAVIS/MOSE/YTVOS when full datasets are available. |
 | Image pretrain | Replace synthetic image teacher targets with frozen SAM2.1-Hiera-B+/Large image teacher features and scale from 2-image smoke to 100-image overfit. | SA-1B single-frame image trainer smoke passed with 4 masks/image and image distillation loss. |
 | Video train | Swap the smoke teacher config for frozen SAM2.1-Hiera-L teacher config/weights in `cache_edgetam_teacher_features.py`. | 2-frame full trainer, checkpoint resume, 8-frame low-memory trainer, deterministic-cache trainer, and real-forward-cache trainer smokes passed. |
 | Progressive schedule | Run full-size `8/16/32` progressive phases on company GPUs after teacher/weights are finalized. | Scaled full upstream Trainer `2/4/8` progressive smoke passed; lightweight 8/16/32 shell smoke also passed. |
-| Full eval | Add MOSE/YTVOS wrappers beside SA-V and DAVIS. | Identity/layout smoke first, then official/model checkpoint smoke. |
+| Full eval | Add MOSE/YTVOS wrappers beside SA-V and DAVIS when those datasets are available locally. | Generic indexed-mask layout smoke and the YTVOS/LVOS late-object flag path passed on SA-V smoke data; real MOSE/YTVOS dataset smoke remains pending. |
