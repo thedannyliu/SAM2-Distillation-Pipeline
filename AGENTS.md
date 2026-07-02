@@ -157,6 +157,7 @@ Stage 1 data defaults:
 - Default SA-1B link list: `/group-volume/danny-dataset/SA-1B/sa1b_links.txt`
 - Default 3% image root: `/group-volume/danny-dataset/SA-1B/images_3pct`
 - Use `scripts/company/02_download_sa1b_subset.sh` to select/download/extract the 3% subset.
+- The SA-1B downloader can fetch the link-list file directly with `SA1B_LINK_URL='<current Meta/fbcdn txt URL>'`; use `REFRESH_LINK_FILE=1` when replacing an expired link list.
 - Default downloader selection: `SA1B_DOWNLOAD_PERCENT=3`, `SA1B_SELECTION_MODE=hash`, `KEEP_ARCHIVES=0`, `EXTRACT_ANNOTATIONS=0`.
 - The downloader removes compressed archives after successful extraction and keeps reproducibility metadata under `/group-volume/danny-dataset/SA-1B/manifests/`.
 - Manifest name: `sa1b_3pct_v1.parquet`

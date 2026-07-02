@@ -3,6 +3,8 @@ set -euo pipefail
 
 SA1B_ROOT="${SA1B_ROOT:-/group-volume/danny-dataset/SA-1B}"
 LINK_FILE="${SA1B_LINK_FILE:-${SA1B_ROOT}/sa1b_links.txt}"
+LINK_URL="${SA1B_LINK_URL:-}"
+REFRESH_LINK_FILE="${REFRESH_LINK_FILE:-0}"
 RAW_ROOT="${SA1B_RAW_ROOT:-${SA1B_ROOT}/raw_3pct}"
 IMAGE_ROOT="${IMAGE_ROOT:-${SA1B_ROOT}/images_3pct}"
 ANNOTATION_ROOT="${SA1B_ANNOTATION_ROOT:-${SA1B_ROOT}/annotations_3pct}"
@@ -23,6 +25,7 @@ Usage:
 Required:
   Put the official SA-1B URL list at:
     /group-volume/danny-dataset/SA-1B/sa1b_links.txt
+  or set SA1B_LINK_URL to a URL that serves that text file.
 
 Default behavior:
   - deterministically selects 3% of shards from the link list
@@ -36,6 +39,8 @@ Default behavior:
 Environment overrides:
   SA1B_ROOT=/group-volume/danny-dataset/SA-1B
   SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
+  SA1B_LINK_URL=              # optional URL for the official link-list .txt
+  REFRESH_LINK_FILE=0         # set 1 to re-download SA1B_LINK_FILE from SA1B_LINK_URL
   SA1B_DOWNLOAD_PERCENT=3
   SA1B_DOWNLOAD_WORKERS=4
   SA1B_SELECTION_MODE=hash      # hash or first
@@ -49,6 +54,8 @@ Environment overrides:
   DRY_RUN=0
 
 Examples:
+  SA1B_LINK_URL='https://...' DRY_RUN=1 scripts/company/02_download_sa1b_subset.sh
+  SA1B_LINK_URL='https://...' scripts/company/02_download_sa1b_subset.sh
   DRY_RUN=1 scripts/company/02_download_sa1b_subset.sh
   SA1B_DOWNLOAD_WORKERS=8 scripts/company/02_download_sa1b_subset.sh
   SA1B_MAX_SHARDS=2 DRY_RUN=1 scripts/company/02_download_sa1b_subset.sh
@@ -60,13 +67,30 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
+mkdir -p "$(dirname "${LINK_FILE}")"
+if [[ -n "${LINK_URL}" && "${REFRESH_LINK_FILE}" -eq 1 ]]; then
+  rm -f "${LINK_FILE}"
+fi
+if [[ ! -f "${LINK_FILE}" && -n "${LINK_URL}" ]]; then
+  echo "download SA-1B link list ${LINK_URL}"
+  if command -v wget >/dev/null 2>&1; then
+    wget -O "${LINK_FILE}" "${LINK_URL}"
+  elif command -v curl >/dev/null 2>&1; then
+    curl -L --fail --retry 5 -o "${LINK_FILE}" "${LINK_URL}"
+  else
+    echo "Need wget or curl to download SA1B_LINK_URL." >&2
+    exit 127
+  fi
+fi
+
 if [[ ! -f "${LINK_FILE}" ]]; then
   cat >&2 <<EOF
 Missing SA-1B link file:
   ${LINK_FILE}
 
 Download/obtain the official SA-1B link list after accepting Meta's dataset terms,
-then save it at the path above or set SA1B_LINK_FILE=/path/to/sa1b_links.txt.
+then save it at the path above, set SA1B_LINK_FILE=/path/to/sa1b_links.txt,
+or set SA1B_LINK_URL=https://... to let this script download the link list.
 EOF
   exit 2
 fi
@@ -87,6 +111,7 @@ import sys
 from urllib.parse import urlparse
 
 link_file, percent_s, mode, max_shards_s, out_path, provenance_path = sys.argv[1:7]
+archive_suffixes = (".tar", ".tar.gz", ".tgz", ".zip")
 percent = float(percent_s)
 if not (0 < percent <= 100):
     raise SystemExit(f"SA1B_DOWNLOAD_PERCENT must be in (0, 100], got {percent}")
@@ -108,6 +133,8 @@ def parse_line(line: str):
     filename = os.path.basename(filename)
     if not filename:
         raise ValueError(f"could not derive filename from line: {line}")
+    if not filename.lower().endswith(archive_suffixes):
+        return None
     return filename, url
 
 records = []

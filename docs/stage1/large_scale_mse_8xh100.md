@@ -110,7 +110,40 @@ https://ai.meta.com/datasets/segment-anything/
 https://ai.meta.com/datasets/segment-anything-downloads/
 ```
 
-Save the URL list here:
+The URL you get from Meta is usually a `.txt` file with this format:
+
+```text
+file_name	cdn_link
+sa_000020.tar	https://scontent.xx.fbcdn.net/...
+sa_000021.tar	https://scontent.xx.fbcdn.net/...
+```
+
+The current script can download that link-list file directly. Because fbcdn URLs include expiration parameters, paste the current URL from Meta/HF into `SA1B_LINK_URL` and run the downloader soon after obtaining it:
+
+```bash
+cd $SAM2D_REPO
+
+export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
+export SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
+export SA1B_LINK_URL='<paste-current-sa1b-link-list-txt-url-here>'
+export REFRESH_LINK_FILE=1
+export SA1B_DOWNLOAD_PERCENT=3
+export SA1B_SELECTION_MODE=hash
+export IMAGE_ROOT=$SA1B_ROOT/images_3pct
+export SA1B_DOWNLOAD_WORKERS=8
+export KEEP_ARCHIVES=0
+export EXTRACT_ANNOTATIONS=0
+
+DRY_RUN=1 bash scripts/company/02_download_sa1b_subset.sh
+```
+
+If the dry-run prints a valid shard count, run the actual download:
+
+```bash
+bash scripts/company/02_download_sa1b_subset.sh
+```
+
+Alternatively, save the URL list manually here:
 
 ```bash
 mkdir -p /group-volume/danny-dataset/SA-1B
@@ -131,13 +164,17 @@ https://.../sa_000000.tar
 
 If you have an equivalent HF-authorized mirror, write those shard URLs into the same file format. The downloader does not care whether the URL came from Meta or HF; reproducibility comes from preserving the exact `sa1b_links.txt` plus the generated selected-shard TSV/JSON.
 
-Dry-run the deterministic 3% shard selection:
+Only archive rows ending in `.tar`, `.tar.gz`, `.tgz`, or `.zip` are selected for download. Auxiliary rows such as `sa_images_ids.txt` are ignored by this Stage 1 image downloader.
+
+If `sa1b_links.txt` already exists and you do not want to re-download it, unset `SA1B_LINK_URL` or use `REFRESH_LINK_FILE=0`, then dry-run the deterministic 3% shard selection:
 
 ```bash
 cd $SAM2D_REPO
 
 export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
 export SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
+unset SA1B_LINK_URL
+export REFRESH_LINK_FILE=0
 export SA1B_DOWNLOAD_PERCENT=3
 export SA1B_SELECTION_MODE=hash
 export IMAGE_ROOT=$SA1B_ROOT/images_3pct
