@@ -218,6 +218,22 @@ feature distillation. It exercises the Phase 3 `Simg` training surface without
 running a long SA-1B epoch. The runner writes a bounded file list under the run
 directory so smoke jobs do not iterate over the full local subset.
 
+Validate the SA-1B image-pretrain path with real-forward teacher cache targets:
+
+```bash
+TASK=edgetam-image-forward-cache-smoke \
+EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS=1 \
+EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS=4 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+This task first calls `tools/train/cache_edgetam_teacher_features.py` in
+`sa1b-image` mode to write frame-major `teacher_distill_F16` /
+`teacher_distill_F_M` tensors from a real image batch, then runs the upstream
+trainer with `teacher_feature_cache_path`. On PACE the cache teacher is the
+TinyViT smoke config; company runs should use the same cache flow with the
+frozen SAM2.1-Hiera teacher config and weights.
+
 `sam2_distill.edgetam.compat` patches the external EdgeTAM
 `PerceiverResampler.forward_2d` multi-object path from `expand().view()` to
 `expand().reshape()`. The patch is applied when `EdgeTAMTrain` is imported and

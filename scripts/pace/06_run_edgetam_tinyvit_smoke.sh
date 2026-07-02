@@ -38,6 +38,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-teacher-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
@@ -277,8 +278,12 @@ edgetam_full_trainer_forward_cache_smoke() {
 
 edgetam_image_trainer_smoke() {
   local activation_checkpoint_args=()
+  local teacher_cache_args=()
   if [[ "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT:-0}" == "1" ]]; then
     activation_checkpoint_args=(--image-encoder-activation-checkpoint)
+  fi
+  if [[ -n "${EDGETAM_IMAGE_TRAINER_SMOKE_TEACHER_CACHE:-}" ]]; then
+    teacher_cache_args=(--teacher-feature-cache "${EDGETAM_IMAGE_TRAINER_SMOKE_TEACHER_CACHE}")
   fi
   python "${ROOT}/tools/train/run_edgetam_trainer_smoke.py" \
     --config "${ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml" \
@@ -294,7 +299,37 @@ edgetam_image_trainer_smoke() {
     --num-frames 1 \
     --max-num-objects "${EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS:-4}" \
     --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
+    "${activation_checkpoint_args[@]}" \
+    "${teacher_cache_args[@]}"
+}
+
+edgetam_image_forward_cache_smoke() {
+  local cache_dir="${EDGETAM_IMAGE_FORWARD_CACHE_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_image_forward_cache_smoke}"
+  local trainer_dir="${EDGETAM_IMAGE_FORWARD_CACHE_TRAINER_OUT_DIR:-${SMOKE_ROOT}/edgetam_image_forward_cache_trainer_smoke}"
+  local cache="${EDGETAM_IMAGE_FORWARD_CACHE_SMOKE_CACHE:-${cache_dir}/teacher_forward_cache.pt}"
+  local activation_checkpoint_args=()
+  if [[ "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT:-0}" == "1" ]]; then
+    activation_checkpoint_args=(--image-encoder-activation-checkpoint)
+  fi
+  python "${ROOT}/tools/train/cache_edgetam_teacher_features.py" \
+    --config "${ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --out "${cache}" \
+    --work-dir "${cache_dir}" \
+    --num-workers 0 \
+    --dataset-mode sa1b-image \
+    --sa1b-image-root "${EDGETAM_SA1B_IMAGE_ROOT:-${SMOKE_DATA_ROOT}/sa1b_smoke/images/train}" \
+    --sa1b-ann-root "${EDGETAM_SA1B_ANN_ROOT:-${SMOKE_DATA_ROOT}/sa1b_smoke/annotations/train}" \
+    --sa1b-max-items "${EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS:-1}" \
+    --num-frames 1 \
+    --max-num-objects "${EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS:-4}" \
+    --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
     "${activation_checkpoint_args[@]}"
+  EDGETAM_IMAGE_TRAINER_SMOKE_OUT_DIR="${trainer_dir}" \
+  EDGETAM_IMAGE_TRAINER_SMOKE_TEACHER_CACHE="${cache}" \
+  EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS="${EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS:-1}" \
+  edgetam_image_trainer_smoke
 }
 
 edgetam_progressive_full_trainer_smoke() {
@@ -464,6 +499,9 @@ case "${1:-}" in
     ;;
   edgetam-image-trainer-smoke)
     edgetam_image_trainer_smoke
+    ;;
+  edgetam-image-forward-cache-smoke)
+    edgetam_image_forward_cache_smoke
     ;;
   edgetam-progressive-full-trainer-smoke)
     edgetam_progressive_full_trainer_smoke
