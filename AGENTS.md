@@ -144,6 +144,14 @@ COCO Stage 1 pilot:
 - Use `scripts/company/04_run_coco_stage1_pilot.sh prepare|cache|train|benchmark|all` on the company cluster.
 - Store overlay mask benchmark results under `/group-volume/danny-dataset/sam2_distill/runs/stage1_coco_pilot/benchmark_val/overlays`.
 
+Large-scale Stage 1 MSE speed run:
+- Company root: `/group-volume/danny-dataset/sam2_distill`.
+- Use `docs/stage1/large_scale_mse_8xh100.md` as the step-by-step runbook.
+- Use `scripts/company/05_run_stage1_large_mse_8xh100.sh manifest|plan-cache|cache|train|all`.
+- Default GPUs: `0,1,2,3,4,5,6,7`.
+- Default objective: MSE on final `image_embed` plus MSE on high-resolution SAM2 features, with L1 and cosine disabled.
+- Default train split is `train`; default validation split for SA-1B manifest is `val_sa1b`.
+
 Stage 1 data defaults:
 - Use a deterministic fixed 1% SA-1B image subset.
 - Manifest name: `sa1b_1pct_v1.parquet`

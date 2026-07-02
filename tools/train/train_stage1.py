@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 import pandas as pd
@@ -116,8 +117,40 @@ def reduce_metrics(metrics: dict[str, torch.Tensor], world_size: int) -> dict[st
     return reduced
 
 
+def autocast_context(device: torch.device, amp_dtype: str):
+    if device.type != "cuda" or amp_dtype == "none":
+        return nullcontext()
+    dtype_by_name = {
+        "bf16": torch.bfloat16,
+        "fp16": torch.float16,
+    }
+    return torch.autocast(device_type="cuda", dtype=dtype_by_name[amp_dtype])
+
+
 @torch.no_grad()
-def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, world_size: int, max_batches: int) -> dict[str, float]:
+def compute_loss(
+    student: dict[str, torch.Tensor],
+    teacher: dict[str, torch.Tensor],
+    args: argparse.Namespace,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    return stage1_feature_distillation_loss(
+        student,
+        teacher,
+        lambda_mse=args.lambda_mse,
+        lambda_l1=args.lambda_l1,
+        lambda_cos=args.lambda_cos,
+        lambda_hr=args.lambda_hr,
+    )
+
+
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    world_size: int,
+    max_batches: int,
+    args: argparse.Namespace,
+) -> dict[str, float]:
     model.eval()
     totals: dict[str, float] = {}
     count = 0
@@ -126,8 +159,9 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, world_s
             break
         images = images.to(device, non_blocking=True)
         teacher = move_teacher(teacher, device)
-        student = model(images)
-        _, metrics = stage1_feature_distillation_loss(student, teacher)
+        with autocast_context(device, args.amp_dtype):
+            student = model(images)
+            _, metrics = compute_loss(student, teacher, args)
         metrics = reduce_metrics(metrics, world_size)
         for key, value in metrics.items():
             totals[key] = totals.get(key, 0.0) + value
@@ -161,6 +195,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
+    parser.add_argument("--train-split", default="train")
+    parser.add_argument("--val-split", default="val")
+    parser.add_argument("--lambda-mse", type=float, default=1.0)
+    parser.add_argument("--lambda-l1", type=float, default=0.5)
+    parser.add_argument("--lambda-cos", type=float, default=0.1)
+    parser.add_argument("--lambda-hr", type=float, default=1.0)
+    parser.add_argument("--amp-dtype", choices=("none", "bf16", "fp16"), default="bf16")
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--eval-every", type=int, default=100)
     parser.add_argument("--save-every", type=int, default=250)
@@ -180,8 +221,12 @@ def main() -> None:
     tb_dir = out_dir / "tensorboard"
     ckpt_dir = out_dir / "checkpoints"
 
-    train_df = read_manifest(Path(args.manifest), "train")
-    val_df = read_manifest(Path(args.manifest), "val")
+    train_df = read_manifest(Path(args.manifest), args.train_split)
+    val_df = read_manifest(Path(args.manifest), args.val_split)
+    if train_df.empty:
+        raise SystemExit(f"No rows found for train split {args.train_split!r}")
+    if val_df.empty:
+        raise SystemExit(f"No rows found for val split {args.val_split!r}")
     train_dataset = Stage1CacheDataset(train_df, Path(args.cache_root))
     val_dataset = Stage1CacheDataset(val_df, Path(args.cache_root))
 
@@ -195,6 +240,7 @@ def main() -> None:
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
+        persistent_workers=args.num_workers > 0,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -203,6 +249,7 @@ def main() -> None:
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=True,
+        persistent_workers=args.num_workers > 0,
     )
 
     model = TinyViTSAM2Adapter(checkpoint_path=args.tinyvit_checkpoint).to(device)
@@ -246,8 +293,9 @@ def main() -> None:
             start_time = time.time()
             images = images.to(device, non_blocking=True)
             teacher = move_teacher(teacher, device)
-            student = model(images)
-            loss, metrics = stage1_feature_distillation_loss(student, teacher)
+            with autocast_context(device, args.amp_dtype):
+                student = model(images)
+                loss, metrics = compute_loss(student, teacher, args)
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -264,7 +312,7 @@ def main() -> None:
                     wandb_run.log(reduced, step=step)
 
             if step > 0 and step % args.eval_every == 0:
-                val_metrics = evaluate(model, val_loader, device, world_size, args.val_max_batches)
+                val_metrics = evaluate(model, val_loader, device, world_size, args.val_max_batches, args)
                 if is_main(rank):
                     for key, value in val_metrics.items():
                         if writer:
