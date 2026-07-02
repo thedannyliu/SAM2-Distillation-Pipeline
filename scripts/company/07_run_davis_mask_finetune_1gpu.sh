@@ -10,6 +10,7 @@ DAVIS_URL="${DAVIS_URL:-https://data.vision.ee.ethz.ch/csergi/share/davis/DAVIS-
 DAVIS_REFERER="${DAVIS_REFERER:-https://davischallenge.org/davis2017/code.html}"
 DAVIS_USER_AGENT="${DAVIS_USER_AGENT:-Mozilla/5.0}"
 DAVIS_ZIP="${DAVIS_ZIP:-${DAVIS_ROOT}/raw/DAVIS-2017-trainval-480p.zip}"
+DAVIS_RESOLUTION_DIR="${DAVIS_RESOLUTION_DIR:-auto}"
 DAVIS_MAX_FRAMES="${DAVIS_MAX_FRAMES:-500}"
 DAVIS_SUBSET_ROOT="${DAVIS_SUBSET_ROOT:-${DAVIS_ROOT}/trainval_480p_subset_${DAVIS_MAX_FRAMES}}"
 KEEP_ARCHIVES="${KEEP_ARCHIVES:-0}"
@@ -59,6 +60,8 @@ Useful overrides:
   DAVIS_MAX_FRAMES=500
   DAVIS_URL=https://data.vision.ee.ethz.ch/csergi/share/davis/DAVIS-2017-trainval-480p.zip
   DAVIS_REFERER=https://davischallenge.org/davis2017/code.html
+  DAVIS_ZIP=$DAVIS_ROOT/raw/DAVIS-2017-trainval-480p.zip
+  DAVIS_RESOLUTION_DIR=auto             # auto, 480p, or Full-Resolution
   MAX_EPOCHS=1
   BATCH_SIZE=1
   NUM_FRAMES=8
@@ -117,6 +120,7 @@ prepare() {
 DRY_RUN prepare:
   download ${DAVIS_URL}
   zip      ${DAVIS_ZIP}
+  resolution ${DAVIS_RESOLUTION_DIR}
   subset   ${DAVIS_SUBSET_ROOT}
 EOF
     return 0
@@ -127,7 +131,8 @@ EOF
     python "${REPO_ROOT}/tools/data/extract_davis_zip_smoke_subset.py" \
       --zip "${DAVIS_ZIP}" \
       --out-root "${DAVIS_SUBSET_ROOT}" \
-      --max-frames "${DAVIS_MAX_FRAMES}"
+      --max-frames "${DAVIS_MAX_FRAMES}" \
+      --resolution-dir "${DAVIS_RESOLUTION_DIR}"
   else
     echo "exists ${DAVIS_SUBSET_ROOT}/val.txt"
   fi

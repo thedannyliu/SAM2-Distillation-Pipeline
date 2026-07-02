@@ -22,6 +22,20 @@ Default dataset:
 https://data.vision.ee.ethz.ch/csergi/share/davis/DAVIS-2017-trainval-480p.zip
 ```
 
+If you already have the DAVIS trainval full-resolution zip, point the script at
+that file and let the extractor detect `Full-Resolution`:
+
+```bash
+DAVIS_ZIP=/group-volume/danny-dataset/DAVIS/2017/raw/DAVIS-2017-trainval-Full-Resolution.zip \
+DAVIS_RESOLUTION_DIR=auto \
+DAVIS_SUBSET_ROOT=/group-volume/danny-dataset/DAVIS/2017/trainval_fullres_subset_500 \
+scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
+```
+
+`DAVIS-2017-test-challenge-*` is not suitable for mask finetune unless it
+contains `DAVIS/Annotations/.../*.png`; challenge test zips usually do not ship
+training masks.
+
 ## Run
 
 From the company container:
@@ -37,6 +51,7 @@ Useful quick overrides:
 
 ```bash
 DAVIS_MAX_FRAMES=500 \
+DAVIS_RESOLUTION_DIR=auto \
 MAX_EPOCHS=1 \
 BATCH_SIZE=1 \
 NUM_FRAMES=8 \
@@ -82,6 +97,7 @@ local zip path:
 
 ```bash
 DAVIS_ZIP=/path/to/DAVIS-2017-trainval-480p.zip \
+DAVIS_RESOLUTION_DIR=auto \
 scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
 ```
 

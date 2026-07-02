@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--zip", required=True, type=Path)
     parser.add_argument("--out-root", required=True, type=Path)
     parser.add_argument("--max-frames", type=int, default=500)
+    parser.add_argument(
+        "--resolution-dir",
+        default="auto",
+        help="DAVIS resolution folder to read, e.g. 480p or Full-Resolution. Use auto to detect.",
+    )
     return parser.parse_args()
 
 
@@ -44,12 +49,28 @@ def main() -> None:
     require_cap(args.max_frames)
     args.out_root.mkdir(parents=True, exist_ok=True)
 
-    image_prefix = "DAVIS/JPEGImages/480p/"
-    ann_prefix = "DAVIS/Annotations/480p/"
     images = {}
     anns = {}
     with zipfile.ZipFile(args.zip) as archive:
-        for name in archive.namelist():
+        names = archive.namelist()
+        if args.resolution_dir == "auto":
+            resolution_dir = None
+            for candidate in ("480p", "Full-Resolution"):
+                image_prefix = f"DAVIS/JPEGImages/{candidate}/"
+                ann_prefix = f"DAVIS/Annotations/{candidate}/"
+                has_images = any(name.startswith(image_prefix) and name.endswith(".jpg") for name in names)
+                has_anns = any(name.startswith(ann_prefix) and name.endswith(".png") for name in names)
+                if has_images and has_anns:
+                    resolution_dir = candidate
+                    break
+            if resolution_dir is None:
+                raise SystemExit(f"Could not find DAVIS JPEGImages/Annotations resolution folders in {args.zip}")
+        else:
+            resolution_dir = args.resolution_dir
+
+        image_prefix = f"DAVIS/JPEGImages/{resolution_dir}/"
+        ann_prefix = f"DAVIS/Annotations/{resolution_dir}/"
+        for name in names:
             image_key = parse_video_frame(name, image_prefix, ".jpg")
             if image_key:
                 images[image_key] = name
@@ -77,7 +98,7 @@ def main() -> None:
                     "mask_path": str(ann_dst),
                     "height": height,
                     "width": width,
-                    "source": "davis2017-trainval-480p",
+                    "source": f"davis2017-trainval-{resolution_dir}",
                 }
             )
             if len(rows) >= args.max_frames:
@@ -90,7 +111,22 @@ def main() -> None:
     manifest.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     videos = sorted({row["video_id"] for row in rows})
     (args.out_root / "val.txt").write_text("".join(f"{video}\n" for video in videos), encoding="utf-8")
-    print(json.dumps({"videos": len(videos), "frames": len(rows), "manifest": str(manifest)}, indent=2))
+    metadata = args.out_root / "metadata.json"
+    metadata.write_text(
+        json.dumps({"resolution_dir": resolution_dir, "videos": len(videos), "frames": len(rows)}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        json.dumps(
+            {
+                "videos": len(videos),
+                "frames": len(rows),
+                "resolution_dir": resolution_dir,
+                "manifest": str(manifest),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
