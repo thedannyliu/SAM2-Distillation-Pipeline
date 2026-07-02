@@ -295,6 +295,8 @@ max_grad_norm           = 1.0
 
 So the objective is MSE on final image embedding plus MSE on high-resolution features. To train only the final image embedding, set `--lambda-hr 0.0` when calling `tools/train/train_stage1.py` directly.
 
+MSE reduction uses PyTorch's default `mean` reduction. That means `loss_image_mse` is averaged over batch, channel, height, and width. `loss_high_res_mse` is `mean_mse(high_res_s0) + mean_mse(high_res_s1)`, so each high-resolution feature scale is normalized by its own batch/channel/spatial element count before the two scales are added.
+
 Stability settings:
 
 ```text
@@ -352,12 +354,29 @@ loss_stage1_total
 loss_image_mse
 loss_high_res_mse
 train/sec_per_step
+train/avg_wall_sec_per_step
+train/images_seen
+train/epoch
+train/progress_pct
+train/eta_hours
 train/backbone_trainable
 train/grad_norm
 val/loss_stage1_total
 ```
 
 During projection warmup, `train/backbone_trainable` is `0`. After `PROJECTION_WARMUP_STEPS`, it switches to `1` and the TinyViT backbone starts training with the projection heads.
+
+The terminal also prints dataset size and progress from rank 0:
+
+```text
+Stage 1 training summary
+  train_images: ...
+  val_images: ...
+  global_batch_size: ...
+  max_steps: ...
+step 1,001/100,000 | progress ... | epoch ... | images_seen ... | eta ... | loss ... | mse ... | hr_mse ...
+val step 1,001 | loss ... | mse ... | hr_mse ... | best ...
+```
 
 ## 8. Resume
 

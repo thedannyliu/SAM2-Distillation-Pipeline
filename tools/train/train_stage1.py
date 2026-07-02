@@ -160,6 +160,17 @@ def autocast_context(device: torch.device, amp_dtype: str):
     return torch.autocast(device_type="cuda", dtype=dtype_by_name[amp_dtype])
 
 
+def format_duration(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
 @torch.no_grad()
 def compute_loss(
     student: dict[str, torch.Tensor],
@@ -328,6 +339,11 @@ def main() -> None:
 
     writer = SummaryWriter(str(tb_dir)) if is_main(rank) else None
     wandb_run = None
+    global_batch_size = args.batch_size * world_size
+    steps_per_epoch = max(len(train_loader), 1)
+    train_images_per_epoch = steps_per_epoch * global_batch_size
+    val_batches = len(val_loader) if args.val_max_batches <= 0 else min(len(val_loader), args.val_max_batches)
+    val_images_per_eval = val_batches * global_batch_size
     if is_main(rank) and not args.no_wandb:
         import wandb
 
@@ -342,9 +358,35 @@ def main() -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "wandb_run.json").write_text(json.dumps({"run_id": wandb_run_id}) + "\n")
 
+    if is_main(rank):
+        print(
+            "\n".join(
+                [
+                    "Stage 1 training summary",
+                    f"  manifest: {Path(args.manifest).expanduser().resolve()}",
+                    f"  cache_root: {Path(args.cache_root).expanduser().resolve()}",
+                    f"  out_dir: {out_dir}",
+                    f"  train_images: {len(train_dataset):,} split={args.train_split}",
+                    f"  val_images: {len(val_dataset):,} split={args.val_split}",
+                    f"  world_size: {world_size}",
+                    f"  batch_size_per_gpu: {args.batch_size}",
+                    f"  global_batch_size: {global_batch_size}",
+                    f"  max_steps: {args.max_steps:,}",
+                    f"  start_step: {start_step:,}",
+                    f"  steps_per_epoch: {steps_per_epoch:,}",
+                    f"  approx_train_images_per_epoch: {train_images_per_epoch:,}",
+                    f"  val_batches_per_eval: {val_batches:,}",
+                    f"  approx_val_images_per_eval: {val_images_per_eval:,}",
+                    f"  best_val_loss: {best_val_loss if best_val_loss != float('inf') else 'inf'}",
+                ]
+            ),
+            flush=True,
+        )
+
     step = start_step
     model.train()
     backbone_is_trainable = initial_backbone_trainable
+    train_start_time = time.time()
     while step < args.max_steps:
         if train_sampler is not None:
             train_sampler.set_epoch(step)
@@ -387,12 +429,41 @@ def main() -> None:
             reduced["train/backbone_trainable"] = float(should_train_backbone)
             reduced["train/projection_warmup_remaining"] = float(max(args.projection_warmup_steps - step, 0))
             reduced["train/grad_norm"] = float(clipped_grad_norm.detach().float().cpu())
+            completed_steps = step - start_step + 1
+            elapsed = time.time() - train_start_time
+            avg_wall_sec_per_step = elapsed / max(completed_steps, 1)
+            remaining_steps = max(args.max_steps - step - 1, 0)
+            eta_seconds = remaining_steps * avg_wall_sec_per_step
+            images_seen = (step + 1) * global_batch_size
+            reduced["train/images_seen"] = float(images_seen)
+            reduced["train/epoch"] = float(images_seen / max(len(train_dataset), 1))
+            reduced["train/progress_pct"] = 100.0 * float(step + 1) / float(max(args.max_steps, 1))
+            reduced["train/avg_wall_sec_per_step"] = avg_wall_sec_per_step
+            reduced["train/eta_hours"] = eta_seconds / 3600.0
             if is_main(rank) and step % args.log_every == 0:
                 for key, value in reduced.items():
                     if writer:
                         writer.add_scalar(key, value, step)
                 if wandb_run:
                     wandb_run.log(reduced, step=step)
+                print(
+                    " | ".join(
+                        [
+                            f"step {step + 1:,}/{args.max_steps:,}",
+                            f"progress {reduced['train/progress_pct']:.2f}%",
+                            f"epoch {reduced['train/epoch']:.2f}",
+                            f"images_seen {images_seen:,}",
+                            f"eta {format_duration(eta_seconds)}",
+                            f"loss {reduced['loss_stage1_total']:.6f}",
+                            f"mse {reduced['loss_image_mse']:.6f}",
+                            f"hr_mse {reduced['loss_high_res_mse']:.6f}",
+                            f"lr {current_lr:.3e}",
+                            f"grad {reduced['train/grad_norm']:.3f}",
+                            f"wall_step {avg_wall_sec_per_step:.3f}s",
+                        ]
+                    ),
+                    flush=True,
+                )
 
             if step > 0 and step % args.eval_every == 0:
                 val_metrics = evaluate(model, val_loader, device, world_size, args.val_max_batches, args)
@@ -403,6 +474,18 @@ def main() -> None:
                     if wandb_run:
                         wandb_run.log(val_metrics, step=step)
                     val_loss = val_metrics.get("val/loss_stage1_total")
+                    print(
+                        " | ".join(
+                            [
+                                f"val step {step + 1:,}",
+                                f"loss {val_metrics.get('val/loss_stage1_total', float('nan')):.6f}",
+                                f"mse {val_metrics.get('val/loss_image_mse', float('nan')):.6f}",
+                                f"hr_mse {val_metrics.get('val/loss_high_res_mse', float('nan')):.6f}",
+                                f"best {best_val_loss if best_val_loss != float('inf') else float('nan'):.6f}",
+                            ]
+                        ),
+                        flush=True,
+                    )
                     if val_loss is not None and val_loss < best_val_loss:
                         best_val_loss = val_loss
                         checkpoint_step = step + 1

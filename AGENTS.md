@@ -165,6 +165,8 @@ Stage 1 data defaults:
 - Validation split: `VAL_FRACTION=0.1`, producing roughly 90% `train` and 10% `val_sa1b`.
 - Manifest fields: `sample_id`, `source`, `image_path`, `height`, `width`, `sha256`, `split`.
 - Training checkpoints: `checkpoints/last.pt` is the resume checkpoint, and `checkpoints/best.pt` is selected by lowest `val/loss_stage1_total`.
+- Stage 1 terminal/W&B/TensorBoard progress should include train/val image counts, global batch size, `train/images_seen`, `train/epoch`, `train/progress_pct`, `train/eta_hours`, `train/avg_wall_sec_per_step`, LR, grad norm, image MSE, high-res MSE, total loss, and validation loss.
+- Stage 1 MSE losses use PyTorch mean reduction over all tensor elements. `loss_high_res_mse` is the sum of the separately averaged `high_res_s0` and `high_res_s1` MSE terms.
 
 Stage 1 weights:
 - Teacher primary: SAM2.1 Hiera Large checkpoint `sam2.1_hiera_large.pt`.
