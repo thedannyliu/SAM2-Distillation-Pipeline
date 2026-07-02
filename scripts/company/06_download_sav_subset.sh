@@ -13,6 +13,9 @@ BUDGET_GB="${SAV_BUDGET_GB:-300}"
 KEEP_ARCHIVES="${KEEP_ARCHIVES:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 SHOW_URLS="${SHOW_URLS:-0}"
+TRAIN_PERCENT="${SAV_TRAIN_PERCENT:-}"
+SELECTION_SEED="${SAV_SELECTION_SEED:-sav_train_1pct_v1}"
+INCLUDE_EVAL_SPLITS="${SAV_INCLUDE_EVAL_SPLITS:-1}"
 
 usage() {
   cat <<'EOF'
@@ -44,12 +47,17 @@ Environment overrides:
   SAV_METADATA_ROOT=$SAV_ROOT/manifests
   SAV_DONE_ROOT=$SAV_METADATA_ROOT/download_extract_done_300g
   SAV_BUDGET_GB=300
+  SAV_TRAIN_PERCENT=                  # set 1 for deterministic ~1% train archive selection
+  SAV_SELECTION_SEED=sav_train_1pct_v1
+  SAV_INCLUDE_EVAL_SPLITS=1           # keep val/test archives when selecting train subset
   KEEP_ARCHIVES=0
   DRY_RUN=0
   SHOW_URLS=0                           # set 1 to print signed archive URLs during dry-run
 
 Examples:
   REFRESH_SAV_URL_LIST=1 DRY_RUN=1 scripts/company/06_download_sav_subset.sh
+  SAV_TRAIN_PERCENT=1 REFRESH_SAV_URL_LIST=1 DRY_RUN=1 scripts/company/06_download_sav_subset.sh
+  SAV_TRAIN_PERCENT=1 REFRESH_SAV_URL_LIST=1 SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
   REFRESH_SAV_URL_LIST=1 SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
   SAV_LINK_URL='<refreshed fbcdn .txt URL>' REFRESH_SAV_URL_LIST=1 DRY_RUN=1 scripts/company/06_download_sav_subset.sh
   KEEP_ARCHIVES=1 SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
@@ -120,15 +128,21 @@ fi
 mkdir -p "${RAW_ROOT}" "${METADATA_ROOT}" "${DONE_ROOT}"
 
 CLEAN_URL_LIST="${METADATA_ROOT}/sav_download_urls_clean.tsv"
-PROVENANCE_FILE="${METADATA_ROOT}/sav_download_300g_provenance.txt"
+SELECTED_URL_LIST="${METADATA_ROOT}/sav_download_urls_selected.tsv"
+PROVENANCE_FILE="${METADATA_ROOT}/sav_download_selection_provenance.json"
 
-python - "${SAV_URL_LIST}" "${CLEAN_URL_LIST}" <<'PY'
+python - "${SAV_URL_LIST}" "${CLEAN_URL_LIST}" "${SELECTED_URL_LIST}" "${PROVENANCE_FILE}" "${TRAIN_PERCENT}" "${SELECTION_SEED}" "${INCLUDE_EVAL_SPLITS}" <<'PY'
+import hashlib
+import json
+import math
 import os
 import re
 import sys
 from urllib.parse import urlparse, unquote
 
-src, dst = sys.argv[1:3]
+src, clean_dst, selected_dst, provenance_dst, train_percent_s, seed, include_eval_s = sys.argv[1:8]
+include_eval = include_eval_s == "1"
+archive_suffixes = (".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".zip")
 
 def parse_line(raw):
     line = raw.strip()
@@ -157,16 +171,26 @@ def parse_line(raw):
     filename = os.path.basename(unquote(filename))
     if not filename:
         filename = f"sav_archive_{abs(hash(url))}.download"
+    if not filename.lower().endswith(archive_suffixes):
+        return None
     return filename, url
 
 def priority(item):
     filename, url = item
     key = filename.lower()
-    if "val" in key:
+    if key.startswith("sav_val") or "_val" in key:
         return (0, filename)
-    if "test" in key:
+    if key.startswith("sav_test") or "_test" in key:
         return (1, filename)
     return (2, filename)
+
+def split_name(filename):
+    key = filename.lower()
+    if key.startswith("sav_val") or "_val" in key:
+        return "val"
+    if key.startswith("sav_test") or "_test" in key:
+        return "test"
+    return "train"
 
 records = []
 seen = set()
@@ -184,13 +208,60 @@ if not records:
     raise SystemExit(f"no downloadable URLs found in {src}")
 
 records = sorted(records, key=priority)
-os.makedirs(os.path.dirname(dst), exist_ok=True)
-with open(dst, "w", encoding="utf-8") as out:
+os.makedirs(os.path.dirname(clean_dst), exist_ok=True)
+with open(clean_dst, "w", encoding="utf-8") as out:
     for filename, url in records:
         out.write(f"{filename}\t{url}\n")
 
+train_records = [record for record in records if split_name(record[0]) == "train"]
+eval_records = [record for record in records if split_name(record[0]) != "train"]
+if train_percent_s:
+    train_percent = float(train_percent_s)
+    if not (0 < train_percent <= 100):
+        raise SystemExit(f"SAV_TRAIN_PERCENT must be in (0, 100], got {train_percent}")
+    selected_train_count = max(1, math.ceil(len(train_records) * train_percent / 100.0))
+    selected_train = sorted(
+        train_records,
+        key=lambda item: hashlib.sha256(f"{seed}|{item[0]}".encode("utf-8")).hexdigest(),
+    )[:selected_train_count]
+    selected_train = sorted(selected_train, key=priority)
+    selected_records = (eval_records if include_eval else []) + selected_train
+else:
+    train_percent = None
+    selected_train_count = len(train_records)
+    selected_train = train_records
+    selected_records = records
+
+with open(selected_dst, "w", encoding="utf-8") as out:
+    for filename, url in selected_records:
+        out.write(f"{filename}\t{url}\n")
+
+provenance = {
+    "source_url_list": os.path.abspath(src),
+    "source_url_list_sha256": hashlib.sha256(open(src, "rb").read()).hexdigest(),
+    "clean_url_list": os.path.abspath(clean_dst),
+    "selected_url_list": os.path.abspath(selected_dst),
+    "total_archives": len(records),
+    "train_archives": len(train_records),
+    "eval_archives": len(eval_records),
+    "selected_archives": len(selected_records),
+    "selected_train_archives": len(selected_train),
+    "train_percent": train_percent,
+    "selection_seed": seed,
+    "selection_key": "sha256(seed|archive_filename)",
+    "include_eval_splits": include_eval,
+    "selected_filenames": [filename for filename, _ in selected_records],
+}
+with open(provenance_dst, "w", encoding="utf-8") as out:
+    json.dump(provenance, out, indent=2, sort_keys=True)
+    out.write("\n")
+
 print(f"SA-V URL records: {len(records)}")
-print(f"Clean URL list: {dst}")
+print(f"Train archive records: {len(train_records)}")
+print(f"Selected archive records: {len(selected_records)}")
+print(f"Clean URL list: {clean_dst}")
+print(f"Selected URL list: {selected_dst}")
+print(f"Selection provenance: {provenance_dst}")
 PY
 
 budget_bytes="$(python - "${BUDGET_GB}" <<'PY'
@@ -290,16 +361,21 @@ PY
   echo "SAV_URL_LIST=${SAV_URL_LIST}"
   echo "RAW_ROOT=${RAW_ROOT}"
   echo "BUDGET_GB=${BUDGET_GB}"
+  echo "TRAIN_PERCENT=${TRAIN_PERCENT}"
+  echo "SELECTION_SEED=${SELECTION_SEED}"
+  echo "INCLUDE_EVAL_SPLITS=${INCLUDE_EVAL_SPLITS}"
   echo "KEEP_ARCHIVES=${KEEP_ARCHIVES}"
   echo "CLEAN_URL_LIST=${CLEAN_URL_LIST}"
-} | tee "${PROVENANCE_FILE}"
+  echo "SELECTED_URL_LIST=${SELECTED_URL_LIST}"
+  echo "PROVENANCE_FILE=${PROVENANCE_FILE}"
+}
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "DRY_RUN=1; first selected archives:"
   if [[ "${SHOW_URLS}" -eq 1 ]]; then
-    sed -n '1,20p' "${CLEAN_URL_LIST}"
+    sed -n '1,20p' "${SELECTED_URL_LIST}"
   else
-    cut -f1 "${CLEAN_URL_LIST}" | sed -n '1,20p'
+    cut -f1 "${SELECTED_URL_LIST}" | sed -n '1,20p'
   fi
   usage_human="$(du -sh "${SAV_ROOT}" 2>/dev/null | awk '{print $1}')"
   echo "Current usage: ${usage_human:-0}"
@@ -328,7 +404,7 @@ while IFS=$'\t' read -r filename url; do
   download_archive "${filename}" "${url}"
   extract_archive "${filename}"
   du -sh "${SAV_ROOT}"
-done < "${CLEAN_URL_LIST}"
+done < "${SELECTED_URL_LIST}"
 
 if [[ "${KEEP_ARCHIVES}" -eq 0 ]]; then
   find "${RAW_ROOT}" -type f \( \

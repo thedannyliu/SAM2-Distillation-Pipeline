@@ -88,6 +88,40 @@ Download order for a bounded company pilot:
 3. Delete raw archives after successful extraction unless the company storage
    plan explicitly budgets for keeping them.
 
+For a reproducible ~1% SA-V train subset, select train archives by hash of the
+archive filename with a fixed seed. This is reproducible across refreshed signed
+URLs because the selection key does not depend on the URL token:
+
+```bash
+SAV_TRAIN_PERCENT=1 \
+SAV_SELECTION_SEED=sav_train_1pct_v1 \
+SAV_INCLUDE_EVAL_SPLITS=1 \
+REFRESH_SAV_URL_LIST=1 \
+DRY_RUN=1 \
+scripts/company/06_download_sav_subset.sh
+
+SAV_TRAIN_PERCENT=1 \
+SAV_SELECTION_SEED=sav_train_1pct_v1 \
+SAV_INCLUDE_EVAL_SPLITS=1 \
+REFRESH_SAV_URL_LIST=1 \
+SAV_BUDGET_GB=300 \
+scripts/company/06_download_sav_subset.sh
+```
+
+The script writes:
+
+```text
+/group-volume/danny-dataset/SA-V/manifests/sav_download_urls_clean.tsv
+/group-volume/danny-dataset/SA-V/manifests/sav_download_urls_selected.tsv
+/group-volume/danny-dataset/SA-V/manifests/sav_download_selection_provenance.json
+```
+
+`sav_download_selection_provenance.json` records the source URL-list SHA256,
+seed, selection rule, selected filenames, and selected train archive count.
+Archive-level 1% is approximate because SA-V is distributed as coarse tar
+shards; for an exact 1% video count, create a hashed video manifest after
+extraction using the same seed.
+
 Use the company helper script to enforce the budget, download, and extract:
 
 ```bash
