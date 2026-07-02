@@ -69,13 +69,37 @@ fi
 
 if [[ ! -f "${SAV_URL_LIST}" && -n "${SAV_LINK_URL}" ]]; then
   echo "download SA-V link list to ${SAV_URL_LIST}"
-  if command -v wget >/dev/null 2>&1 && wget -q -O "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
-    :
-  elif command -v curl >/dev/null 2>&1 && curl -L --fail --retry 5 --silent --show-error -o "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
-    :
+  if command -v wget >/dev/null 2>&1 && wget -q --timeout=30 --tries=2 -O "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
+    true
+  elif command -v curl >/dev/null 2>&1 && curl -L --fail --retry 2 --connect-timeout 30 --max-time 120 --silent --show-error -o "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
+    true
+  elif command -v python >/dev/null 2>&1 && python - "${SAV_LINK_URL}" "${SAV_URL_LIST}" <<'PY'
+import sys
+import urllib.request
+
+url, out_path = sys.argv[1:3]
+request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+try:
+    with urllib.request.urlopen(request, timeout=30) as response, open(out_path, "wb") as out:
+        out.write(response.read())
+except Exception as exc:
+    print(f"python download failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    true
   else
-    echo "Need wget or curl to download SAV_LINK_URL." >&2
-    exit 127
+    rm -f "${SAV_URL_LIST}"
+    cat >&2 <<EOF
+Failed to download the SA-V link list into:
+  ${SAV_URL_LIST}
+
+This usually means the default fbcdn URL expired, the company network blocked
+the request, or this environment lacks wget/curl/python download support.
+Refresh the link from Meta and rerun with:
+  SAV_LINK_URL='<refreshed fbcdn .txt URL>' REFRESH_SAV_URL_LIST=1 scripts/company/06_download_sav_subset.sh
+EOF
+    exit 3
   fi
 fi
 
