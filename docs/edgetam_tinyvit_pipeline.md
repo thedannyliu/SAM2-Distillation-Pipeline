@@ -234,6 +234,22 @@ trainer with `teacher_feature_cache_path`. On PACE the cache teacher is the
 TinyViT smoke config; company runs should use the same cache flow with the
 frozen SAM2.1-Hiera teacher config and weights.
 
+To validate the checkpoint-loaded teacher path, provide a SAM2 model config and
+checkpoint to the same task:
+
+```bash
+TASK=edgetam-image-forward-cache-smoke \
+EDGETAM_TEACHER_MODEL_CONFIG=/path/to/sam2_hiera_l.yaml \
+EDGETAM_TEACHER_CHECKPOINT=/path/to/sam2.1_hiera_large.pt \
+EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS=1 \
+EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS=1 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+Checkpoint loading is strict by default. Set
+`EDGETAM_TEACHER_ALLOW_UNEXPECTED_KEYS=1` only for known-compatible smoke
+fallbacks that have no missing keys and a small set of unused unexpected keys.
+
 `sam2_distill.edgetam.compat` patches the external EdgeTAM
 `PerceiverResampler.forward_2d` multi-object path from `expand().view()` to
 `expand().reshape()`. The patch is applied when `EdgeTAMTrain` is imported and

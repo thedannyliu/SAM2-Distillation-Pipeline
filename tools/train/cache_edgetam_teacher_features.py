@@ -33,6 +33,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sa1b-ann-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/annotations/train"))
     parser.add_argument("--sa1b-file-list", type=Path)
     parser.add_argument("--sa1b-max-items", type=int, default=1)
+    parser.add_argument("--teacher-model-config", type=Path)
+    parser.add_argument("--teacher-checkpoint", type=Path)
+    parser.add_argument("--allow-unexpected-teacher-checkpoint-keys", action="store_true")
     parser.add_argument("--image-encoder-forward-batch-size", type=int, default=0)
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
     parser.add_argument("--seed", type=int, default=250107256)
@@ -132,6 +135,27 @@ def stack_feature(outputs: list[dict[str, torch.Tensor]], key: str) -> torch.Ten
     return torch.stack(values, dim=0)
 
 
+def load_teacher_checkpoint(
+    model: torch.nn.Module,
+    checkpoint_path: Path,
+    allow_unexpected_keys: bool,
+) -> dict[str, Any]:
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    state_dict = checkpoint.get("model", checkpoint)
+    incompatible = model.load_state_dict(state_dict, strict=not allow_unexpected_keys)
+    if incompatible.missing_keys:
+        raise RuntimeError(
+            f"Teacher checkpoint {checkpoint_path} is missing required keys: "
+            f"{list(incompatible.missing_keys)}"
+        )
+    return {
+        "checkpoint": str(checkpoint_path),
+        "num_tensors": len(state_dict),
+        "missing_keys": list(incompatible.missing_keys),
+        "unexpected_keys": list(incompatible.unexpected_keys),
+    }
+
+
 def destroy_process_group() -> None:
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.destroy_process_group()
@@ -158,6 +182,9 @@ def main() -> None:
         pass
 
     cfg = OmegaConf.load(args.config)
+    if args.teacher_model_config is not None:
+        teacher_cfg = OmegaConf.load(args.teacher_model_config)
+        cfg.trainer.model = teacher_cfg.model
     cfg = configure_teacher_cfg(cfg, args)
     args.work_dir.mkdir(parents=True, exist_ok=True)
     (args.work_dir / "teacher_cache_config_resolved.yaml").write_text(
@@ -169,6 +196,13 @@ def main() -> None:
     dataloader = trainer.train_dataset.get_loader(epoch=int(trainer.epoch))
     batch = next(iter(dataloader)).to(trainer.device, non_blocking=True)
     model = unwrap_ddp_if_wrapped(trainer.model)
+    checkpoint_load = None
+    if args.teacher_checkpoint is not None:
+        checkpoint_load = load_teacher_checkpoint(
+            model,
+            args.teacher_checkpoint,
+            allow_unexpected_keys=args.allow_unexpected_teacher_checkpoint_keys,
+        )
     model.eval()
 
     with torch.no_grad():
@@ -178,6 +212,9 @@ def main() -> None:
         "schema": "edgetam_teacher_feature_cache_v1",
         "source": "real_forward",
         "config": str(args.config),
+        "teacher_model_config": str(args.teacher_model_config) if args.teacher_model_config else None,
+        "teacher_checkpoint": str(args.teacher_checkpoint) if args.teacher_checkpoint else None,
+        "checkpoint_load": checkpoint_load,
         "seed": args.seed,
         "num_frames": args.num_frames,
         "max_num_objects": args.max_num_objects,
@@ -194,6 +231,9 @@ def main() -> None:
         "out": str(args.out),
         "work_dir": str(args.work_dir),
         "config": str(args.config),
+        "teacher_model_config": str(args.teacher_model_config) if args.teacher_model_config else None,
+        "teacher_checkpoint": str(args.teacher_checkpoint) if args.teacher_checkpoint else None,
+        "checkpoint_load": checkpoint_load,
         "seed": args.seed,
         "num_frames": args.num_frames,
         "max_num_objects": args.max_num_objects,
