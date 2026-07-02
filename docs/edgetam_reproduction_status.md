@@ -32,6 +32,8 @@ is the concise engineering runbook.
 | Full SAM2 trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-smoke` | Runs upstream `training.trainer.Trainer` on the real VOS smoke subset with synthetic teacher features. 2-frame and 8-frame GPU smokes passed. |
 | Full trainer resume smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-resume-smoke` | Runs epoch 1 then resumes to epoch 2 in one Slurm allocation; checkpoint resume passed. |
 | Full trainer cache-backed smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-cache-smoke` | Runs upstream `Trainer` with frame-major teacher features loaded from a torch cache instead of synthetic teacher targets. |
+| Teacher forward cache smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-teacher-cache-smoke` | Instantiates `EdgeTAMTrain`, runs a no-grad real forward on a VOS smoke batch, and writes frame-major teacher feature cache tensors. |
+| Full trainer forward-cache smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke` | Writes teacher cache from a real smoke-model forward, then consumes it in the upstream `Trainer`. |
 | Official EdgeTAM image smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke` | Passed with the existing official EdgeTAM checkpoint on one COCO smoke image. |
 | Official EdgeTAM image benchmark | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark` | Passed with A100 image predictor latency/FPS/peak-memory summary. |
 | Official EdgeTAM VOS smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke` | Passed with official EdgeTAM checkpoint on the SA-V smoke video. |
@@ -50,6 +52,7 @@ is the concise engineering runbook.
 | `configs/edgetam/tinyvit_video_distill_smoke.yaml` | Minimal full-trainer Hydra config for TinyViT video distillation smoke/adaptation. |
 | `tools/edgetam/validate_training_config.py` | Validates Hydra target paths and nested loss instantiation. |
 | `tools/train/make_teacher_feature_cache_smoke.py` | Writes deterministic frame-major teacher feature caches for cache-backed trainer smoke tests. |
+| `tools/train/cache_edgetam_teacher_features.py` | Instantiates the SAM2 trainer model/data path and caches real-forward `distill_F16` / `distill_F_M` features. |
 | `tools/train/smoke_stage1_features.py` | Minimal real-image feature training smoke. |
 | `tools/eval/sav_identity_smoke.py` | SA-V prediction layout and official evaluator smoke. |
 | `tools/eval/run_edgetam_vos_smoke.py` | Thin wrapper around official EdgeTAM `tools/vos_inference.py`. |
@@ -89,6 +92,11 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
   - `10669723`: `gpu-rtx6000`, `embers`, completed in 34s.
   - Real SA-V-derived VOS smoke batch, 2 sampled frames, upstream `Trainer`, TinyViT EdgeTAM model, deterministic frame-major teacher feature cache, optimizer step, checkpoint epoch 1 / train step 1.
   - This validates the trainer-side cache attachment path; the cache contents are synthetic smoke tensors, not frozen SAM2.1 teacher outputs yet.
+- Teacher forward-cache smoke passed:
+  - `10669771`: `gpu-rtx6000`, `embers`, completed in 52s.
+  - The cache step instantiated `EdgeTAMTrain`, ran a no-grad real forward on the 2-frame VOS smoke batch, and wrote `teacher_distill_F16` / `teacher_distill_F_M` tensors with shape `[2, 1, 256, 64, 64]`.
+  - The trainer step consumed that cache in the upstream `Trainer`, produced nonzero image/memory distillation losses, and checkpointed epoch 1 / train step 1.
+  - This validates cache generation from a real model forward; the smoke teacher is the TinyViT EdgeTAM smoke config, not a SAM2.1-Hiera-L checkpoint.
 - Existing official EdgeTAM checkpoint found at `/storage/project/r-agarg35-0/eliu354/projects/efficientsam3-benchmark/external/EdgeTAM/checkpoints/edgetam.pt`.
 - Official EdgeTAM checkpoint metadata smoke passed: `torch.load(..., weights_only=True)` found a `model` state dict with 982 tensors and `edgetam.yaml` exists.
 - Stage 1 feature train smoke passed on PACE:
@@ -113,6 +121,6 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
 | --- | --- | --- |
 | Official baseline | Run official EdgeTAM checkpoint on the SA-V smoke subset. | SA-V smoke inference and official evaluator passed; extend to full SA-V/DAVIS/MOSE/YTVOS when full datasets are available. |
 | Image pretrain | Add the SAM2 image-task full trainer config beside the existing Stage 1 feature smoke. | 100-image SA-1B overfit or short smoke row. |
-| Video train | Replace deterministic smoke cache contents with frozen SAM2.1 teacher/cache generation from real teacher forward. | 2-frame full trainer, checkpoint resume, 8-frame low-memory trainer, and cache-backed trainer smokes passed. |
+| Video train | Swap the smoke teacher config for frozen SAM2.1-Hiera-L teacher config/weights in `cache_edgetam_teacher_features.py`. | 2-frame full trainer, checkpoint resume, 8-frame low-memory trainer, deterministic-cache trainer, and real-forward-cache trainer smokes passed. |
 | Progressive schedule | Replace lightweight progressive shell with full SAM2/EdgeTAM trainer wrappers once video trainer config is wired. | Lightweight 8/16/32-frame smoke passed with freeze/no-teacher/no-distill metadata. |
 | Full eval | Add MOSE/YTVOS wrappers beside SA-V and DAVIS. | Identity/layout smoke first, then official/model checkpoint smoke. |

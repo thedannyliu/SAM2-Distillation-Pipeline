@@ -35,6 +35,8 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-resume-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-cache-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-teacher-cache-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark
@@ -224,6 +226,39 @@ edgetam_full_trainer_cache_smoke() {
   edgetam_full_trainer_smoke
 }
 
+edgetam_teacher_cache_smoke() {
+  local out_dir="${EDGETAM_TEACHER_CACHE_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_teacher_cache_smoke}"
+  local frames="${EDGETAM_TRAINER_SMOKE_FRAMES:-2}"
+  local cache="${EDGETAM_TEACHER_CACHE_SMOKE_CACHE:-${out_dir}/teacher_forward_cache.pt}"
+  local activation_checkpoint_args=()
+  if [[ "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT:-0}" == "1" ]]; then
+    activation_checkpoint_args=(--image-encoder-activation-checkpoint)
+  fi
+  python "${ROOT}/tools/train/cache_edgetam_teacher_features.py" \
+    --config "${ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --out "${cache}" \
+    --work-dir "${out_dir}" \
+    --num-workers 0 \
+    --num-frames "${frames}" \
+    --max-num-objects "${EDGETAM_TRAINER_SMOKE_OBJECTS:-1}" \
+    --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
+    "${activation_checkpoint_args[@]}"
+}
+
+edgetam_full_trainer_forward_cache_smoke() {
+  local cache_dir="${EDGETAM_TEACHER_CACHE_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_teacher_cache_smoke}"
+  local trainer_dir="${EDGETAM_TRAINER_FORWARD_CACHE_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_full_trainer_forward_cache_smoke}"
+  local cache="${EDGETAM_TEACHER_CACHE_SMOKE_CACHE:-${cache_dir}/teacher_forward_cache.pt}"
+  EDGETAM_TEACHER_CACHE_SMOKE_OUT_DIR="${cache_dir}" \
+  EDGETAM_TEACHER_CACHE_SMOKE_CACHE="${cache}" \
+  edgetam_teacher_cache_smoke
+  EDGETAM_TRAINER_SMOKE_OUT_DIR="${trainer_dir}" \
+  EDGETAM_TRAINER_SMOKE_TEACHER_CACHE="${cache}" \
+  edgetam_full_trainer_smoke
+}
+
 progressive_video_smoke() {
   for frames in 8 16 32; do
     VIDEO_SMOKE_CLIP_FRAMES="${frames}" \
@@ -339,6 +374,12 @@ case "${1:-}" in
     ;;
   edgetam-full-trainer-cache-smoke)
     edgetam_full_trainer_cache_smoke
+    ;;
+  edgetam-teacher-cache-smoke)
+    edgetam_teacher_cache_smoke
+    ;;
+  edgetam-full-trainer-forward-cache-smoke)
+    edgetam_full_trainer_forward_cache_smoke
     ;;
   progressive-video-smoke)
     progressive_video_smoke

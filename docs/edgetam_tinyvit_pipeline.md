@@ -179,6 +179,30 @@ trainer with `teacher_feature_cache_path` instead of `synthetic_teacher`. The
 smoke cache is intentionally synthetic; company runs should replace that file
 with frozen SAM2.1 teacher features.
 
+Validate teacher-cache generation from a real SAM2 trainer forward with:
+
+```bash
+TASK=edgetam-teacher-cache-smoke \
+EDGETAM_TRAINER_SMOKE_FRAMES=2 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+Validate the complete forward-cache path with:
+
+```bash
+TASK=edgetam-full-trainer-forward-cache-smoke \
+EDGETAM_TRAINER_SMOKE_FRAMES=2 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+`tools/train/cache_edgetam_teacher_features.py` rewrites the smoke model target
+to `sam2_distill.edgetam.train_model.EdgeTAMTrain`, runs one no-grad teacher
+forward through the same VOS loader, and writes `teacher_distill_F16` /
+`teacher_distill_F_M` tensors for `TeacherFeatureCache`. On PACE this uses the
+TinyViT smoke config as the teacher model. For company runs, use the same cache
+tool with a frozen SAM2.1-Hiera-L teacher config/weights and keep the generated
+cache under `/danny-dataset`.
+
 ## Smoke Train/Eval Entry Points
 
 Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the
