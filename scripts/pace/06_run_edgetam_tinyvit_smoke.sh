@@ -248,8 +248,18 @@ edgetam_teacher_cache_smoke() {
   local frames="${EDGETAM_TRAINER_SMOKE_FRAMES:-2}"
   local cache="${EDGETAM_TEACHER_CACHE_SMOKE_CACHE:-${out_dir}/teacher_forward_cache.pt}"
   local activation_checkpoint_args=()
+  local teacher_model_args=()
   if [[ "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT:-0}" == "1" ]]; then
     activation_checkpoint_args=(--image-encoder-activation-checkpoint)
+  fi
+  if [[ -n "${EDGETAM_TEACHER_MODEL_CONFIG:-}" ]]; then
+    teacher_model_args+=(--teacher-model-config "${EDGETAM_TEACHER_MODEL_CONFIG}")
+  fi
+  if [[ -n "${EDGETAM_TEACHER_CHECKPOINT:-}" ]]; then
+    teacher_model_args+=(--teacher-checkpoint "${EDGETAM_TEACHER_CHECKPOINT}")
+  fi
+  if [[ "${EDGETAM_TEACHER_ALLOW_UNEXPECTED_KEYS:-0}" == "1" ]]; then
+    teacher_model_args+=(--allow-unexpected-teacher-checkpoint-keys)
   fi
   python "${ROOT}/tools/train/cache_edgetam_teacher_features.py" \
     --config "${ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml" \
@@ -261,7 +271,8 @@ edgetam_teacher_cache_smoke() {
     --num-frames "${frames}" \
     --max-num-objects "${EDGETAM_TRAINER_SMOKE_OBJECTS:-1}" \
     --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
-    "${activation_checkpoint_args[@]}"
+    "${activation_checkpoint_args[@]}" \
+    "${teacher_model_args[@]}"
 }
 
 edgetam_full_trainer_forward_cache_smoke() {

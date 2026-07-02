@@ -187,6 +187,23 @@ EDGETAM_TRAINER_SMOKE_FRAMES=2 \
 sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
 ```
 
+To validate the checkpoint-loaded video teacher path, provide a SAM2 model
+config and checkpoint:
+
+```bash
+TASK=edgetam-full-trainer-forward-cache-smoke \
+EDGETAM_TEACHER_MODEL_CONFIG=/path/to/sam2_hiera_l.yaml \
+EDGETAM_TEACHER_CHECKPOINT=/path/to/sam2.1_hiera_large.pt \
+EDGETAM_TRAINER_SMOKE_FRAMES=2 \
+EDGETAM_TRAINER_SMOKE_OBJECTS=1 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+The task first caches teacher `distill_F16` / `distill_F_M` from the checkpoint
+teacher, then runs the TinyViT trainer against `teacher_feature_cache_path`.
+Checkpoint loading is strict unless `EDGETAM_TEACHER_ALLOW_UNEXPECTED_KEYS=1`
+is set for a known-compatible fallback with no missing keys.
+
 Validate the complete forward-cache path with:
 
 ```bash
