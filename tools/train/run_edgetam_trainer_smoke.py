@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--num-frames", type=int, default=8)
     parser.add_argument("--max-num-objects", type=int, default=1)
+    parser.add_argument("--dataset-mode", choices=("vos", "sa1b-image"), default="vos")
+    parser.add_argument("--sa1b-image-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/images/train"))
+    parser.add_argument("--sa1b-ann-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/annotations/train"))
+    parser.add_argument("--sa1b-file-list", type=Path)
+    parser.add_argument("--sa1b-max-items", type=int, default=2)
     parser.add_argument("--image-encoder-forward-batch-size", type=int, default=0)
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
     parser.add_argument("--teacher-feature-cache", type=Path)
@@ -61,6 +66,39 @@ def read_checkpoint_summary(checkpoint_path: Path) -> dict[str, Any] | None:
     }
 
 
+def configure_sa1b_image_mode(cfg: Any, args: argparse.Namespace) -> None:
+    if args.sa1b_file_list is None:
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+        image_stems = sorted(path.stem for path in args.sa1b_image_root.glob("*.jpg"))
+        if not image_stems:
+            raise FileNotFoundError(f"No SA-1B smoke images found under {args.sa1b_image_root}")
+        image_stems = image_stems[: args.sa1b_max_items]
+        file_list = args.out_dir / "sa1b_image_file_list.txt"
+        file_list.write_text("\n".join(image_stems) + "\n", encoding="utf-8")
+    else:
+        file_list = args.sa1b_file_list
+
+    cfg.scratch.num_frames = 1
+    cfg.scratch.max_num_objects = args.max_num_objects
+    cfg.trainer.model.num_init_cond_frames_for_train = 1
+    cfg.trainer.model.rand_init_cond_frames_for_train = False
+    cfg.trainer.model.num_frames_to_correct_for_train = 1
+    cfg.trainer.model.rand_frames_to_correct_for_train = False
+    cfg.trainer.model.num_correction_pt_per_frame = 1
+    cfg.trainer.loss.all.lambda_img = 1.0
+    cfg.trainer.loss.all.lambda_mem = 0.0
+
+    dataset_cfg = cfg.trainer.data.train.datasets[0].dataset.datasets[0]
+    dataset_cfg.video_dataset._target_ = "training.dataset.vos_raw_dataset.SA1BRawDataset"
+    dataset_cfg.video_dataset.img_folder = str(args.sa1b_image_root)
+    dataset_cfg.video_dataset.gt_folder = str(args.sa1b_ann_root)
+    dataset_cfg.video_dataset.file_list_txt = str(file_list)
+    if "ann_every" in dataset_cfg.video_dataset:
+        del dataset_cfg.video_dataset.ann_every
+    dataset_cfg.sampler.num_frames = 1
+    dataset_cfg.sampler.max_num_objects = args.max_num_objects
+
+
 def main() -> None:
     args = parse_args()
     add_import_roots(args.edgetam_root, args.sam2_training_root)
@@ -91,6 +129,8 @@ def main() -> None:
     cfg.trainer.model.num_frames_to_correct_for_train = 1
     cfg.trainer.model.rand_frames_to_correct_for_train = False
     cfg.trainer.model.num_correction_pt_per_frame = 1
+    if args.dataset_mode == "sa1b-image":
+        configure_sa1b_image_mode(cfg, args)
     cfg.trainer.model.image_encoder_forward_batch_size = (
         args.image_encoder_forward_batch_size if args.image_encoder_forward_batch_size > 0 else None
     )
@@ -124,6 +164,8 @@ def main() -> None:
         "max_epochs": args.max_epochs,
         "num_frames": args.num_frames,
         "max_num_objects": args.max_num_objects,
+        "dataset_mode": args.dataset_mode,
+        "sa1b_max_items": args.sa1b_max_items if args.dataset_mode == "sa1b-image" else None,
         "image_encoder_forward_batch_size": args.image_encoder_forward_batch_size,
         "image_encoder_activation_checkpoint": args.image_encoder_activation_checkpoint,
         "teacher_feature_cache": str(args.teacher_feature_cache) if args.teacher_feature_cache else None,

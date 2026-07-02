@@ -9,12 +9,16 @@ from __future__ import annotations
 import torch
 import torch.utils.checkpoint
 
+from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
 from sam2_distill.edgetam.teacher_features import (
     TeacherFeatureCache,
     attach_synthetic_teacher_features,
     attach_teacher_features,
 )
 from training.model.sam2 import SAM2Train
+
+
+patch_edgetam_perceiver_view()
 
 
 class EdgeTAMTrain(SAM2Train):

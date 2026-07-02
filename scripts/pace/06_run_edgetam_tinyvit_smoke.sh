@@ -37,6 +37,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-teacher-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark
@@ -259,6 +260,28 @@ edgetam_full_trainer_forward_cache_smoke() {
   edgetam_full_trainer_smoke
 }
 
+edgetam_image_trainer_smoke() {
+  local activation_checkpoint_args=()
+  if [[ "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT:-0}" == "1" ]]; then
+    activation_checkpoint_args=(--image-encoder-activation-checkpoint)
+  fi
+  python "${ROOT}/tools/train/run_edgetam_trainer_smoke.py" \
+    --config "${ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --out-dir "${EDGETAM_IMAGE_TRAINER_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_image_trainer_smoke}" \
+    --max-epochs 1 \
+    --num-workers 0 \
+    --dataset-mode sa1b-image \
+    --sa1b-image-root "${EDGETAM_SA1B_IMAGE_ROOT:-${SMOKE_DATA_ROOT}/sa1b_smoke/images/train}" \
+    --sa1b-ann-root "${EDGETAM_SA1B_ANN_ROOT:-${SMOKE_DATA_ROOT}/sa1b_smoke/annotations/train}" \
+    --sa1b-max-items "${EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS:-2}" \
+    --num-frames 1 \
+    --max-num-objects "${EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS:-4}" \
+    --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
+    "${activation_checkpoint_args[@]}"
+}
+
 progressive_video_smoke() {
   for frames in 8 16 32; do
     VIDEO_SMOKE_CLIP_FRAMES="${frames}" \
@@ -380,6 +403,9 @@ case "${1:-}" in
     ;;
   edgetam-full-trainer-forward-cache-smoke)
     edgetam_full_trainer_forward_cache_smoke
+    ;;
+  edgetam-image-trainer-smoke)
+    edgetam_image_trainer_smoke
     ;;
   progressive-video-smoke)
     progressive_video_smoke

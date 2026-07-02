@@ -203,6 +203,26 @@ TinyViT smoke config as the teacher model. For company runs, use the same cache
 tool with a frozen SAM2.1-Hiera-L teacher config/weights and keep the generated
 cache under `/danny-dataset`.
 
+Run the SA-1B single-frame image-pretrain smoke with:
+
+```bash
+TASK=edgetam-image-trainer-smoke \
+EDGETAM_IMAGE_TRAINER_SMOKE_ITEMS=2 \
+EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS=4 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+This task uses upstream `SA1BRawDataset` on real SA-1B smoke images/JSON masks,
+forces `num_frames=1`, enables image feature distillation, and disables memory
+feature distillation. It exercises the Phase 3 `Simg` training surface without
+running a long SA-1B epoch. The runner writes a bounded file list under the run
+directory so smoke jobs do not iterate over the full local subset.
+
+`sam2_distill.edgetam.compat` patches the external EdgeTAM
+`PerceiverResampler.forward_2d` multi-object path from `expand().view()` to
+`expand().reshape()`. The patch is applied when `EdgeTAMTrain` is imported and
+is required for image batches with more than one mask/object.
+
 ## Smoke Train/Eval Entry Points
 
 Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the
