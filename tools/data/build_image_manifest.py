@@ -45,9 +45,11 @@ def choose_subset(paths: list[Path], root: Path, source: str, seed: str, percent
     return ranked[:count]
 
 
-def split_for(relative_path: str, seed: str) -> str:
+def split_for(relative_path: str, seed: str, val_fraction: float) -> str:
+    if val_fraction < 0 or val_fraction >= 1:
+        raise ValueError("--val-fraction must be in [0, 1)")
     value = int(stable_digest(f"{seed}|split|{relative_path}")[:8], 16) / 0xFFFFFFFF
-    return "val_sa1b" if value < 0.01 else "train"
+    return "val_sa1b" if value < val_fraction else "train"
 
 
 def build_manifest(args: argparse.Namespace) -> pd.DataFrame:
@@ -80,7 +82,7 @@ def build_manifest(args: argparse.Namespace) -> pd.DataFrame:
                 "height": int(height),
                 "width": int(width),
                 "sha256": sha256,
-                "split": split_for(rel, args.seed),
+                "split": split_for(rel, args.seed, args.val_fraction),
             }
         )
 
@@ -95,13 +97,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sample-percent",
         type=float,
-        default=1.0,
-        help="Deterministic percent of images to keep. Use 1 for fixed SA-1B 1%%.",
+        default=100.0,
+        help="Deterministic percent of images to keep from --image-root.",
     )
     parser.add_argument(
         "--seed",
-        default="sam2_stage1_sa1b_1pct_v1",
+        default="sam2_stage1_sa1b_v1",
         help="Stable sampling seed.",
+    )
+    parser.add_argument(
+        "--val-fraction",
+        type=float,
+        default=0.1,
+        help="Deterministic validation fraction after sampling. Use 0.1 for 90/10 train/val.",
     )
     parser.add_argument("--out", required=True, help="Output .parquet or .csv path.")
     parser.add_argument(

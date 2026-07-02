@@ -8,7 +8,8 @@ This run distills SAM2.1-Large image features into TinyViT-21M with MSE losses. 
 export SAM2D_REPO=/user-volume/repo/SAM2-Distillation-Pipeline
 export SAM2_UPSTREAM=/user-volume/repo/facebookresearch-sam2
 export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images
+export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
+export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_3pct
 export GPUS=0,1,2,3,4,5,6,7
 export WANDB_PROJECT=sam2-distill-stage1
 ```
@@ -20,25 +21,40 @@ Default output layout:
   checkpoints/
     sam2.1/sam2.1_hiera_large.pt
     tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
-  manifests/sa1b_1pct_v1.parquet
-  cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1/
-  runs/stage1_mse_sa1b_1pct_8xh100/
+  manifests/sa1b_3pct_v1.parquet
+  cache/stage1_teacher/sam2p1_large_sa1b_3pct_v1/
+  runs/stage1_mse_sa1b_3pct_8xh100/
     checkpoints/
+      best.pt
+      last.pt
     tensorboard/
     wandb_run.json
+
+/group-volume/danny-dataset/SA-1B/
+  sa1b_links.txt
+  manifests/
+    sa1b_download_selected_3pct_hash.tsv
+    sa1b_download_selected_3pct_hash.json
+  images_3pct/
 ```
 
-The default data sample remains deterministic SA-1B 1%:
+The default data sample is a deterministic SA-1B 3% downloaded shard subset. The training manifest then uses all downloaded images and splits them 90/10 into train/validation:
 
 ```bash
-export SAMPLE_PERCENT=1
-export SEED=sam2_stage1_sa1b_1pct_v1
+export SA1B_DOWNLOAD_PERCENT=3
+export SA1B_SELECTION_MODE=hash
+export SAMPLE_PERCENT=100
+export VAL_FRACTION=0.1
+export SEED=sam2_stage1_sa1b_3pct_v1
 ```
 
-For a bigger speed run, choose a new manifest/cache/run name explicitly:
+Do not set `SAMPLE_PERCENT=3` after downloading only 3%; that would train on 3% of the 3% subset. Leave `SAMPLE_PERCENT=100` unless you intentionally want a smaller smoke run.
+
+For a different data size, choose matching dataset/manifest/cache/run names explicitly:
 
 ```bash
-export SAMPLE_PERCENT=5
+export SA1B_DOWNLOAD_PERCENT=5
+export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_5pct
 export SEED=sam2_stage1_sa1b_5pct_v1
 export MANIFEST=$SAM2D_ROOT/manifests/sa1b_5pct_v1.parquet
 export CACHE_ROOT=$SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_5pct_v1
@@ -62,6 +78,8 @@ Do not activate a venv in the company container; use the container Python direct
 
 ## 2. Verify Checkpoints
 
+Your model files are already prepared; this step only verifies paths.
+
 Expected files:
 
 ```bash
@@ -83,7 +101,83 @@ cp /group-volume/danny-dataset/model.safetensors \
   $SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 ```
 
-## 3. Verify W&B And TensorBoard
+## 3. Download Deterministic SA-1B 3% Dataset
+
+Get the official SA-1B download link list after accepting the dataset terms from Meta's Segment Anything dataset page. SA-1B is listed as research-use data with 11M images and 1.1B masks, and the official download entry is on Meta's dataset page:
+
+```text
+https://ai.meta.com/datasets/segment-anything/
+https://ai.meta.com/datasets/segment-anything-downloads/
+```
+
+Save the URL list here:
+
+```bash
+mkdir -p /group-volume/danny-dataset/SA-1B
+$EDITOR /group-volume/danny-dataset/SA-1B/sa1b_links.txt
+```
+
+The link file can contain either:
+
+```text
+sa_000000.tar https://...
+```
+
+or:
+
+```text
+https://.../sa_000000.tar
+```
+
+If you have an equivalent HF-authorized mirror, write those shard URLs into the same file format. The downloader does not care whether the URL came from Meta or HF; reproducibility comes from preserving the exact `sa1b_links.txt` plus the generated selected-shard TSV/JSON.
+
+Dry-run the deterministic 3% shard selection:
+
+```bash
+cd $SAM2D_REPO
+
+export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
+export SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
+export SA1B_DOWNLOAD_PERCENT=3
+export SA1B_SELECTION_MODE=hash
+export IMAGE_ROOT=$SA1B_ROOT/images_3pct
+export SA1B_DOWNLOAD_WORKERS=8
+export KEEP_ARCHIVES=0
+export EXTRACT_ANNOTATIONS=0
+
+DRY_RUN=1 bash scripts/company/02_download_sa1b_subset.sh
+```
+
+Run the actual download/extract:
+
+```bash
+bash scripts/company/02_download_sa1b_subset.sh
+```
+
+Default cleanup behavior:
+
+```text
+KEEP_ARCHIVES=0
+```
+
+So downloaded `.tar`, `.tar.gz`, `.tgz`, `.zip`, and partial archive files are removed after successful extraction. The raw archive directory is removed if it becomes empty. The only non-image files intentionally retained are:
+
+```text
+$SA1B_ROOT/sa1b_links.txt
+$SA1B_ROOT/manifests/sa1b_download_selected_3pct_hash.tsv
+$SA1B_ROOT/manifests/sa1b_download_selected_3pct_hash.json
+$SA1B_ROOT/manifests/download_done_3pct_hash/*.done
+```
+
+Verify images:
+
+```bash
+find $IMAGE_ROOT -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) | wc -l
+find $IMAGE_ROOT -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) | head
+du -sh $IMAGE_ROOT
+```
+
+## 4. Verify W&B And TensorBoard
 
 W&B:
 
@@ -118,14 +212,17 @@ PY
 find $SAM2D_ROOT/logs/tensorboard-smoke -type f -name 'events.out.tfevents.*' -ls
 ```
 
-## 4. Build Image Manifest
+## 5. Build Image Manifest
 
-For speed, the wrapper skips per-file sha256 by default. It still records image path and dimensions.
+For speed, the wrapper skips per-file sha256 by default. It still records image path and dimensions. The default wrapper uses the downloaded 3% image root, keeps 100% of those images, and splits the manifest 90/10 into `train` and `val_sa1b`.
 
 ```bash
 cd $SAM2D_REPO
 
 export SKIP_FILE_SHA256=1
+export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_3pct
+export SAMPLE_PERCENT=100
+export VAL_FRACTION=0.1
 bash scripts/company/05_run_stage1_large_mse_8xh100.sh manifest
 ```
 
@@ -135,16 +232,16 @@ Check split counts:
 python - <<'PY'
 import os
 import pandas as pd
-manifest = os.environ.get("MANIFEST", "/group-volume/danny-dataset/sam2_distill/manifests/sa1b_1pct_v1.parquet")
+manifest = os.environ.get("MANIFEST", "/group-volume/danny-dataset/sam2_distill/manifests/sa1b_3pct_v1.parquet")
 df = pd.read_parquet(manifest)
 print(df["split"].value_counts())
 print(df.head())
 PY
 ```
 
-The train split is `train`; validation split is `val_sa1b`.
+The train split is `train`; validation split is `val_sa1b`. The split is deterministic from `SEED` and image relative path, so rerunning manifest creation on the same `images_3pct` tree gives the same split.
 
-## 5. Plan And Cache Teacher Embeddings
+## 6. Plan And Cache Teacher Embeddings
 
 Estimate shard count:
 
@@ -177,11 +274,11 @@ If `$CACHE_ROOT` was not exported, use the default:
 
 ```bash
 python tools/cache/inspect_teacher_cache.py \
-  --cache-root $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
+  --cache-root $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_3pct_v1 \
   --check-values
 ```
 
-## 6. Train TinyViT With MSE On 8xH100
+## 7. Train TinyViT With MSE On 8xH100
 
 This run uses:
 
@@ -220,7 +317,7 @@ export MAX_GRAD_NORM=1.0
 export EVAL_EVERY=1000
 export SAVE_EVERY=5000
 export WANDB_PROJECT=sam2-distill-stage1
-export WANDB_NAME=stage1-mse-sa1b-1pct-8xh100
+export WANDB_NAME=stage1-mse-sa1b-3pct-8xh100
 
 bash scripts/company/05_run_stage1_large_mse_8xh100.sh train
 ```
@@ -228,15 +325,18 @@ bash scripts/company/05_run_stage1_large_mse_8xh100.sh train
 Outputs:
 
 ```text
+$RUN_DIR/checkpoints/best.pt
 $RUN_DIR/checkpoints/last.pt
 $RUN_DIR/tensorboard/
 $RUN_DIR/wandb_run.json
 ```
 
+`best.pt` is selected by the lowest `val/loss_stage1_total`. `last.pt` is refreshed periodically at `SAVE_EVERY` and again at the end, so resume should use `last.pt`.
+
 Default run dir:
 
 ```text
-/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_1pct_8xh100
+/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_3pct_8xh100
 ```
 
 Monitor:
@@ -259,10 +359,10 @@ val/loss_stage1_total
 
 During projection warmup, `train/backbone_trainable` is `0`. After `PROJECTION_WARMUP_STEPS`, it switches to `1` and the TinyViT backbone starts training with the projection heads.
 
-## 7. Resume
+## 8. Resume
 
 ```bash
-export RUN_DIR=/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_1pct_8xh100
+export RUN_DIR=/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_3pct_8xh100
 export WANDB_RUN_ID=$(python - <<'PY'
 import json, os
 print(json.load(open(f"{os.environ['RUN_DIR']}/wandb_run.json"))["run_id"])
@@ -272,10 +372,10 @@ export WANDB_RESUME=allow
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --standalone --nproc-per-node 8 \
   tools/train/train_stage1.py \
-    --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+    --manifest $SAM2D_ROOT/manifests/sa1b_3pct_v1.parquet \
     --train-split train \
     --val-split val_sa1b \
-    --cache-root $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
+    --cache-root $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_3pct_v1 \
     --tinyvit-checkpoint $SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors \
     --out-dir $RUN_DIR \
     --resume $RUN_DIR/checkpoints/last.pt \
@@ -292,7 +392,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --standalone --nproc-per-node 8 \
     --amp-dtype bf16
 ```
 
-## 8. GPU Utilization Knobs
+## 9. GPU Utilization Knobs
 
 If H100 utilization is low:
 
@@ -323,25 +423,25 @@ For multiple nodes/jobs, split cache generation with:
 
 ```bash
 python tools/cache/plan_cache_shards.py \
-  --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
+  --manifest $SAM2D_ROOT/manifests/sa1b_3pct_v1.parquet \
   --shard-size 512 \
   --num-jobs 4
 ```
 
 Then run separate cache jobs with `--shard-ids` using `scripts/company/03_cache_teacher_embeddings.sh`.
 
-## 9. One Command
+## 10. One Command
 
-After env, checkpoints, and image root are ready:
+After env, checkpoints, and `images_3pct` are ready:
 
 ```bash
 cd $SAM2D_REPO
 
 export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images
+export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_3pct
 export GPUS=0,1,2,3,4,5,6,7
 export WANDB_PROJECT=sam2-distill-stage1
-export WANDB_NAME=stage1-mse-sa1b-1pct-8xh100
+export WANDB_NAME=stage1-mse-sa1b-3pct-8xh100
 
 bash scripts/company/05_run_stage1_large_mse_8xh100.sh all
 ```

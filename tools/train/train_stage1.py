@@ -210,6 +210,7 @@ def save_checkpoint(
     step: int,
     run_id: str | None,
     args: argparse.Namespace,
+    best_val_loss: float,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     module = unwrap_model(model)
@@ -219,6 +220,7 @@ def save_checkpoint(
             "model_state": module.state_dict(),
             "optimizer_state": optimizer.state_dict(),
             "wandb_run_id": run_id,
+            "best_val_loss": best_val_loss,
             "args": vars(args),
         },
         path,
@@ -306,12 +308,14 @@ def main() -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     start_step = 0
     wandb_run_id = args.wandb_run_id
+    best_val_loss = float("inf")
     if args.resume:
         ckpt = torch.load(args.resume, map_location="cpu")
         model.load_state_dict(ckpt["model_state"])
         optimizer.load_state_dict(ckpt["optimizer_state"])
         start_step = int(ckpt["step"])
         wandb_run_id = wandb_run_id or ckpt.get("wandb_run_id")
+        best_val_loss = float(ckpt.get("best_val_loss", float("inf")))
 
     initial_backbone_trainable = start_step >= args.projection_warmup_steps
     set_backbone_trainable(model, initial_backbone_trainable)
@@ -398,13 +402,46 @@ def main() -> None:
                             writer.add_scalar(key, value, step)
                     if wandb_run:
                         wandb_run.log(val_metrics, step=step)
+                    val_loss = val_metrics.get("val/loss_stage1_total")
+                    if val_loss is not None and val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        checkpoint_step = step + 1
+                        save_checkpoint(
+                            ckpt_dir / "best.pt",
+                            model,
+                            optimizer,
+                            checkpoint_step,
+                            wandb_run_id,
+                            args,
+                            best_val_loss,
+                        )
 
             if is_main(rank) and step > 0 and step % args.save_every == 0:
-                save_checkpoint(ckpt_dir / f"step_{step:07d}.pt", model, optimizer, step, wandb_run_id, args)
+                checkpoint_step = step + 1
+                save_checkpoint(
+                    ckpt_dir / f"step_{step:07d}.pt",
+                    model,
+                    optimizer,
+                    checkpoint_step,
+                    wandb_run_id,
+                    args,
+                    best_val_loss,
+                )
+                save_checkpoint(ckpt_dir / "last.pt", model, optimizer, checkpoint_step, wandb_run_id, args, best_val_loss)
             step += 1
 
+    final_val_metrics = evaluate(model, val_loader, device, world_size, args.val_max_batches, args)
     if is_main(rank):
-        save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step, wandb_run_id, args)
+        for key, value in final_val_metrics.items():
+            if writer:
+                writer.add_scalar(key, value, step)
+        if wandb_run:
+            wandb_run.log(final_val_metrics, step=step)
+        final_val_loss = final_val_metrics.get("val/loss_stage1_total")
+        if final_val_loss is not None and final_val_loss < best_val_loss:
+            best_val_loss = final_val_loss
+            save_checkpoint(ckpt_dir / "best.pt", model, optimizer, step, wandb_run_id, args, best_val_loss)
+        save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step, wandb_run_id, args, best_val_loss)
         if writer:
             writer.close()
         if wandb_run:

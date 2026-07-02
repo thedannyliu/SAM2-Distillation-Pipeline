@@ -153,10 +153,18 @@ Large-scale Stage 1 MSE speed run:
 - Default stability settings: 2000 projection-only warmup steps, 2000 LR warmup steps, bf16 AMP, and grad clipping at norm 1.0.
 
 Stage 1 data defaults:
-- Use a deterministic fixed 1% SA-1B image subset.
-- Manifest name: `sa1b_1pct_v1.parquet`
-- Sampling seed: `sam2_stage1_sa1b_1pct_v1`
+- For the 8xH100 large-scale MSE run, use a deterministic fixed 3% SA-1B downloaded shard subset.
+- Default SA-1B link list: `/group-volume/danny-dataset/SA-1B/sa1b_links.txt`
+- Default 3% image root: `/group-volume/danny-dataset/SA-1B/images_3pct`
+- Use `scripts/company/02_download_sa1b_subset.sh` to select/download/extract the 3% subset.
+- Default downloader selection: `SA1B_DOWNLOAD_PERCENT=3`, `SA1B_SELECTION_MODE=hash`, `KEEP_ARCHIVES=0`, `EXTRACT_ANNOTATIONS=0`.
+- The downloader removes compressed archives after successful extraction and keeps reproducibility metadata under `/group-volume/danny-dataset/SA-1B/manifests/`.
+- Manifest name: `sa1b_3pct_v1.parquet`
+- Sampling seed: `sam2_stage1_sa1b_3pct_v1`
+- Manifest should keep `SAMPLE_PERCENT=100` for the downloaded 3% image root.
+- Validation split: `VAL_FRACTION=0.1`, producing roughly 90% `train` and 10% `val_sa1b`.
 - Manifest fields: `sample_id`, `source`, `image_path`, `height`, `width`, `sha256`, `split`.
+- Training checkpoints: `checkpoints/last.pt` is the resume checkpoint, and `checkpoints/best.pt` is selected by lowest `val/loss_stage1_total`.
 
 Stage 1 weights:
 - Teacher primary: SAM2.1 Hiera Large checkpoint `sam2.1_hiera_large.pt`.
