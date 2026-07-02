@@ -153,6 +153,24 @@ PACE should only use a copied smoke subset of at most 500 frames. Keep full
 SA-V, extracted train frames, teacher caches, and run outputs under
 `/group-volume/danny-dataset`, not in the git checkout.
 
+## Company DAVIS Quick Mask Finetune
+
+When SA-V is slow or blocked, use DAVIS 2017 trainval 480p to get the one-GPU
+mask-finetune path running quickly:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+DRY_RUN=1 scripts/company/07_run_davis_mask_finetune_1gpu.sh all
+scripts/company/07_run_davis_mask_finetune_1gpu.sh all
+```
+
+The script downloads DAVIS under `/group-volume/danny-dataset/DAVIS/2017`, uses
+the pretrained TinyViT-21M checkpoint under
+`/group-volume/danny-dataset/sam2_distill/checkpoints`, runs the upstream SAM2
+Trainer mask-loss path on one GPU, and writes
+`runtime_estimate.json` so a longer single-GPU run can be projected from the
+observed seconds per step. See `docs/company_davis_mask_finetune.md`.
+
 ## TinyViT Config
 
 Generate an EdgeTAM TinyViT config from timm feature metadata:

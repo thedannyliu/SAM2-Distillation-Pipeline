@@ -25,11 +25,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--num-frames", type=int, default=8)
     parser.add_argument("--max-num-objects", type=int, default=1)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--resolution", type=int, default=1024)
     parser.add_argument("--dataset-mode", choices=("vos", "sa1b-image"), default="vos")
+    parser.add_argument("--vos-image-root", type=Path)
+    parser.add_argument("--vos-gt-root", type=Path)
+    parser.add_argument("--vos-file-list", type=Path)
     parser.add_argument("--sa1b-image-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/images/train"))
     parser.add_argument("--sa1b-ann-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/annotations/train"))
     parser.add_argument("--sa1b-file-list", type=Path)
     parser.add_argument("--sa1b-max-items", type=int, default=2)
+    parser.add_argument("--tinyvit-checkpoint", type=Path)
     parser.add_argument("--image-encoder-forward-batch-size", type=int, default=0)
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
     parser.add_argument("--freeze-image-encoder", action="store_true")
@@ -122,8 +128,11 @@ def main() -> None:
     cfg.scratch.num_train_workers = args.num_workers
     cfg.scratch.num_frames = args.num_frames
     cfg.scratch.max_num_objects = args.max_num_objects
+    cfg.scratch.train_batch_size = args.batch_size
+    cfg.scratch.resolution = args.resolution
     cfg.trainer.max_epochs = args.max_epochs
     cfg.trainer.seed_value = args.seed
+    cfg.trainer.data.train.batch_sizes = [args.batch_size]
     cfg.trainer.data.train.num_workers = args.num_workers
     cfg.trainer.data.train.pin_memory = True
     cfg.trainer.data.train.drop_last = False
@@ -134,6 +143,16 @@ def main() -> None:
     cfg.trainer.model.num_correction_pt_per_frame = 1
     if args.dataset_mode == "sa1b-image":
         configure_sa1b_image_mode(cfg, args)
+    else:
+        dataset_cfg = cfg.trainer.data.train.datasets[0].dataset.datasets[0]
+        if args.vos_image_root is not None:
+            dataset_cfg.video_dataset.img_folder = str(args.vos_image_root)
+        if args.vos_gt_root is not None:
+            dataset_cfg.video_dataset.gt_folder = str(args.vos_gt_root)
+        if args.vos_file_list is not None:
+            dataset_cfg.video_dataset.file_list_txt = str(args.vos_file_list)
+    if args.tinyvit_checkpoint is not None:
+        cfg.trainer.model.image_encoder.trunk.checkpoint_path = str(args.tinyvit_checkpoint)
     cfg.trainer.model.image_encoder_forward_batch_size = (
         args.image_encoder_forward_batch_size if args.image_encoder_forward_batch_size > 0 else None
     )
@@ -172,8 +191,14 @@ def main() -> None:
         "max_epochs": args.max_epochs,
         "num_frames": args.num_frames,
         "max_num_objects": args.max_num_objects,
+        "batch_size": args.batch_size,
+        "resolution": args.resolution,
         "dataset_mode": args.dataset_mode,
+        "vos_image_root": str(args.vos_image_root) if args.vos_image_root else None,
+        "vos_gt_root": str(args.vos_gt_root) if args.vos_gt_root else None,
+        "vos_file_list": str(args.vos_file_list) if args.vos_file_list else None,
         "sa1b_max_items": args.sa1b_max_items if args.dataset_mode == "sa1b-image" else None,
+        "tinyvit_checkpoint": str(args.tinyvit_checkpoint) if args.tinyvit_checkpoint else None,
         "image_encoder_forward_batch_size": args.image_encoder_forward_batch_size,
         "image_encoder_activation_checkpoint": args.image_encoder_activation_checkpoint,
         "freeze_image_encoder": args.freeze_image_encoder,
