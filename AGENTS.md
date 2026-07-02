@@ -82,7 +82,7 @@ Default Slurm account for L40S work: `gts-agarg35-ideas_l40s`.
 
 Usually current node is home node, and don't have GPUs. GPU must be accessed from submitting a job.
 Don't do any GPU job, env setup at $HOME, keep it clean.
-Construct venv or conda env and record it in this doc, and develop on the virtual environment afterwards.
+Do not create a venv for company container runs unless explicitly requested; use the container Python directly so the preinstalled PyTorch remains visible.
 
 ## 5. AI Research
 
@@ -118,7 +118,6 @@ Default paths:
 - Company code root: `/user-volume/repo/SAM2-Distillation-Pipeline`
 - Company GitHub repo: `https://github.com/thedannyliu/SAM2-Distillation-Pipeline.git`
 - Official SAM2 upstream checkout: `/user-volume/repo/facebookresearch-sam2`
-- Company env root: `/user-volume/env`
 - Company data/checkpoint/cache root: `/danny-dataset/sam2_distill`
 - Company TensorBoard root: `/danny-dataset/sam2_distill/logs`
 - Company W&B project default: `sam2-distill-stage1`

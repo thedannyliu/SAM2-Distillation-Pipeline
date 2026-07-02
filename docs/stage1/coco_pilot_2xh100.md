@@ -9,7 +9,6 @@ export SAM2D_REPO=/user-volume/repo/SAM2-Distillation-Pipeline
 export SAM2_UPSTREAM=/user-volume/repo/facebookresearch-sam2
 export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
 export COCO_RAW=/group-volume/danny-dataset/coco2017_raw
-export SAM2D_ENV=/user-volume/env/sam2_stage1_torch24
 export GPUS=0,1
 export WANDB_PROJECT=sam2-distill-stage1
 ```
@@ -47,10 +46,10 @@ cd $SAM2D_REPO
 git pull origin main
 
 bash scripts/company/00_setup_env.sh \
-  --venv $SAM2D_ENV \
   --sam2-upstream $SAM2_UPSTREAM
-source $SAM2D_ENV/bin/activate
 ```
+
+Do not activate a venv in the company container; use the container Python directly so the preinstalled PyTorch package stays visible.
 
 ## 2. Organize Existing Checkpoints
 
@@ -164,7 +163,6 @@ Use both H100s. Each GPU writes separate shards:
 
 ```bash
 cd $SAM2D_REPO
-source $SAM2D_ENV/bin/activate
 
 bash scripts/company/04_run_coco_stage1_pilot.sh cache
 ```
@@ -183,7 +181,6 @@ Run on 2xH100:
 
 ```bash
 cd $SAM2D_REPO
-source $SAM2D_ENV/bin/activate
 
 export GPUS=0,1
 export BATCH_SIZE=4
@@ -247,7 +244,6 @@ After checkpoints and COCO are in place:
 
 ```bash
 cd $SAM2D_REPO
-source $SAM2D_ENV/bin/activate
 
 export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
 export COCO_RAW=/group-volume/danny-dataset/coco2017_raw

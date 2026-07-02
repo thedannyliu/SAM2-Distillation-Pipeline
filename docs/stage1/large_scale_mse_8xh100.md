@@ -9,7 +9,6 @@ export SAM2D_REPO=/user-volume/repo/SAM2-Distillation-Pipeline
 export SAM2_UPSTREAM=/user-volume/repo/facebookresearch-sam2
 export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
 export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images
-export SAM2D_ENV=/user-volume/env/sam2_stage1_torch24
 export GPUS=0,1,2,3,4,5,6,7
 export WANDB_PROJECT=sam2-distill-stage1
 ```
@@ -56,10 +55,10 @@ cd $SAM2D_REPO
 git pull origin main
 
 bash scripts/company/00_setup_env.sh \
-  --venv $SAM2D_ENV \
   --sam2-upstream $SAM2_UPSTREAM
-source $SAM2D_ENV/bin/activate
 ```
+
+Do not activate a venv in the company container; use the container Python directly so the preinstalled PyTorch package stays visible.
 
 ## 2. Verify Checkpoints
 
@@ -125,7 +124,6 @@ For speed, the wrapper skips per-file sha256 by default. It still records image 
 
 ```bash
 cd $SAM2D_REPO
-source $SAM2D_ENV/bin/activate
 
 export SKIP_FILE_SHA256=1
 bash scripts/company/05_run_stage1_large_mse_8xh100.sh manifest
@@ -338,7 +336,6 @@ After env, checkpoints, and image root are ready:
 
 ```bash
 cd $SAM2D_REPO
-source $SAM2D_ENV/bin/activate
 
 export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
 export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images

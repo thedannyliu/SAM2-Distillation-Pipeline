@@ -2,14 +2,13 @@
 
 Use this on each new company node/session if Hugging Face or W&B cannot find existing credentials.
 
-## 1. Activate Environment
+## 1. Use Container Python
 
 ```bash
-export SAM2D_ENV=/user-volume/env/sam2_stage1_torch24
-source $SAM2D_ENV/bin/activate
-
 python -m pip install -r /user-volume/repo/SAM2-Distillation-Pipeline/requirements-stage1.txt
 ```
+
+Do not activate a venv for company container runs. Use the container Python directly so the preinstalled PyTorch module remains visible.
 
 `requirements-stage1.txt` includes both:
 
@@ -139,8 +138,6 @@ wandb sync wandb/offline-run-*
 For repeatable jobs, include:
 
 ```bash
-source /user-volume/env/sam2_stage1_torch24/bin/activate
-
 export HF_HOME=/user-volume/.cache/huggingface
 export HF_HUB_CACHE=$HF_HOME/hub
 export WANDB_CONFIG_DIR=/user-volume/.config/wandb
