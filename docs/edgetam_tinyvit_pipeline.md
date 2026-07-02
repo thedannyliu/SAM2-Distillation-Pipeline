@@ -312,6 +312,26 @@ sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
 If `model.pt` is missing in `EDGETAM_EXPORT_SMOKE_OUT_DIR`, the task first runs
 the export step, then predicts masks on the bounded COCO smoke image.
 
+Smoke-test the exported checkpoint through `SAM2VideoPredictor` and upstream VOS
+inference with:
+
+```bash
+TASK=edgetam-exported-vos-smoke \
+EDGETAM_EXPORT_SMOKE_OUT_DIR=/path/to/export_dir \
+EDGETAM_EXPORT_MODEL_CONFIG=/path/to/edgetam_tinyvit21m.yaml \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+This writes SA-V-style per-object PNG predictions under
+`runs/edgetam_smoke/edgetam_exported_vos_pred` by default. Evaluate that
+non-default prediction root with:
+
+```bash
+SAV_EVALUATOR=/path/to/sam2/sav_dataset/sav_evaluator.py \
+EDGETAM_VOS_OUT_DIR=runs/edgetam_smoke/edgetam_exported_vos_pred \
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval
+```
+
 ## Smoke Train/Eval Entry Points
 
 Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the

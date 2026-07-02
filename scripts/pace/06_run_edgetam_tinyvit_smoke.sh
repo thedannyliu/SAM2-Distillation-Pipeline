@@ -41,6 +41,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-export-checkpoint-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-exported-image-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-exported-vos-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
@@ -390,6 +391,26 @@ edgetam_exported_image_smoke() {
     --sam2-training-root "${SAM2_TRAINING_ROOT}"
 }
 
+edgetam_exported_vos_smoke() {
+  local export_dir="${EDGETAM_EXPORT_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_export_checkpoint_smoke}"
+  local config="${EDGETAM_EXPORT_MODEL_CONFIG:-${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml}"
+  local checkpoint="${EDGETAM_EXPORTED_MODEL_CHECKPOINT:-${export_dir}/model.pt}"
+  if [[ ! -f "${checkpoint}" ]]; then
+    EDGETAM_EXPORT_SMOKE_OUT_DIR="${export_dir}" \
+    EDGETAM_EXPORT_MODEL_CONFIG="${config}" \
+    edgetam_export_checkpoint_smoke
+  fi
+  python "${ROOT}/tools/eval/run_exported_edgetam_vos_smoke.py" \
+    --model-config "${config}" \
+    --checkpoint "${checkpoint}" \
+    --sav-root "${SMOKE_DATA_ROOT}/sav_val_smoke" \
+    --video-list-file "${SMOKE_DATA_ROOT}/sav_val_smoke/sav_val.txt" \
+    --out-dir "${EDGETAM_EXPORTED_VOS_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_exported_vos_pred}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}" \
+    --per-obj-png-file
+}
+
 edgetam_progressive_full_trainer_smoke() {
   local frames_list="${EDGETAM_PROGRESSIVE_FULL_FRAMES:-2 4 8}"
   local idx=0
@@ -566,6 +587,9 @@ case "${1:-}" in
     ;;
   edgetam-exported-image-smoke)
     edgetam_exported_image_smoke
+    ;;
+  edgetam-exported-vos-smoke)
+    edgetam_exported_vos_smoke
     ;;
   edgetam-progressive-full-trainer-smoke)
     edgetam_progressive_full_trainer_smoke
