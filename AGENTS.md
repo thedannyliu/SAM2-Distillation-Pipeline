@@ -178,6 +178,7 @@ W&B company smoke test:
 - Minimal online run:
   - `python -c 'import wandb; r=wandb.init(project="sam2-distill-smoke", name="company-wandb-smoke"); wandb.log({"ok": 1}); r.finish()'`
 - If network is blocked for a run, use `WANDB_MODE=offline` and later `wandb sync wandb/offline-run-*`.
+- For repeatable HF/W&B login on new company nodes, follow `docs/company_auth_hf_wandb.md`.
 
 Teacher cache defaults:
 - SAM2 input size is 1024.

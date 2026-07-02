@@ -104,6 +104,12 @@ huggingface-cli whoami
 
 Use a read token from `https://huggingface.co/settings/tokens`.
 
+For persistent Hugging Face and W&B login across company nodes, see:
+
+```text
+docs/company_auth_hf_wandb.md
+```
+
 To download TinyViT through Hugging Face cache and copy it into the pipeline checkpoint path:
 
 ```bash
