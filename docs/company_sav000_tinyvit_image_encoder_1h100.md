@@ -32,11 +32,19 @@ DRY_RUN=1 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
 ```
 
+By default this first timing run uses at most 20 videos from `sav_000` to avoid
+spending hours extracting frames before the training path is known to work. For
+a full-shard timing run, set:
+
+```bash
+SAV_MAX_VIDEOS=0 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+```
+
 Useful overrides:
 
 ```bash
 SAV_SHARD_ROOT=/group-volume/danny-dataset/SA-V/sav_000 \
-SAV_MAX_VIDEOS=0 \
+SAV_MAX_VIDEOS=20 \
 WARMUP_EPOCHS=1 \
 FINETUNE_EPOCHS=1 \
 BATCH_SIZE=1 \
@@ -50,7 +58,9 @@ scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
 
 If `JPEGImages_24fps` is missing, the script extracts frames from mp4 files
 under the shard with `tools/data/extract_sav_frames_local.py`. This requires
-`cv2` in the container.
+`cv2` in the container. The script auto-detects common SA-V layouts, including
+annotations under either the shard itself or the parent train directory, such
+as `/group-volume/danny-dataset/SA-V/train/annotations`.
 
 Outputs:
 

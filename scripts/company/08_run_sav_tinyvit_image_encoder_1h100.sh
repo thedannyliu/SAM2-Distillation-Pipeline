@@ -11,7 +11,7 @@ SAV_IMAGE_ROOT="${SAV_IMAGE_ROOT:-${SAV_SHARD_ROOT}/JPEGImages_24fps}"
 SAV_ANN_ROOT="${SAV_ANN_ROOT:-${SAV_SHARD_ROOT}/annotations}"
 SAV_VIDEO_ROOT="${SAV_VIDEO_ROOT:-${SAV_SHARD_ROOT}/videos}"
 SAV_FILE_LIST="${SAV_FILE_LIST:-${SAV_SHARD_ROOT}/manifests/sav_train_filelist.txt}"
-SAV_MAX_VIDEOS="${SAV_MAX_VIDEOS:-0}"
+SAV_MAX_VIDEOS="${SAV_MAX_VIDEOS:-20}"
 SAV_EXTRACT_FRAMES="${SAV_EXTRACT_FRAMES:-1}"
 SAV_FRAME_SAMPLE_RATE="${SAV_FRAME_SAMPLE_RATE:-1}"
 SAV_ANN_EVERY="${SAV_ANN_EVERY:-4}"
@@ -63,6 +63,22 @@ find_existing_dir() {
   return 1
 }
 
+find_first_parent_dir_with_file() {
+  local name_pattern="$1"
+  shift
+  local found
+  for root in "$@"; do
+    if [[ -d "${root}" ]]; then
+      found="$(find "${root}" -maxdepth 4 -type f -name "${name_pattern}" -print -quit 2>/dev/null || true)"
+      if [[ -n "${found}" ]]; then
+        dirname "${found}"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
 autodetect_layout() {
   if [[ ! -d "${SAV_IMAGE_ROOT}" ]]; then
     SAV_IMAGE_ROOT="$(find_existing_dir \
@@ -76,14 +92,25 @@ autodetect_layout() {
     SAV_ANN_ROOT="$(find_existing_dir \
       "${SAV_SHARD_ROOT}/annotations" \
       "${SAV_SHARD_ROOT}/train/annotations" \
+      "${SAV_SHARD_ROOT}/../train/annotations" \
+      "${SAV_SHARD_ROOT}/../annotations" \
       "${SAV_SHARD_ROOT}/Annotations" \
+      "${SAV_SHARD_ROOT}/../Annotations" \
+      2>/dev/null || find_first_parent_dir_with_file '*_manual.json' \
+      "${SAV_SHARD_ROOT}" \
+      "${SAV_SHARD_ROOT}/.." \
       2>/dev/null || echo "${SAV_ANN_ROOT}")"
   fi
   if [[ ! -d "${SAV_VIDEO_ROOT}" ]]; then
     SAV_VIDEO_ROOT="$(find_existing_dir \
       "${SAV_SHARD_ROOT}/videos" \
       "${SAV_SHARD_ROOT}/train/videos" \
+      "${SAV_SHARD_ROOT}/../train/videos" \
+      "${SAV_SHARD_ROOT}/../videos" \
       "${SAV_SHARD_ROOT}" \
+      2>/dev/null || find_first_parent_dir_with_file '*.mp4' \
+      "${SAV_SHARD_ROOT}" \
+      "${SAV_SHARD_ROOT}/.." \
       2>/dev/null || echo "${SAV_VIDEO_ROOT}")"
   fi
 }
@@ -97,7 +124,7 @@ prepare_frames() {
     echo "Missing JPEG frames under ${SAV_IMAGE_ROOT}. Set SAV_EXTRACT_FRAMES=1 or provide SAV_IMAGE_ROOT." >&2
     exit 2
   fi
-  echo "extract SA-V frames from ${SAV_VIDEO_ROOT} to ${SAV_IMAGE_ROOT}"
+  echo "extract SA-V frames from ${SAV_VIDEO_ROOT} to ${SAV_IMAGE_ROOT} (max_videos=${SAV_MAX_VIDEOS}, sample_rate=${SAV_FRAME_SAMPLE_RATE})"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     return 0
   fi
@@ -118,6 +145,8 @@ DRY_RUN prepare:
   ann_root   ${SAV_ANN_ROOT}
   video_root ${SAV_VIDEO_ROOT}
   file_list  ${SAV_FILE_LIST}
+  max_videos ${SAV_MAX_VIDEOS}
+  sample_rate ${SAV_FRAME_SAMPLE_RATE}
 EOF
     return 0
   fi

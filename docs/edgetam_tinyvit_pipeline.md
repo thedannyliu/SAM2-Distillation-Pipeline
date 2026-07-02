@@ -221,6 +221,11 @@ DRY_RUN=1 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
 ```
 
+The default timing run extracts and trains on at most 20 videos to keep the
+first company smoke short. Set `SAV_MAX_VIDEOS=0` only when you want a full
+`sav_000` shard timing run. The script auto-detects SA-V annotations under
+both shard-local and parent train directories.
+
 The warmup phase trains only `image_encoder.neck`; the finetune phase resumes
 and trains the full `image_encoder`. Both phases freeze memory, prompt, mask,
 and other non-image components. See
