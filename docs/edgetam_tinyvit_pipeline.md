@@ -66,14 +66,14 @@ time-limited. Do not commit signed URLs. Save the current URL list on the
 company data volume:
 
 ```bash
-export SAV_ROOT=/danny-dataset/SA-V
+export SAV_ROOT=/group-volume/danny-dataset/SA-V
 export SAV_URL_LIST=$SAV_ROOT/manifests/sav_download_urls.txt
 export SAV_RAW_ROOT=$SAV_ROOT/_downloads_300g
 export SAV_BUDGET_GB=300
 
 mkdir -p "$SAV_ROOT/manifests" "$SAV_RAW_ROOT"
 # Paste the official SA-V download URLs into:
-#   /danny-dataset/SA-V/manifests/sav_download_urls.txt
+#   /group-volume/danny-dataset/SA-V/manifests/sav_download_urls.txt
 ```
 
 Download order for a bounded company pilot:
@@ -85,24 +85,11 @@ Download order for a bounded company pilot:
 3. Delete raw archives after successful extraction unless the company storage
    plan explicitly budgets for keeping them.
 
-A simple guarded download loop is:
+Use the company helper script to enforce the budget, download, and extract:
 
 ```bash
-budget_bytes=$((SAV_BUDGET_GB * 1024 * 1024 * 1024))
-
-while read -r url; do
-  [ -z "$url" ] && continue
-  case "$url" in \#*) continue ;; esac
-
-  used_bytes=$(du -sb "$SAV_ROOT" 2>/dev/null | awk '{print $1 + 0}')
-  if [ "$used_bytes" -ge "$budget_bytes" ]; then
-    echo "SA-V budget reached: $used_bytes / $budget_bytes bytes"
-    break
-  fi
-
-  aria2c -c -x 8 -s 8 -j 1 -d "$SAV_RAW_ROOT" "$url"
-  du -sh "$SAV_ROOT"
-done < "$SAV_URL_LIST"
+DRY_RUN=1 scripts/company/06_download_sav_subset.sh
+SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
 ```
 
 If the official page provides archive sizes, select a URL subset that leaves
@@ -111,7 +98,7 @@ return a reliable `Content-Length` for dry-run sizing. Preserve the official
 split names when extracting. The expected layout is:
 
 ```text
-/danny-dataset/SA-V/
+/group-volume/danny-dataset/SA-V/
   train/
     videos/{shard_or_group}/{video_id}.mp4
     annotations/{video_id}_manual.json
@@ -132,31 +119,31 @@ in place:
 
 ```bash
 python /user-volume/repo/facebookresearch-sam2/training/scripts/sav_frame_extraction_submitit.py \
-  --sav-vid-dir /danny-dataset/SA-V/train/videos \
+  --sav-vid-dir /group-volume/danny-dataset/SA-V/train/videos \
   --sav-frame-sample-rate 1 \
   --n-jobs 64 \
   --timeout 720 \
   --partition <cpu_partition> \
   --account <company_account> \
   --qos <company_qos> \
-  --output-dir /danny-dataset/SA-V/train/JPEGImages_24fps \
-  --slurm-output-root-dir /danny-dataset/SA-V/logs/frame_extraction
+  --output-dir /group-volume/danny-dataset/SA-V/train/JPEGImages_24fps \
+  --slurm-output-root-dir /group-volume/danny-dataset/SA-V/logs/frame_extraction
 ```
 
 For a quick integrity check:
 
 ```bash
-du -sh /danny-dataset/SA-V
-find /danny-dataset/SA-V/train/videos -name '*.mp4' | head
-find /danny-dataset/SA-V/train/annotations -name '*_manual.json' | head
-test -f /danny-dataset/SA-V/val/sav_val.txt
-find /danny-dataset/SA-V/val/JPEGImages_24fps -mindepth 2 -name '*.jpg' | head
-find /danny-dataset/SA-V/val/Annotations_6fps -mindepth 3 -name '*.png' | head
+du -sh /group-volume/danny-dataset/SA-V
+find /group-volume/danny-dataset/SA-V/train/videos -name '*.mp4' | head
+find /group-volume/danny-dataset/SA-V/train/annotations -name '*_manual.json' | head
+test -f /group-volume/danny-dataset/SA-V/val/sav_val.txt
+find /group-volume/danny-dataset/SA-V/val/JPEGImages_24fps -mindepth 2 -name '*.jpg' | head
+find /group-volume/danny-dataset/SA-V/val/Annotations_6fps -mindepth 3 -name '*.png' | head
 ```
 
 PACE should only use a copied smoke subset of at most 500 frames. Keep full
 SA-V, extracted train frames, teacher caches, and run outputs under
-`/danny-dataset`, not in the git checkout or `/group-volume`.
+`/group-volume/danny-dataset`, not in the git checkout.
 
 ## TinyViT Config
 
