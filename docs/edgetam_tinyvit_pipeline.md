@@ -300,6 +300,18 @@ The export writes `model.pt` in SAM2/EdgeTAM `{"model": state_dict}` format and
 strict-loads it against the model-only YAML. This is the bridge from training
 checkpoints to official-style eval or deployment scripts.
 
+Smoke-test the exported checkpoint through `SAM2ImagePredictor` with:
+
+```bash
+TASK=edgetam-exported-image-smoke \
+EDGETAM_EXPORT_SMOKE_OUT_DIR=/path/to/export_dir \
+EDGETAM_EXPORT_MODEL_CONFIG=/path/to/edgetam_tinyvit21m.yaml \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+If `model.pt` is missing in `EDGETAM_EXPORT_SMOKE_OUT_DIR`, the task first runs
+the export step, then predicts masks on the bounded COCO smoke image.
+
 ## Smoke Train/Eval Entry Points
 
 Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the

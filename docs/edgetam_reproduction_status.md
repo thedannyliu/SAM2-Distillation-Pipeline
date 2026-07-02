@@ -37,6 +37,7 @@ is the concise engineering runbook.
 | Image trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke` | Runs upstream `Trainer` on real SA-1B smoke images/JSON masks as single-frame image pretraining. |
 | Image forward-cache trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-forward-cache-smoke` | Writes real-forward teacher features from a SA-1B image batch, then trains the image-pretrain path against that cache. |
 | Trainer checkpoint export smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-export-checkpoint-smoke` | Exports an upstream `Trainer` checkpoint to model-only `{"model": ...}` format and strict-loads it with the TinyViT model config. |
+| Exported checkpoint image smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-exported-image-smoke` | Runs `SAM2ImagePredictor` on a real COCO smoke image using the exported TinyViT EdgeTAM checkpoint. |
 | Progressive full trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke` | Runs scaled progressive 2/4/8-frame phases through upstream `Trainer`, freezing the image encoder and disabling distillation after phase 1. |
 | Official EdgeTAM image smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke` | Passed with the existing official EdgeTAM checkpoint on one COCO smoke image. |
 | Official EdgeTAM image benchmark | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark` | Passed with A100 image predictor latency/FPS/peak-memory summary. |
@@ -64,6 +65,7 @@ is the concise engineering runbook.
 | `tools/eval/sav_identity_smoke.py` | SA-V prediction layout and official evaluator smoke. |
 | `tools/eval/run_edgetam_vos_smoke.py` | Thin wrapper around official EdgeTAM `tools/vos_inference.py`. |
 | `tools/eval/run_edgetam_image_smoke.py` | Thin wrapper around official EdgeTAM image predictor API. |
+| `tools/eval/run_exported_edgetam_image_smoke.py` | Loads an exported TinyViT EdgeTAM checkpoint and runs a real-image `SAM2ImagePredictor` smoke. |
 | `tools/eval/run_sav_evaluator.py` | Thin wrapper for official SAM2 `sav_evaluator.py` on existing predictions. |
 | `tools/benchmark/benchmark_edgetam_image_predictor.py` | Official EdgeTAM image predictor latency/FPS/peak-memory benchmark. |
 | `tools/data/make_vos_smoke_subset.py` | Builds bounded DAVIS-style VOS subsets, including SA-V per-object to packed-mask conversion. |
@@ -133,6 +135,10 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
   - CPU smoke converted `runs/edgetam_smoke/edgetam_vos_hiera_tiny_cache_trainer_smoke/checkpoints/checkpoint.pt` to `runs/edgetam_smoke/edgetam_export_checkpoint_smoke/model.pt`.
   - The exported model-only payload contains 598 tensors plus metadata from epoch 1 / train step 1.
   - Strict-load validation against `runs/edgetam_smoke/configs/edgetam_tinyvit21m.yaml` instantiated `SAM2Base` with 0 missing and 0 unexpected keys.
+- Exported checkpoint image predictor smoke passed:
+  - `10670078`: `gpu-rtx6000`, `embers`, completed in 25s.
+  - Loaded `runs/edgetam_smoke/edgetam_export_checkpoint_smoke/model.pt` with 0 missing and 0 unexpected keys.
+  - Ran `SAM2ImagePredictor` on COCO smoke image `000000000139.jpg`, produced 3 masks with low-res shape `[3, 256, 256]`, and saved `best_mask.png`.
 - Existing official EdgeTAM checkpoint found at `/storage/project/r-agarg35-0/eliu354/projects/efficientsam3-benchmark/external/EdgeTAM/checkpoints/edgetam.pt`.
 - Official EdgeTAM checkpoint metadata smoke passed: `torch.load(..., weights_only=True)` found a `model` state dict with 982 tensors and `edgetam.yaml` exists.
 - Stage 1 feature train smoke passed on PACE:

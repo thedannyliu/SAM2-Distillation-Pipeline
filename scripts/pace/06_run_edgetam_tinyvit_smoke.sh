@@ -40,6 +40,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-export-checkpoint-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-exported-image-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
@@ -371,6 +372,24 @@ edgetam_export_checkpoint_smoke() {
     --summary "${out_dir}/summary.json"
 }
 
+edgetam_exported_image_smoke() {
+  local export_dir="${EDGETAM_EXPORT_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_export_checkpoint_smoke}"
+  local config="${EDGETAM_EXPORT_MODEL_CONFIG:-${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml}"
+  local checkpoint="${EDGETAM_EXPORTED_MODEL_CHECKPOINT:-${export_dir}/model.pt}"
+  if [[ ! -f "${checkpoint}" ]]; then
+    EDGETAM_EXPORT_SMOKE_OUT_DIR="${export_dir}" \
+    EDGETAM_EXPORT_MODEL_CONFIG="${config}" \
+    edgetam_export_checkpoint_smoke
+  fi
+  python "${ROOT}/tools/eval/run_exported_edgetam_image_smoke.py" \
+    --model-config "${config}" \
+    --checkpoint "${checkpoint}" \
+    --image "${EDGETAM_IMAGE}" \
+    --out-dir "${EDGETAM_EXPORTED_IMAGE_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_exported_image_smoke}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}"
+}
+
 edgetam_progressive_full_trainer_smoke() {
   local frames_list="${EDGETAM_PROGRESSIVE_FULL_FRAMES:-2 4 8}"
   local idx=0
@@ -544,6 +563,9 @@ case "${1:-}" in
     ;;
   edgetam-export-checkpoint-smoke)
     edgetam_export_checkpoint_smoke
+    ;;
+  edgetam-exported-image-smoke)
+    edgetam_exported_image_smoke
     ;;
   edgetam-progressive-full-trainer-smoke)
     edgetam_progressive_full_trainer_smoke
