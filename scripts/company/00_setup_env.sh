@@ -72,7 +72,7 @@ if [[ "${SKIP_SAM2_SMOKE}" -eq 0 ]]; then
   python - <<'PY'
 import importlib
 
-for module in ["torch", "timm", "huggingface_hub", "wandb", "pandas", "pyarrow", "zarr", "PIL"]:
+for module in ["torch", "timm", "tensordict", "huggingface_hub", "wandb", "pandas", "pyarrow", "zarr", "PIL"]:
     importlib.import_module(module)
     print(f"import_ok={module}")
 
