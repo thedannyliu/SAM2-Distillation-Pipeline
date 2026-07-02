@@ -1,0 +1,270 @@
+# EdgeTAM TinyViT Pipeline
+
+This repo keeps the EdgeTAM reproduction pipeline open-source friendly:
+
+- Source, configs, docs, and small manifests are tracked.
+- Data, checkpoints, run outputs, overlays, third-party checkouts, and PDFs are ignored.
+- PACE smoke subsets are capped at 500 images or frames per dataset.
+- Full training is intended for the company cluster, with datasets and checkpoints under `/danny-dataset`.
+
+## Local PACE Smoke
+
+Prepare and validate small real-data subsets:
+
+```bash
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh all-cpu
+```
+
+Prepare the repo-local conda env when the active shell does not have SAM2/TinyViT dependencies:
+
+```bash
+scripts/setup/prepare_edgetam_env.sh
+```
+
+Submit single-GPU smoke tasks independently:
+
+```bash
+sbatch --export=TASK=probe-tinyvit scripts/pace/slurm_edgetam_smoke.sbatch
+sbatch --export=TASK=write-config scripts/pace/slurm_edgetam_smoke.sbatch
+sbatch --export=TASK=stage1-feature-smoke scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+When reusing an existing dependency environment for a smoke run, point Slurm at
+that prefix:
+
+```bash
+sbatch --partition=gpu-l40s \
+  --account=gts-agarg35-ideas_l40s \
+  --qos=embers \
+  --export=ALL,TASK=stage1-feature-smoke,ENV_PREFIX=/path/to/venv \
+  scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+Default smoke inputs are existing PACE-local SA-1B, SA-V, and COCO mirrors. Outputs go to ignored repo-local paths:
+
+```text
+data/edgetam_smoke
+runs/edgetam_smoke
+```
+
+## Upstreams
+
+SAM2 and EdgeTAM should be checked out under ignored `third_party/` paths:
+
+```bash
+scripts/setup/clone_upstreams.sh
+```
+
+Set `SAM2_REF` and `EDGETAM_REF` to pin exact commits for reproducible runs.
+
+## TinyViT Config
+
+Generate an EdgeTAM TinyViT config from timm feature metadata:
+
+```bash
+python tools/edgetam/write_tinyvit_edgetam_config.py \
+  --out /storage/scratch1/9/eliu354/sam2_distill/edgetam/configs/edgetam_tinyvit21m.yaml
+```
+
+The generator probes TinyViT channels and reductions instead of hardcoding FPN channels.
+For the default TinyViT-21M-512 model, the tool uses a fast known-metadata path to avoid slow CPU initialization; pass `--force-probe` when validating a new timm version or model variant.
+
+Generated TinyViT configs use `sam2_distill.edgetam.timm_backbone.TimmBackbone`
+instead of the upstream EdgeTAM wrapper because the upstream wrapper hardcodes
+`pretrained=True`. Smoke configs default to `pretrained: false`; company runs
+should set a local `checkpoint_path` or enable pretrained loading only when the
+environment has the expected Hugging Face/timm cache.
+
+## Training Feature Contract
+
+`sam2_distill.edgetam.train_model.EdgeTAMTrain` extends SAM2 training outputs with:
+
+```text
+distill_F16
+distill_F_M
+```
+
+Teacher/student wrappers must add matching teacher keys before the loss runs:
+
+```text
+teacher_distill_F16
+teacher_distill_F_M
+```
+
+`EdgeTAMMultiStepDistillationLoss` wraps the standard SAM2 multi-step mask/IoU/object loss and adds `loss_img_distill` and `loss_mem_distill` when their weights are nonzero.
+
+`sam2_distill.edgetam.train_model.EdgeTAMTrainWithTeacher` attaches teacher
+features before the upstream SAM2 trainer calls the loss. In smoke mode, the
+same wrapper can use `synthetic_teacher: true`; in full runs, replace that with
+a frozen teacher model config.
+
+The minimal full-trainer config is:
+
+```text
+configs/edgetam/tinyvit_video_distill_smoke.yaml
+```
+
+Validate its Hydra targets and nested loss construction with:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+SAM2_TRAINING_ROOT=/path/to/sam2 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-train-config
+```
+
+Smoke the official SAM2 task loss plus EdgeTAM image/memory distillation
+backward path with:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+SAM2_TRAINING_ROOT=/path/to/sam2 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-distill-loss-smoke
+```
+
+Run the minimal full upstream SAM2 trainer on the real VOS smoke subset with:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+SAM2_TRAINING_ROOT=/path/to/sam2 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-smoke
+```
+
+Submit it on PACE through `scripts/pace/slurm_edgetam_smoke.sbatch` with
+`TASK=edgetam-full-trainer-smoke`; keep `qos=embers`.
+
+For the 8-frame / 1024px smoke on smaller PACE GPUs, use the checkpointed image
+encoder path:
+
+```bash
+TASK=edgetam-full-trainer-smoke \
+EDGETAM_TRAINER_SMOKE_FRAMES=8 \
+EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH=1 \
+EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT=1 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+This keeps the training behavior on the upstream `Trainer` path while reducing
+TinyViT activation memory. Leave these variables unset for full-memory company
+runs unless the container/GPU needs the lower-memory path.
+
+Validate checkpoint resume in one Slurm allocation with:
+
+```bash
+TASK=edgetam-full-trainer-resume-smoke \
+EDGETAM_TRAINER_SMOKE_FRAMES=2 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+The resume smoke first writes an epoch-1 checkpoint and then restarts the
+upstream trainer to epoch 2 in the same output directory. The summary records
+`checkpoint_before` and `checkpoint_after` epochs and train steps.
+
+## Smoke Train/Eval Entry Points
+
+Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the
+TinyViT SAM2 adapter, runs feature MSE/backward on synthetic teacher targets,
+and writes a resumable checkpoint plus JSONL metrics:
+
+```bash
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh stage1-feature-smoke
+```
+
+SA-V evaluator smoke copies ground-truth masks as predictions and can run the
+official SAM2 SA-V evaluator:
+
+```bash
+SAV_EVALUATOR=/path/to/sam2/sav_dataset/sav_evaluator.py \
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh sav-eval-smoke
+```
+
+Generic DAVIS/MOSE/YTVOS-style layout smoke can be exercised with real SA-V
+frames packed into indexed PNG masks:
+
+```bash
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh vos-style-data
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh vos-style-eval-smoke
+```
+
+Real DAVIS 2017 smoke uses the official trainval 480p archive and extracts only
+the bounded subset:
+
+```bash
+DAVIS_ZIP=/path/to/DAVIS-2017-trainval-480p.zip \
+DAVIS_MAX_FRAMES=120 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh davis-data
+
+DAVIS_MAX_FRAMES=120 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh davis-eval-smoke
+```
+
+The lightweight video training shell smoke checks real clip loading,
+mask-supervised backward, checkpoint writing, and resume. It is intentionally
+not a substitute for the full SAM2/EdgeTAM video trainer.
+
+```bash
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh video-mask-train-smoke
+VIDEO_SMOKE_RESUME=1 scripts/pace/06_run_edgetam_tinyvit_smoke.sh video-mask-train-smoke
+```
+
+Progressive schedule smoke runs 8/16/32-frame phases with the EdgeTAM
+fine-tuning rules recorded in the summaries:
+
+```bash
+PROGRESSIVE_SMOKE_IMAGE_SIZE=64 \
+PROGRESSIVE_SMOKE_MAX_CLIPS=2 \
+PROGRESSIVE_SMOKE_STEPS=1 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
+```
+
+Official EdgeTAM VOS inference smoke is available once an EdgeTAM checkpoint is
+present:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+EDGETAM_CHECKPOINT=/path/to/edgetam.pt \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke
+```
+
+After predictions exist, evaluate them without rewriting the prediction root:
+
+```bash
+SAV_EVALUATOR=/path/to/sam2/sav_dataset/sav_evaluator.py \
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval
+```
+
+The official image predictor can be smoke-tested on one real image:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+EDGETAM_CHECKPOINT=/path/to/edgetam.pt \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
+```
+
+For speed smoke, run the official image predictor benchmark:
+
+```bash
+EDGETAM_ROOT=/path/to/EdgeTAM \
+EDGETAM_CHECKPOINT=/path/to/edgetam.pt \
+EDGETAM_BENCH_LIMIT=2 \
+EDGETAM_BENCH_WARMUP=1 \
+EDGETAM_BENCH_ITERS=2 \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark
+```
+
+## Experiment Tracking
+
+Record every smoke run in:
+
+```text
+docs/experiments/edgetam_smoke.md
+```
+
+Use the helper when running jobs:
+
+```bash
+python tools/experiments/record_experiment.py \
+  --task "TinyViT shape probe" \
+  --data "no data" \
+  --command "scripts/pace/06_run_edgetam_tinyvit_smoke.sh probe-tinyvit" \
+  --result "pass"
+```

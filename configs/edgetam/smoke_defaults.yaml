@@ -1,0 +1,27 @@
+# Defaults shared by PACE EdgeTAM smoke runs.
+
+paths:
+  smoke_data_root: data/edgetam_smoke
+  smoke_run_root: runs/edgetam_smoke
+
+limits:
+  max_images_per_dataset: 500
+  max_frames_per_dataset: 500
+
+training:
+  image_smoke_steps: 50
+  video_smoke_steps: 20
+  progressive_smoke_steps: 5
+  gpu_count: 1
+  qos: embers
+  account: gts-agarg35
+
+model:
+  tinyvit_name: tiny_vit_21m_512.dist_in22k_ft_in1k
+  image_size: 1024
+  memory_attention_layers: 2
+  num_maskmem: 7
+  max_obj_ptrs_in_encoder: 16
+  global_latents: 256
+  spatial_latents_2d: 256
+

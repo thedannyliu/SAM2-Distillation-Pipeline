@@ -171,7 +171,6 @@ def format_duration(seconds: float) -> str:
     return f"{secs}s"
 
 
-@torch.no_grad()
 def compute_loss(
     student: dict[str, torch.Tensor],
     teacher: dict[str, torch.Tensor],
@@ -203,7 +202,7 @@ def evaluate(
             break
         images = images.to(device, non_blocking=True)
         teacher = move_teacher(teacher, device)
-        with autocast_context(device, args.amp_dtype):
+        with torch.no_grad(), autocast_context(device, args.amp_dtype):
             student = model(images)
             _, metrics = compute_loss(student, teacher, args)
         metrics = reduce_metrics(metrics, world_size)

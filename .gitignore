@@ -1,0 +1,33 @@
+# Local environments
+/.venv/
+/.conda/
+/env/
+/venv/
+__pycache__/
+*.py[cod]
+
+# Data, checkpoints, generated artifacts
+/data/
+/checkpoints/
+/runs/
+/outputs/
+/logs/
+/wandb/
+/sam2_logs/
+/teacher_cache/
+*.zarr/
+*.pt
+*.pth
+*.safetensors
+
+# Large local references and generated reports
+docs/*.pdf
+docs/**/*.pdf
+docs/EdgeTAM/
+*.log
+*.out
+*.err
+*.tmp
+
+# Third-party checkouts are created by setup scripts and should stay untracked.
+/third_party/

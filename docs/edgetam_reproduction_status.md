@@ -1,0 +1,112 @@
+# EdgeTAM Reproduction Status
+
+This document tracks the implementation state for the TinyViT-21M EdgeTAM
+reproduction. Detailed paper-to-code notes remain in `docs/EdgeTAM/`; this file
+is the concise engineering runbook.
+
+## Scope
+
+- Base method: EdgeTAM-style SAM2 training and evaluation.
+- Student image encoder: TinyViT-21M from timm/Hugging Face.
+- Smoke data cap: at most 500 images or frames per dataset.
+- PACE usage: smoke validation only, single GPU when needed, `embers` QOS.
+- Generated data, checkpoints, logs, and run outputs stay ignored by git.
+
+## Implemented Entry Points
+
+| Area | Entry point | Validation |
+| --- | --- | --- |
+| Data subset | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh prepare-data` | Copies SA-1B, SA-V, and COCO smoke subsets under `data/edgetam_smoke`. |
+| Data validation | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-data` | Decodes capped image/frame subsets and checks paths. |
+| TinyViT metadata | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh probe-tinyvit` | Reports TinyViT feature reductions/channels using known metadata for default model. |
+| EdgeTAM config | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh write-config` | Writes `runs/edgetam_smoke/configs/edgetam_tinyvit21m.yaml`. |
+| Training config validation | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh validate-train-config` | Loads `configs/edgetam/tinyvit_video_distill_smoke.yaml` and instantiates the nested SAM2 task + EdgeTAM distillation loss. |
+| Stage 1 feature smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh stage1-feature-smoke` | Real SA-1B images through TinyViT adapter, MSE/backward, checkpoint. GPU smoke passed. |
+| SA-V evaluator smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh sav-eval-smoke` | GT-as-pred identity smoke; official SAM2 evaluator passed with J&F/J/F 100.0. |
+| DAVIS-style VOS data | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh vos-style-data` | Packs real SA-V per-object masks into indexed DAVIS-style masks for generic VOS smoke. |
+| DAVIS-style VOS eval | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh vos-style-eval-smoke` | GT-as-pred indexed-mask identity smoke passed with mean object IoU 1.0. |
+| DAVIS 2017 data | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh davis-data` | Extracts a bounded subset directly from the official DAVIS 2017 trainval 480p zip. |
+| DAVIS 2017 eval | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh davis-eval-smoke` | GT-as-pred indexed-mask identity smoke passed on the real DAVIS subset. |
+| Video train shell | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh video-mask-train-smoke` | Real video clip loader, BCE+dice backward, checkpoint, and resume smoke passed. |
+| EdgeTAM distillation loss smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-distill-loss-smoke` | Official SAM2 multi-step task loss plus image/memory distillation backward passed. |
+| Full SAM2 trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-smoke` | Runs upstream `training.trainer.Trainer` on the real VOS smoke subset with synthetic teacher features. 2-frame and 8-frame GPU smokes passed. |
+| Full trainer resume smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-resume-smoke` | Runs epoch 1 then resumes to epoch 2 in one Slurm allocation; checkpoint resume passed. |
+| Official EdgeTAM image smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke` | Passed with the existing official EdgeTAM checkpoint on one COCO smoke image. |
+| Official EdgeTAM image benchmark | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark` | Passed with A100 image predictor latency/FPS/peak-memory summary. |
+| Official EdgeTAM VOS smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke` | Passed with official EdgeTAM checkpoint on the SA-V smoke video. |
+| Official EdgeTAM SA-V eval | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval` | Passed on existing `edgetam_vos_pred` with official SAM2 SA-V evaluator. |
+
+## Code Modules
+
+| Module | Purpose |
+| --- | --- |
+| `sam2_distill.models.tinyvit_adapter` | TinyViT feature adapter that emits SAM2 Stage 1 targets. |
+| `sam2_distill.edgetam.config` | Generates EdgeTAM TinyViT YAML from timm feature metadata. |
+| `sam2_distill.edgetam.timm_backbone` | SAM2-compatible timm feature wrapper with offline smoke support and optional local checkpoint path. |
+| `sam2_distill.edgetam.train_model` | SAM2Train subclass exposing `distill_F16` and `distill_F_M`. |
+| `sam2_distill.edgetam.teacher_features` | Attaches detached teacher feature tensors to SAM2 per-frame outputs. |
+| `sam2_distill.edgetam.distillation_losses` | Adds EdgeTAM image/memory MSE distillation to SAM2 task loss. |
+| `configs/edgetam/tinyvit_video_distill_smoke.yaml` | Minimal full-trainer Hydra config for TinyViT video distillation smoke/adaptation. |
+| `tools/edgetam/validate_training_config.py` | Validates Hydra target paths and nested loss instantiation. |
+| `tools/train/smoke_stage1_features.py` | Minimal real-image feature training smoke. |
+| `tools/eval/sav_identity_smoke.py` | SA-V prediction layout and official evaluator smoke. |
+| `tools/eval/run_edgetam_vos_smoke.py` | Thin wrapper around official EdgeTAM `tools/vos_inference.py`. |
+| `tools/eval/run_edgetam_image_smoke.py` | Thin wrapper around official EdgeTAM image predictor API. |
+| `tools/eval/run_sav_evaluator.py` | Thin wrapper for official SAM2 `sav_evaluator.py` on existing predictions. |
+| `tools/benchmark/benchmark_edgetam_image_predictor.py` | Official EdgeTAM image predictor latency/FPS/peak-memory benchmark. |
+| `tools/data/make_vos_smoke_subset.py` | Builds bounded DAVIS-style VOS subsets, including SA-V per-object to packed-mask conversion. |
+| `tools/eval/vos_identity_smoke.py` | DAVIS-style indexed-mask identity prediction and object IoU sanity check. |
+| `tools/train/smoke_video_masks.py` | Lightweight real-video training shell smoke with checkpoint resume. |
+
+## Current Smoke Results
+
+The authoritative table is `docs/experiments/edgetam_smoke.md`.
+
+- Data subset validation passed for SA-1B 400 images, SA-V 461 frames, and COCO 500 images.
+- TinyViT config metadata passed for reductions `[4, 8, 16, 32]` and channels `[96, 192, 384, 576]`.
+- SA-V identity evaluator smoke passed with official SAM2 evaluator.
+- DAVIS-style VOS layout smoke passed on real SA-V frames packed to indexed PNG masks.
+- DAVIS 2017 trainval 480p smoke passed on 2 videos / 120 frames; the 795MB archive was removed after extracting a 21MB subset.
+- Video mask train shell smoke passed on 4 real VOS clips and resumed from `last.pt`.
+- Training config validation passed: Hydra instantiated `EdgeTAMMultiStepDistillationLoss` wrapping official `MultiStepMultiMasksAndIous`.
+- Training model instantiate validation passed: Hydra instantiated `EdgeTAMTrainWithTeacher` with the repo-owned TinyViT backbone, 30,007,218 parameters.
+- EdgeTAM distillation loss smoke passed: official SAM2 task loss plus `loss_img_distill` and `loss_mem_distill` produced gradients for mask, IoU, object-score, F16, and memory features.
+- Full upstream SAM2 trainer smoke passed on PACE:
+  - `10669421`: `gpu-rtx6000`, `embers`, completed in 36s.
+  - Real SA-V-derived VOS smoke batch, 2 sampled frames, upstream `Trainer`, TinyViT EdgeTAM model, synthetic teacher features, optimizer step, TensorBoard/log/checkpoint directories.
+  - Earlier jobs `10669402` and `10669391` failed before `pandas` was added to the smoke environment; `pandas>=2.2` is now in `requirements-edgetam.txt`.
+- Full trainer checkpoint resume smoke passed:
+  - `10669524`: `gpu-rtx6000`, `embers`, completed in 55s.
+  - In one allocation, wrote an epoch-1 checkpoint, resumed, and advanced to checkpoint epoch 2 / train step 2.
+- 8-frame full trainer smoke passed:
+  - `10669637`: `gpu-rtx6000`, `embers`, completed in 36s.
+  - Real SA-V-derived VOS smoke batch, 8 sampled frames at 1024px, upstream `Trainer`, TinyViT EdgeTAM model, synthetic teacher features, optimizer step, checkpoint epoch 1 / train step 1.
+  - Used `image_encoder_forward_batch_size=1` and `image_encoder_activation_checkpoint=true`.
+  - Non-checkpointed 8-frame RTX 6000 job `10669444` failed with CUDA OOM, so the checkpointed image encoder path is the PACE low-memory smoke path.
+- Existing official EdgeTAM checkpoint found at `/storage/project/r-agarg35-0/eliu354/projects/efficientsam3-benchmark/external/EdgeTAM/checkpoints/edgetam.pt`.
+- Official EdgeTAM checkpoint metadata smoke passed: `torch.load(..., weights_only=True)` found a `model` state dict with 982 tensors and `edgetam.yaml` exists.
+- Stage 1 feature train smoke passed on PACE:
+  - `10669130`: `gpu-a100`, `embers`, completed in 52s.
+  - Real SA-1B smoke images flowed through TinyViT adapter, synthetic teacher feature targets, backward, AdamW step, and checkpoint writing.
+  - Duplicate pending jobs `10669025` and `10669030` were cancelled to avoid redundant smoke runs.
+- Official EdgeTAM image smoke passed on PACE:
+  - `10669202`: `gpu-a100`, `embers`, completed in 1m17s.
+  - Produced 3 masks on one COCO smoke image; best mask area was 455 pixels.
+- Official EdgeTAM image benchmark passed on PACE:
+  - `10669213`: `gpu-a100`, `embers`, completed in 32s.
+  - Mean latency 0.02787s, p95 0.03280s, mean FPS 35.88, peak memory 355.97MB.
+- Official EdgeTAM VOS smoke and evaluator passed:
+  - `10669147`: `gpu-a100`, `embers`, completed in 1m44s.
+  - Propagated one SA-V smoke video at about 40.5 iterations/s and wrote per-object masks.
+  - Official SA-V evaluator returned J&F 91.5, J 89.1, F 93.9 on `sav_011944`.
+  - Duplicate pending `gpu-l40s` job `10669187` was cancelled.
+
+## Remaining Work
+
+| Phase | Next implementation | Smoke validation |
+| --- | --- | --- |
+| Official baseline | Run official EdgeTAM checkpoint on the SA-V smoke subset. | SA-V smoke inference and official evaluator passed; extend to full SA-V/DAVIS/MOSE/YTVOS when full datasets are available. |
+| Image pretrain | Add the SAM2 image-task full trainer config beside the existing Stage 1 feature smoke. | 100-image SA-1B overfit or short smoke row. |
+| Video train | Replace synthetic teacher features in the full trainer smoke with frozen teacher/cache-backed features. | 2-frame full trainer, checkpoint resume, and 8-frame full trainer smokes passed. |
+| Progressive schedule | Replace lightweight progressive shell with full SAM2/EdgeTAM trainer wrappers once video trainer config is wired. | Lightweight 8/16/32-frame smoke passed with freeze/no-teacher/no-distill metadata. |
+| Full eval | Add MOSE/YTVOS wrappers beside SA-V and DAVIS. | Identity/layout smoke first, then official/model checkpoint smoke. |
