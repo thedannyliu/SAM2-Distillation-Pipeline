@@ -128,6 +128,10 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
   - `10669790`: `gpu-rtx6000`, `embers`, completed in 32s.
   - Used upstream `SA1BRawDataset` on 2 real SA-1B smoke images with up to 4 masks per image, `num_frames=1`, image distillation enabled, memory distillation disabled, and checkpointed epoch 1 / train step 2.
   - Earlier job `10669780` exposed an upstream EdgeTAM `PerceiverResampler.forward_2d` `expand().view()` bug for multi-object batches; `sam2_distill.edgetam.compat` patches that path to use `reshape`.
+- SA-1B image trainer larger-subset smoke passed:
+  - `10670233`: `gpu-rtx6000`, `embers`, completed in 49s.
+  - Used upstream `SA1BRawDataset` on 32 real SA-1B smoke images with up to 4 masks per image, `num_frames=1`, image distillation enabled, memory distillation disabled, and checkpointed epoch 1 / train step 32.
+  - The trainer ran the whole bounded file list; logged train loss moved from about 9.57 at step 0 to 8.05 at step 31, which is useful smoke evidence for Phase 3 data/trainer plumbing but not a final metric claim.
 - SA-1B image forward-cache trainer smoke passed:
   - `10669885`: `gpu-rtx6000`, `embers`, completed in 48s.
   - The cache step used `SA1BRawDataset` on 1 real image with up to 4 masks and wrote real-forward `teacher_distill_F16` / `teacher_distill_F_M` tensors with shape `[1, 4, 256, 64, 64]`.
@@ -188,7 +192,7 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
 | Phase | Next implementation | Smoke validation |
 | --- | --- | --- |
 | Official baseline | Run official EdgeTAM checkpoint on the SA-V smoke subset. | SA-V smoke inference, late-object flag path, and official evaluator passed; extend to full SA-V/DAVIS/MOSE/YTVOS when full datasets are available. |
-| Image pretrain | Swap the local Hiera Tiny smoke fallback for frozen SAM2.1-Hiera-B+/Large image teacher features and scale from 1-image cache smoke to 100-image overfit. | SA-1B single-frame image trainer smoke passed with synthetic targets; SA-1B image forward-cache trainer smoke passed with TinyViT smoke-model and checkpoint-loaded Hiera Tiny teacher cache tensors. |
+| Image pretrain | Swap the local Hiera Tiny smoke fallback for frozen SAM2.1-Hiera-B+/Large image teacher features and run a true 100-image overfit/debug curve when company GPUs are available. | SA-1B single-frame image trainer smoke passed on 2-image and 32-image real subsets with synthetic targets; SA-1B image forward-cache trainer smoke passed with TinyViT smoke-model and checkpoint-loaded Hiera Tiny teacher cache tensors. |
 | Video train | Swap the local Hiera Tiny smoke fallback for frozen SAM2.1-Hiera-L teacher config/weights in `cache_edgetam_teacher_features.py`. | 2-frame full trainer, checkpoint resume, 8-frame low-memory trainer, deterministic-cache trainer, TinyViT real-forward-cache trainer, and checkpoint-loaded Hiera Tiny teacher-cache trainer smokes passed. |
 | Progressive schedule | Run full-size `8/16/32` progressive phases on company GPUs after teacher/weights are finalized. | Scaled full upstream Trainer `2/4/8` progressive smoke passed; lightweight 8/16/32 shell smoke also passed. |
 | Full eval | Point the generic VOS dataset wrapper at MOSE/YTVOS when those datasets are available locally. | SA-V per-object eval, DAVIS packed-mask eval, generic indexed-mask layout smoke, and the YTVOS/LVOS late-object flag path passed on bounded real data; real MOSE/YTVOS dataset smoke remains pending. |
