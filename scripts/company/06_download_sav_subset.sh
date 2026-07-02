@@ -3,7 +3,8 @@ set -euo pipefail
 
 SAV_ROOT="${SAV_ROOT:-/group-volume/danny-dataset/SA-V}"
 SAV_URL_LIST="${SAV_URL_LIST:-${SAV_ROOT}/manifests/sav_download_urls.txt}"
-SAV_LINK_URL="${SAV_LINK_URL:-}"
+DEFAULT_SAV_LINK_URL="https://scontent-atl3-3.xx.fbcdn.net/m1/v/t6/An-njBc2M67ccobCOmd1fazC7fyC7aAPok19RCKBztvMXLPRK7AcAcya6fCJkYUIs-I_Qzp29deRSsnkN0C_T0Yvk3yjMdg0PGMiwVB6Qa7EDYb2.txt?_nc_gid=uqdK-mFhKk_sF3lbnwTryA&_nc_oc=Adp7zfeanqQs2lbnLXbtT15QYJj304D480-PFxGAMnw6RNdy6VbPDZ_sVKtNuhEPAEk&ccb=10-5&oh=00_AQA-4SCaEuKOP8Iz1FmZxKxpVSxtfmO1u_KG08L76gg6eQ&oe=6A6E2A18&_nc_sid=7b5a27"
+SAV_LINK_URL="${SAV_LINK_URL:-${DEFAULT_SAV_LINK_URL}}"
 REFRESH_SAV_URL_LIST="${REFRESH_SAV_URL_LIST:-0}"
 RAW_ROOT="${SAV_RAW_ROOT:-${SAV_ROOT}/_downloads_300g}"
 METADATA_ROOT="${SAV_METADATA_ROOT:-${SAV_ROOT}/manifests}"
@@ -11,6 +12,7 @@ DONE_ROOT="${SAV_DONE_ROOT:-${METADATA_ROOT}/download_extract_done_300g}"
 BUDGET_GB="${SAV_BUDGET_GB:-300}"
 KEEP_ARCHIVES="${KEEP_ARCHIVES:-0}"
 DRY_RUN="${DRY_RUN:-0}"
+SHOW_URLS="${SHOW_URLS:-0}"
 
 usage() {
   cat <<'EOF'
@@ -18,8 +20,9 @@ Usage:
   scripts/company/06_download_sav_subset.sh
 
 Required:
-  Accept Meta's SA-V dataset terms, then either set SAV_LINK_URL to the current
-  signed fbcdn .txt link-list URL or save the current signed URL list at:
+  Accept Meta's SA-V dataset terms. The script has a default signed fbcdn .txt
+  link-list URL, and you can override it with SAV_LINK_URL when it expires.
+  Alternatively, save the current signed URL list at:
     /group-volume/danny-dataset/SA-V/manifests/sav_download_urls.txt
 
 Default behavior:
@@ -35,7 +38,7 @@ Default behavior:
 Environment overrides:
   SAV_ROOT=/group-volume/danny-dataset/SA-V
   SAV_URL_LIST=$SAV_ROOT/manifests/sav_download_urls.txt
-  SAV_LINK_URL=                         # optional signed fbcdn .txt URL
+  SAV_LINK_URL=$DEFAULT_SAV_LINK_URL    # override with a refreshed signed fbcdn .txt URL
   REFRESH_SAV_URL_LIST=0                # set 1 to replace SAV_URL_LIST from SAV_LINK_URL
   SAV_RAW_ROOT=$SAV_ROOT/_downloads_300g
   SAV_METADATA_ROOT=$SAV_ROOT/manifests
@@ -43,12 +46,12 @@ Environment overrides:
   SAV_BUDGET_GB=300
   KEEP_ARCHIVES=0
   DRY_RUN=0
+  SHOW_URLS=0                           # set 1 to print signed archive URLs during dry-run
 
 Examples:
-  SAV_LINK_URL='<current fbcdn .txt URL>' REFRESH_SAV_URL_LIST=1 DRY_RUN=1 scripts/company/06_download_sav_subset.sh
-  SAV_LINK_URL='<current fbcdn .txt URL>' REFRESH_SAV_URL_LIST=1 SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
-  DRY_RUN=1 scripts/company/06_download_sav_subset.sh
-  SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
+  REFRESH_SAV_URL_LIST=1 DRY_RUN=1 scripts/company/06_download_sav_subset.sh
+  REFRESH_SAV_URL_LIST=1 SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
+  SAV_LINK_URL='<refreshed fbcdn .txt URL>' REFRESH_SAV_URL_LIST=1 DRY_RUN=1 scripts/company/06_download_sav_subset.sh
   KEEP_ARCHIVES=1 SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
 EOF
 }
@@ -66,9 +69,9 @@ fi
 
 if [[ ! -f "${SAV_URL_LIST}" && -n "${SAV_LINK_URL}" ]]; then
   echo "download SA-V link list to ${SAV_URL_LIST}"
-  if command -v wget >/dev/null 2>&1 && wget -O "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
+  if command -v wget >/dev/null 2>&1 && wget -q -O "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
     :
-  elif command -v curl >/dev/null 2>&1 && curl -L --fail --retry 5 -o "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
+  elif command -v curl >/dev/null 2>&1 && curl -L --fail --retry 5 --silent --show-error -o "${SAV_URL_LIST}" "${SAV_LINK_URL}"; then
     :
   else
     echo "Need wget or curl to download SAV_LINK_URL." >&2
@@ -85,7 +88,7 @@ Visit https://ai.meta.com/datasets/segment-anything-video-downloads/,
 accept the dataset terms, then either set:
   SAV_LINK_URL='<current signed fbcdn .txt URL>'
 or paste the current signed download URLs into the file above.
-Do not commit signed URLs to git.
+Replace DEFAULT_SAV_LINK_URL or override SAV_LINK_URL when the default expires.
 EOF
   exit 2
 fi
@@ -134,7 +137,7 @@ def parse_line(raw):
 
 def priority(item):
     filename, url = item
-    key = f"{filename} {url}".lower()
+    key = filename.lower()
     if "val" in key:
         return (0, filename)
     if "test" in key:
@@ -268,8 +271,12 @@ PY
 } | tee "${PROVENANCE_FILE}"
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
-  echo "DRY_RUN=1; first selected URLs:"
-  sed -n '1,20p' "${CLEAN_URL_LIST}"
+  echo "DRY_RUN=1; first selected archives:"
+  if [[ "${SHOW_URLS}" -eq 1 ]]; then
+    sed -n '1,20p' "${CLEAN_URL_LIST}"
+  else
+    cut -f1 "${CLEAN_URL_LIST}" | sed -n '1,20p'
+  fi
   usage_human="$(du -sh "${SAV_ROOT}" 2>/dev/null | awk '{print $1}')"
   echo "Current usage: ${usage_human:-0}"
   exit 0
