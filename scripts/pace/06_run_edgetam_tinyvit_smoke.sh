@@ -39,6 +39,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-forward-cache-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-export-checkpoint-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
@@ -92,7 +93,7 @@ probe_tinyvit() {
 
 write_config() {
   python "${ROOT}/tools/edgetam/write_tinyvit_edgetam_config.py" \
-    --out "${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml"
+    --out "${EDGETAM_CONFIG_OUT:-${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml}"
 }
 
 validate_train_config() {
@@ -354,6 +355,22 @@ edgetam_image_forward_cache_smoke() {
   edgetam_image_trainer_smoke
 }
 
+edgetam_export_checkpoint_smoke() {
+  local out_dir="${EDGETAM_EXPORT_SMOKE_OUT_DIR:-${SMOKE_ROOT}/edgetam_export_checkpoint_smoke}"
+  local config="${EDGETAM_EXPORT_MODEL_CONFIG:-${SMOKE_ROOT}/configs/edgetam_tinyvit21m.yaml}"
+  local checkpoint="${EDGETAM_EXPORT_TRAINER_CHECKPOINT:-${SMOKE_ROOT}/edgetam_vos_hiera_tiny_cache_trainer_smoke/checkpoints/checkpoint.pt}"
+  if [[ ! -f "${config}" ]]; then
+    EDGETAM_CONFIG_OUT="${config}" write_config
+  fi
+  python "${ROOT}/tools/edgetam/export_trainer_checkpoint.py" \
+    --checkpoint "${checkpoint}" \
+    --out "${out_dir}/model.pt" \
+    --model-config "${config}" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --sam2-training-root "${SAM2_TRAINING_ROOT}" \
+    --summary "${out_dir}/summary.json"
+}
+
 edgetam_progressive_full_trainer_smoke() {
   local frames_list="${EDGETAM_PROGRESSIVE_FULL_FRAMES:-2 4 8}"
   local idx=0
@@ -524,6 +541,9 @@ case "${1:-}" in
     ;;
   edgetam-image-forward-cache-smoke)
     edgetam_image_forward_cache_smoke
+    ;;
+  edgetam-export-checkpoint-smoke)
+    edgetam_export_checkpoint_smoke
     ;;
   edgetam-progressive-full-trainer-smoke)
     edgetam_progressive_full_trainer_smoke

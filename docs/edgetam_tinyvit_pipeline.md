@@ -286,6 +286,20 @@ memory distillation enabled; later phases set `freeze_image_encoder=true` and
 For company runs, set `EDGETAM_PROGRESSIVE_FULL_FRAMES="8 16 32"` after the
 teacher cache/weights path is finalized.
 
+Export an upstream `Trainer` checkpoint to a model-only checkpoint for
+inference/eval with:
+
+```bash
+EDGETAM_EXPORT_TRAINER_CHECKPOINT=/path/to/run/checkpoints/checkpoint.pt \
+EDGETAM_EXPORT_MODEL_CONFIG=/path/to/edgetam_tinyvit21m.yaml \
+EDGETAM_EXPORT_SMOKE_OUT_DIR=/path/to/export_dir \
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-export-checkpoint-smoke
+```
+
+The export writes `model.pt` in SAM2/EdgeTAM `{"model": state_dict}` format and
+strict-loads it against the model-only YAML. This is the bridge from training
+checkpoints to official-style eval or deployment scripts.
+
 ## Smoke Train/Eval Entry Points
 
 Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the
