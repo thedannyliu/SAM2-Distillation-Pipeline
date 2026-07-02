@@ -19,7 +19,7 @@ finetune: freeze all modules except image_encoder
 The TinyViT trunk starts from the open-source timm/Hugging Face checkpoint at:
 
 ```text
-/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
+/group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 ```
 
 Run inside the company PyTorch container on one H100:
@@ -65,7 +65,7 @@ as `/group-volume/danny-dataset/SA-V/train/annotations`.
 Outputs:
 
 ```text
-/danny-dataset/sam2_distill/runs/sav000_tinyvit_image_encoder_1h100
+/group-volume/danny-dataset/sam2_distill/runs/sav000_tinyvit_image_encoder_1h100
   checkpoints/checkpoint.pt
   config_resolved.yaml
   runtime_warmup.json

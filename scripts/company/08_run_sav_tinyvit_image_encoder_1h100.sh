@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-DATA_ROOT="${DATA_ROOT:-/danny-dataset}"
+DATA_ROOT="${DATA_ROOT:-/group-volume/danny-dataset}"
 SAV_DATA_ROOT="${SAV_DATA_ROOT:-/group-volume/danny-dataset}"
 SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 SAV_SHARD_ROOT="${SAV_SHARD_ROOT:-${SAV_DATA_ROOT}/SA-V/sav_000}"
