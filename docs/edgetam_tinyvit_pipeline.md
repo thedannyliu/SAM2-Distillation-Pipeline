@@ -62,18 +62,21 @@ Set `SAM2_REF` and `EDGETAM_REF` to pin exact commits for reproducible runs.
 Use the official Meta SA-V download page:
 `https://ai.meta.com/datasets/segment-anything-video-downloads/`. SA-V
 download links require accepting Meta's dataset terms and are usually
-time-limited. Do not commit signed URLs. Save the current URL list on the
-company data volume:
+time-limited. Do not commit signed URLs. Either pass the current signed fbcdn
+`.txt` link-list URL through `SAV_LINK_URL`, or save the expanded URL list on
+the company data volume:
 
 ```bash
 export SAV_ROOT=/group-volume/danny-dataset/SA-V
 export SAV_URL_LIST=$SAV_ROOT/manifests/sav_download_urls.txt
+export SAV_LINK_URL='<current signed fbcdn .txt URL from Meta>'
 export SAV_RAW_ROOT=$SAV_ROOT/_downloads_300g
 export SAV_BUDGET_GB=300
 
 mkdir -p "$SAV_ROOT/manifests" "$SAV_RAW_ROOT"
-# Paste the official SA-V download URLs into:
-#   /group-volume/danny-dataset/SA-V/manifests/sav_download_urls.txt
+# Option A: let the script download the official URL list from SAV_LINK_URL.
+# Option B: manually paste the official SA-V archive URLs into:
+#   $SAV_URL_LIST
 ```
 
 Download order for a bounded company pilot:
@@ -88,8 +91,15 @@ Download order for a bounded company pilot:
 Use the company helper script to enforce the budget, download, and extract:
 
 ```bash
-DRY_RUN=1 scripts/company/06_download_sav_subset.sh
-SAV_BUDGET_GB=300 scripts/company/06_download_sav_subset.sh
+SAV_LINK_URL='<current signed fbcdn .txt URL from Meta>' \
+REFRESH_SAV_URL_LIST=1 \
+DRY_RUN=1 \
+scripts/company/06_download_sav_subset.sh
+
+SAV_LINK_URL='<current signed fbcdn .txt URL from Meta>' \
+REFRESH_SAV_URL_LIST=1 \
+SAV_BUDGET_GB=300 \
+scripts/company/06_download_sav_subset.sh
 ```
 
 If the official page provides archive sizes, select a URL subset that leaves
