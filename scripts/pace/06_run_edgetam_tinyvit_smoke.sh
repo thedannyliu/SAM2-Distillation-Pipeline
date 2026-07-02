@@ -38,6 +38,7 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-teacher-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh progressive-video-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark
@@ -184,11 +185,22 @@ edgetam_distill_loss_smoke() {
 edgetam_full_trainer_smoke() {
   local activation_checkpoint_args=()
   local teacher_cache_args=()
+  local freeze_args=()
+  local lambda_args=()
   if [[ "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT:-0}" == "1" ]]; then
     activation_checkpoint_args=(--image-encoder-activation-checkpoint)
   fi
   if [[ -n "${EDGETAM_TRAINER_SMOKE_TEACHER_CACHE:-}" ]]; then
     teacher_cache_args=(--teacher-feature-cache "${EDGETAM_TRAINER_SMOKE_TEACHER_CACHE}")
+  fi
+  if [[ "${EDGETAM_TRAINER_SMOKE_FREEZE_IMAGE_ENCODER:-0}" == "1" ]]; then
+    freeze_args=(--freeze-image-encoder)
+  fi
+  if [[ -n "${EDGETAM_TRAINER_SMOKE_LAMBDA_IMG:-}" ]]; then
+    lambda_args+=(--lambda-img "${EDGETAM_TRAINER_SMOKE_LAMBDA_IMG}")
+  fi
+  if [[ -n "${EDGETAM_TRAINER_SMOKE_LAMBDA_MEM:-}" ]]; then
+    lambda_args+=(--lambda-mem "${EDGETAM_TRAINER_SMOKE_LAMBDA_MEM}")
   fi
   python "${ROOT}/tools/train/run_edgetam_trainer_smoke.py" \
     --config "${ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml" \
@@ -201,6 +213,8 @@ edgetam_full_trainer_smoke() {
     --max-num-objects "${EDGETAM_TRAINER_SMOKE_OBJECTS:-1}" \
     --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
     "${activation_checkpoint_args[@]}" \
+    "${freeze_args[@]}" \
+    "${lambda_args[@]}" \
     "${teacher_cache_args[@]}"
 }
 
@@ -280,6 +294,36 @@ edgetam_image_trainer_smoke() {
     --max-num-objects "${EDGETAM_IMAGE_TRAINER_SMOKE_OBJECTS:-4}" \
     --image-encoder-forward-batch-size "${EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH:-0}" \
     "${activation_checkpoint_args[@]}"
+}
+
+edgetam_progressive_full_trainer_smoke() {
+  local frames_list="${EDGETAM_PROGRESSIVE_FULL_FRAMES:-2 4 8}"
+  local idx=0
+  for frames in ${frames_list}; do
+    idx=$((idx + 1))
+    local out_dir="${SMOKE_ROOT}/edgetam_progressive_full_trainer_smoke/phase_${idx}_${frames}f"
+    if [[ "${idx}" == "1" ]]; then
+      EDGETAM_TRAINER_SMOKE_OUT_DIR="${out_dir}" \
+      EDGETAM_TRAINER_SMOKE_FRAMES="${frames}" \
+      EDGETAM_TRAINER_SMOKE_OBJECTS="${EDGETAM_PROGRESSIVE_FULL_OBJECTS:-1}" \
+      EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH="${EDGETAM_PROGRESSIVE_FULL_IMAGE_ENCODER_BATCH:-1}" \
+      EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT="${EDGETAM_PROGRESSIVE_FULL_IMAGE_ENCODER_CKPT:-1}" \
+      EDGETAM_TRAINER_SMOKE_FREEZE_IMAGE_ENCODER=0 \
+      EDGETAM_TRAINER_SMOKE_LAMBDA_IMG="${EDGETAM_PROGRESSIVE_FULL_LAMBDA_IMG_PHASE1:-0.5}" \
+      EDGETAM_TRAINER_SMOKE_LAMBDA_MEM="${EDGETAM_PROGRESSIVE_FULL_LAMBDA_MEM_PHASE1:-0.25}" \
+      edgetam_full_trainer_smoke
+    else
+      EDGETAM_TRAINER_SMOKE_OUT_DIR="${out_dir}" \
+      EDGETAM_TRAINER_SMOKE_FRAMES="${frames}" \
+      EDGETAM_TRAINER_SMOKE_OBJECTS="${EDGETAM_PROGRESSIVE_FULL_OBJECTS:-1}" \
+      EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_BATCH="${EDGETAM_PROGRESSIVE_FULL_IMAGE_ENCODER_BATCH:-1}" \
+      EDGETAM_TRAINER_SMOKE_IMAGE_ENCODER_CKPT="${EDGETAM_PROGRESSIVE_FULL_IMAGE_ENCODER_CKPT:-1}" \
+      EDGETAM_TRAINER_SMOKE_FREEZE_IMAGE_ENCODER=1 \
+      EDGETAM_TRAINER_SMOKE_LAMBDA_IMG=0 \
+      EDGETAM_TRAINER_SMOKE_LAMBDA_MEM=0 \
+      edgetam_full_trainer_smoke
+    fi
+  done
 }
 
 progressive_video_smoke() {
@@ -406,6 +450,9 @@ case "${1:-}" in
     ;;
   edgetam-image-trainer-smoke)
     edgetam_image_trainer_smoke
+    ;;
+  edgetam-progressive-full-trainer-smoke)
+    edgetam_progressive_full_trainer_smoke
     ;;
   progressive-video-smoke)
     progressive_video_smoke

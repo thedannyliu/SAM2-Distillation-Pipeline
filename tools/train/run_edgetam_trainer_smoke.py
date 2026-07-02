@@ -32,6 +32,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sa1b-max-items", type=int, default=2)
     parser.add_argument("--image-encoder-forward-batch-size", type=int, default=0)
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
+    parser.add_argument("--freeze-image-encoder", action="store_true")
+    parser.add_argument("--lambda-img", type=float)
+    parser.add_argument("--lambda-mem", type=float)
     parser.add_argument("--teacher-feature-cache", type=Path)
     parser.add_argument("--seed", type=int, default=250107256)
     return parser.parse_args()
@@ -135,6 +138,11 @@ def main() -> None:
         args.image_encoder_forward_batch_size if args.image_encoder_forward_batch_size > 0 else None
     )
     cfg.trainer.model.image_encoder_activation_checkpoint = args.image_encoder_activation_checkpoint
+    cfg.trainer.model.freeze_image_encoder = args.freeze_image_encoder
+    if args.lambda_img is not None:
+        cfg.trainer.loss.all.lambda_img = args.lambda_img
+    if args.lambda_mem is not None:
+        cfg.trainer.loss.all.lambda_mem = args.lambda_mem
     if args.teacher_feature_cache is not None:
         cfg.trainer.model.synthetic_teacher = False
         cfg.trainer.model.teacher_feature_cache_path = str(args.teacher_feature_cache)
@@ -168,6 +176,9 @@ def main() -> None:
         "sa1b_max_items": args.sa1b_max_items if args.dataset_mode == "sa1b-image" else None,
         "image_encoder_forward_batch_size": args.image_encoder_forward_batch_size,
         "image_encoder_activation_checkpoint": args.image_encoder_activation_checkpoint,
+        "freeze_image_encoder": args.freeze_image_encoder,
+        "lambda_img": float(cfg.trainer.loss.all.lambda_img),
+        "lambda_mem": float(cfg.trainer.loss.all.lambda_mem),
         "teacher_feature_cache": str(args.teacher_feature_cache) if args.teacher_feature_cache else None,
         "seed": args.seed,
         "checkpoint_before": checkpoint_before,

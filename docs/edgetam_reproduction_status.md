@@ -35,6 +35,7 @@ is the concise engineering runbook.
 | Teacher forward cache smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-teacher-cache-smoke` | Instantiates `EdgeTAMTrain`, runs a no-grad real forward on a VOS smoke batch, and writes frame-major teacher feature cache tensors. |
 | Full trainer forward-cache smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-full-trainer-forward-cache-smoke` | Writes teacher cache from a real smoke-model forward, then consumes it in the upstream `Trainer`. |
 | Image trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-trainer-smoke` | Runs upstream `Trainer` on real SA-1B smoke images/JSON masks as single-frame image pretraining. |
+| Progressive full trainer smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-progressive-full-trainer-smoke` | Runs scaled progressive 2/4/8-frame phases through upstream `Trainer`, freezing the image encoder and disabling distillation after phase 1. |
 | Official EdgeTAM image smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-smoke` | Passed with the existing official EdgeTAM checkpoint on one COCO smoke image. |
 | Official EdgeTAM image benchmark | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark` | Passed with A100 image predictor latency/FPS/peak-memory summary. |
 | Official EdgeTAM VOS smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke` | Passed with official EdgeTAM checkpoint on the SA-V smoke video. |
@@ -103,6 +104,11 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
   - `10669790`: `gpu-rtx6000`, `embers`, completed in 32s.
   - Used upstream `SA1BRawDataset` on 2 real SA-1B smoke images with up to 4 masks per image, `num_frames=1`, image distillation enabled, memory distillation disabled, and checkpointed epoch 1 / train step 2.
   - Earlier job `10669780` exposed an upstream EdgeTAM `PerceiverResampler.forward_2d` `expand().view()` bug for multi-object batches; `sam2_distill.edgetam.compat` patches that path to use `reshape`.
+- Progressive full trainer smoke passed:
+  - `10669805`: `gpu-rtx6000`, `embers`, completed in 1m13s.
+  - Ran scaled phases `2/4/8` frames on the real VOS smoke subset through upstream `Trainer`.
+  - Phase 1 used image/memory distillation weights `0.5/0.25`; phases 2 and 3 set `freeze_image_encoder=true` and `lambda_img=lambda_mem=0`.
+  - Each phase checkpointed epoch 1 / train step 1.
 - Existing official EdgeTAM checkpoint found at `/storage/project/r-agarg35-0/eliu354/projects/efficientsam3-benchmark/external/EdgeTAM/checkpoints/edgetam.pt`.
 - Official EdgeTAM checkpoint metadata smoke passed: `torch.load(..., weights_only=True)` found a `model` state dict with 982 tensors and `edgetam.yaml` exists.
 - Stage 1 feature train smoke passed on PACE:
@@ -128,5 +134,5 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
 | Official baseline | Run official EdgeTAM checkpoint on the SA-V smoke subset. | SA-V smoke inference and official evaluator passed; extend to full SA-V/DAVIS/MOSE/YTVOS when full datasets are available. |
 | Image pretrain | Replace synthetic image teacher targets with frozen SAM2.1-Hiera-B+/Large image teacher features and scale from 2-image smoke to 100-image overfit. | SA-1B single-frame image trainer smoke passed with 4 masks/image and image distillation loss. |
 | Video train | Swap the smoke teacher config for frozen SAM2.1-Hiera-L teacher config/weights in `cache_edgetam_teacher_features.py`. | 2-frame full trainer, checkpoint resume, 8-frame low-memory trainer, deterministic-cache trainer, and real-forward-cache trainer smokes passed. |
-| Progressive schedule | Replace lightweight progressive shell with full SAM2/EdgeTAM trainer wrappers once video trainer config is wired. | Lightweight 8/16/32-frame smoke passed with freeze/no-teacher/no-distill metadata. |
+| Progressive schedule | Run full-size `8/16/32` progressive phases on company GPUs after teacher/weights are finalized. | Scaled full upstream Trainer `2/4/8` progressive smoke passed; lightweight 8/16/32 shell smoke also passed. |
 | Full eval | Add MOSE/YTVOS wrappers beside SA-V and DAVIS. | Identity/layout smoke first, then official/model checkpoint smoke. |

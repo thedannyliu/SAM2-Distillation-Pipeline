@@ -223,6 +223,20 @@ directory so smoke jobs do not iterate over the full local subset.
 `expand().reshape()`. The patch is applied when `EdgeTAMTrain` is imported and
 is required for image batches with more than one mask/object.
 
+Run the scaled full-trainer progressive schedule smoke with:
+
+```bash
+TASK=edgetam-progressive-full-trainer-smoke \
+EDGETAM_PROGRESSIVE_FULL_FRAMES="2 4 8" \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+The smoke uses the upstream `Trainer` for each phase. Phase 1 keeps image and
+memory distillation enabled; later phases set `freeze_image_encoder=true` and
+`lambda_img=lambda_mem=0`, matching the EdgeTAM fine-tuning rule at smoke scale.
+For company runs, set `EDGETAM_PROGRESSIVE_FULL_FRAMES="8 16 32"` after the
+teacher cache/weights path is finalized.
+
 ## Smoke Train/Eval Entry Points
 
 Stage 1 feature smoke uses real SA-1B smoke images, forwards them through the
