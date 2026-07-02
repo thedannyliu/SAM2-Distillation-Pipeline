@@ -193,9 +193,21 @@ lambda_l1  = 0.0
 lambda_cos = 0.0
 lambda_hr  = 1.0
 amp_dtype  = bf16
+projection_warmup_steps = 2000
+lr_warmup_steps         = 2000
+max_grad_norm           = 1.0
 ```
 
 So the objective is MSE on final image embedding plus MSE on high-resolution features. To train only the final image embedding, set `--lambda-hr 0.0` when calling `tools/train/train_stage1.py` directly.
+
+Stability settings:
+
+```text
+projection warmup: freeze TinyViT backbone, train only 1x1 projection heads first
+LR warmup:         linearly increase LR to the target LR
+gradient clip:    clip trainable parameter grad norm
+nonfinite loss:   error by default so failed runs stop visibly
+```
 
 Start training:
 
@@ -204,6 +216,9 @@ export GPUS=0,1,2,3,4,5,6,7
 export BATCH_SIZE=8
 export NUM_WORKERS=12
 export MAX_STEPS=100000
+export PROJECTION_WARMUP_STEPS=2000
+export LR_WARMUP_STEPS=2000
+export MAX_GRAD_NORM=1.0
 export EVAL_EVERY=1000
 export SAVE_EVERY=5000
 export WANDB_PROJECT=sam2-distill-stage1
@@ -239,8 +254,12 @@ loss_stage1_total
 loss_image_mse
 loss_high_res_mse
 train/sec_per_step
+train/backbone_trainable
+train/grad_norm
 val/loss_stage1_total
 ```
+
+During projection warmup, `train/backbone_trainable` is `0`. After `PROJECTION_WARMUP_STEPS`, it switches to `1` and the TinyViT backbone starts training with the projection heads.
 
 ## 7. Resume
 
@@ -265,6 +284,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --standalone --nproc-per-node 8 \
     --batch-size 8 \
     --num-workers 12 \
     --max-steps 100000 \
+    --projection-warmup-steps 2000 \
+    --lr-warmup-steps 2000 \
+    --max-grad-norm 1.0 \
     --lambda-mse 1.0 \
     --lambda-l1 0.0 \
     --lambda-cos 0.0 \
@@ -281,6 +303,20 @@ export BATCH_SIZE=12      # if memory allows
 export NUM_WORKERS=16
 export CACHE_BATCH_SIZE=12
 export CACHE_NUM_WORKERS=12
+```
+
+If early loss is unstable, increase projection warmup before changing the model:
+
+```bash
+export PROJECTION_WARMUP_STEPS=5000
+export LR_WARMUP_STEPS=5000
+export MAX_GRAD_NORM=0.5
+```
+
+If training is stable and too slow to adapt, reduce projection warmup:
+
+```bash
+export PROJECTION_WARMUP_STEPS=500
 ```
 
 If data loading is the bottleneck, keep cache and images on `/group-volume/danny-dataset` and avoid reading from home or user-volume.

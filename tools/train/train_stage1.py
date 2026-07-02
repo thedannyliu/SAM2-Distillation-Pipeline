@@ -9,6 +9,7 @@ import os
 import time
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Iterable
 
 import pandas as pd
 import torch
@@ -40,6 +41,10 @@ def init_distributed() -> tuple[int, int, int, torch.device]:
 
 def is_main(rank: int) -> bool:
     return rank == 0
+
+
+def unwrap_model(model: nn.Module) -> nn.Module:
+    return model.module if hasattr(model, "module") else model
 
 
 def read_manifest(path: Path, split: str) -> pd.DataFrame:
@@ -117,6 +122,34 @@ def reduce_metrics(metrics: dict[str, torch.Tensor], world_size: int) -> dict[st
     return reduced
 
 
+def set_backbone_trainable(model: nn.Module, trainable: bool) -> None:
+    module = unwrap_model(model)
+    for param in module.backbone.parameters():
+        param.requires_grad_(trainable)
+
+
+def trainable_parameters(model: nn.Module) -> Iterable[nn.Parameter]:
+    return (param for param in model.parameters() if param.requires_grad)
+
+
+def set_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
+    for group in optimizer.param_groups:
+        group["lr"] = lr
+
+
+def lr_for_step(step: int, base_lr: float, warmup_steps: int) -> float:
+    if warmup_steps <= 0:
+        return base_lr
+    return base_lr * min(1.0, float(step + 1) / float(warmup_steps))
+
+
+def grad_norm(parameters: Iterable[nn.Parameter]) -> torch.Tensor:
+    grads = [param.grad.detach().float().norm(2) for param in parameters if param.grad is not None]
+    if not grads:
+        return torch.tensor(0.0)
+    return torch.linalg.vector_norm(torch.stack(grads), ord=2)
+
+
 def autocast_context(device: torch.device, amp_dtype: str):
     if device.type != "cuda" or amp_dtype == "none":
         return nullcontext()
@@ -170,15 +203,23 @@ def evaluate(
     return {f"val/{key}": value / max(count, 1) for key, value in totals.items()}
 
 
-def save_checkpoint(path: Path, model: nn.Module, optimizer: torch.optim.Optimizer, step: int, run_id: str | None) -> None:
+def save_checkpoint(
+    path: Path,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    step: int,
+    run_id: str | None,
+    args: argparse.Namespace,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    module = model.module if hasattr(model, "module") else model
+    module = unwrap_model(model)
     torch.save(
         {
             "step": step,
             "model_state": module.state_dict(),
             "optimizer_state": optimizer.state_dict(),
             "wandb_run_id": run_id,
+            "args": vars(args),
         },
         path,
     )
@@ -195,6 +236,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
+    parser.add_argument("--projection-warmup-steps", type=int, default=0)
+    parser.add_argument("--lr-warmup-steps", type=int, default=0)
+    parser.add_argument("--max-grad-norm", type=float, default=1.0)
+    parser.add_argument(
+        "--nonfinite-loss",
+        choices=("error", "skip"),
+        default="error",
+        help="How to handle non-finite losses.",
+    )
     parser.add_argument("--train-split", default="train")
     parser.add_argument("--val-split", default="val")
     parser.add_argument("--lambda-mse", type=float, default=1.0)
@@ -263,8 +313,14 @@ def main() -> None:
         start_step = int(ckpt["step"])
         wandb_run_id = wandb_run_id or ckpt.get("wandb_run_id")
 
+    initial_backbone_trainable = start_step >= args.projection_warmup_steps
+    set_backbone_trainable(model, initial_backbone_trainable)
     if world_size > 1:
-        model = DistributedDataParallel(model, device_ids=[device.index] if device.type == "cuda" else None)
+        model = DistributedDataParallel(
+            model,
+            device_ids=[device.index] if device.type == "cuda" else None,
+            find_unused_parameters=args.projection_warmup_steps > start_step,
+        )
 
     writer = SummaryWriter(str(tb_dir)) if is_main(rank) else None
     wandb_run = None
@@ -284,26 +340,49 @@ def main() -> None:
 
     step = start_step
     model.train()
+    backbone_is_trainable = initial_backbone_trainable
     while step < args.max_steps:
         if train_sampler is not None:
             train_sampler.set_epoch(step)
         for images, teacher in train_loader:
             if step >= args.max_steps:
                 break
+            should_train_backbone = step >= args.projection_warmup_steps
+            if should_train_backbone != backbone_is_trainable:
+                set_backbone_trainable(model, should_train_backbone)
+                backbone_is_trainable = should_train_backbone
+            current_lr = lr_for_step(step, args.lr, args.lr_warmup_steps)
+            set_lr(optimizer, current_lr)
             start_time = time.time()
             images = images.to(device, non_blocking=True)
             teacher = move_teacher(teacher, device)
             with autocast_context(device, args.amp_dtype):
                 student = model(images)
                 loss, metrics = compute_loss(student, teacher, args)
+            if not torch.isfinite(loss):
+                if args.nonfinite_loss == "skip":
+                    optimizer.zero_grad(set_to_none=True)
+                    step += 1
+                    continue
+                raise FloatingPointError(f"non-finite loss at step {step}: {loss.detach()}")
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
+            if args.max_grad_norm > 0:
+                clipped_grad_norm = torch.nn.utils.clip_grad_norm_(
+                    list(trainable_parameters(model)),
+                    max_norm=args.max_grad_norm,
+                )
+            else:
+                clipped_grad_norm = grad_norm(trainable_parameters(model))
             optimizer.step()
 
             reduced = reduce_metrics(metrics, world_size)
-            reduced["train/lr"] = optimizer.param_groups[0]["lr"]
+            reduced["train/lr"] = current_lr
             reduced["train/sec_per_step"] = time.time() - start_time
+            reduced["train/backbone_trainable"] = float(should_train_backbone)
+            reduced["train/projection_warmup_remaining"] = float(max(args.projection_warmup_steps - step, 0))
+            reduced["train/grad_norm"] = float(clipped_grad_norm.detach().float().cpu())
             if is_main(rank) and step % args.log_every == 0:
                 for key, value in reduced.items():
                     if writer:
@@ -321,11 +400,11 @@ def main() -> None:
                         wandb_run.log(val_metrics, step=step)
 
             if is_main(rank) and step > 0 and step % args.save_every == 0:
-                save_checkpoint(ckpt_dir / f"step_{step:07d}.pt", model, optimizer, step, wandb_run_id)
+                save_checkpoint(ckpt_dir / f"step_{step:07d}.pt", model, optimizer, step, wandb_run_id, args)
             step += 1
 
     if is_main(rank):
-        save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step, wandb_run_id)
+        save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step, wandb_run_id, args)
         if writer:
             writer.close()
         if wandb_run:

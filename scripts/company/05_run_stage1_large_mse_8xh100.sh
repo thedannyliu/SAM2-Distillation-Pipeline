@@ -18,6 +18,10 @@ NUM_WORKERS="${NUM_WORKERS:-12}"
 MAX_STEPS="${MAX_STEPS:-100000}"
 LR="${LR:-1e-4}"
 WEIGHT_DECAY="${WEIGHT_DECAY:-0.05}"
+PROJECTION_WARMUP_STEPS="${PROJECTION_WARMUP_STEPS:-2000}"
+LR_WARMUP_STEPS="${LR_WARMUP_STEPS:-2000}"
+MAX_GRAD_NORM="${MAX_GRAD_NORM:-1.0}"
+NONFINITE_LOSS="${NONFINITE_LOSS:-error}"
 SHARD_SIZE="${SHARD_SIZE:-512}"
 CACHE_BATCH_SIZE="${CACHE_BATCH_SIZE:-8}"
 CACHE_NUM_WORKERS="${CACHE_NUM_WORKERS:-8}"
@@ -49,6 +53,9 @@ Important environment overrides:
   RUN_DIR=/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_1pct_8xh100
   BATCH_SIZE=8
   MAX_STEPS=100000
+  PROJECTION_WARMUP_STEPS=2000
+  LR_WARMUP_STEPS=2000
+  MAX_GRAD_NORM=1.0
 EOF
 }
 
@@ -110,6 +117,10 @@ train() {
       --max-steps "${MAX_STEPS}" \
       --lr "${LR}" \
       --weight-decay "${WEIGHT_DECAY}" \
+      --projection-warmup-steps "${PROJECTION_WARMUP_STEPS}" \
+      --lr-warmup-steps "${LR_WARMUP_STEPS}" \
+      --max-grad-norm "${MAX_GRAD_NORM}" \
+      --nonfinite-loss "${NONFINITE_LOSS}" \
       --lambda-mse 1.0 \
       --lambda-l1 0.0 \
       --lambda-cos 0.0 \

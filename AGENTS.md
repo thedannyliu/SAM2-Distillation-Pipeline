@@ -151,6 +151,7 @@ Large-scale Stage 1 MSE speed run:
 - Default GPUs: `0,1,2,3,4,5,6,7`.
 - Default objective: MSE on final `image_embed` plus MSE on high-resolution SAM2 features, with L1 and cosine disabled.
 - Default train split is `train`; default validation split for SA-1B manifest is `val_sa1b`.
+- Default stability settings: 2000 projection-only warmup steps, 2000 LR warmup steps, bf16 AMP, and grad clipping at norm 1.0.
 
 Stage 1 data defaults:
 - Use a deterministic fixed 1% SA-1B image subset.
