@@ -48,6 +48,8 @@ Usage:
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-track-later-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-davis-vos-smoke
+  scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-davis-iou-eval
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval
   scripts/pace/06_run_edgetam_tinyvit_smoke.sh all-cpu
 
@@ -485,6 +487,29 @@ edgetam_vos_track_later_smoke() {
   edgetam_vos_smoke
 }
 
+edgetam_davis_vos_smoke() {
+  local out_dir="${EDGETAM_DAVIS_VOS_OUT_DIR:-${SMOKE_ROOT}/edgetam_davis_vos_pred}"
+  rm -rf "${out_dir}"
+  python "${ROOT}/tools/eval/run_edgetam_vos_dataset.py" \
+    --edgetam-root "${EDGETAM_ROOT}" \
+    --sam2-cfg "${EDGETAM_CFG}" \
+    --checkpoint "${EDGETAM_CHECKPOINT}" \
+    --image-root "${SMOKE_DATA_ROOT}/davis2017_smoke/JPEGImages" \
+    --input-mask-root "${SMOKE_DATA_ROOT}/davis2017_smoke/Annotations" \
+    --video-list-file "${SMOKE_DATA_ROOT}/davis2017_smoke/val.txt" \
+    --out-dir "${out_dir}"
+}
+
+edgetam_davis_iou_eval() {
+  local pred_root="${EDGETAM_DAVIS_VOS_OUT_DIR:-${SMOKE_ROOT}/edgetam_davis_vos_pred}"
+  python "${ROOT}/tools/eval/vos_prediction_iou.py" \
+    --gt-root "${SMOKE_DATA_ROOT}/davis2017_smoke/Annotations" \
+    --pred-root "${pred_root}" \
+    --out-json "${pred_root}/iou_summary.json" \
+    --out-csv "${pred_root}/iou_per_object.csv" \
+    --max-frames "${DAVIS_MAX_FRAMES:-${MAX_FRAMES}}"
+}
+
 edgetam_image_smoke() {
   python "${ROOT}/tools/eval/run_edgetam_image_smoke.py" \
     --edgetam-root "${EDGETAM_ROOT}" \
@@ -608,6 +633,12 @@ case "${1:-}" in
     ;;
   edgetam-vos-track-later-smoke)
     edgetam_vos_track_later_smoke
+    ;;
+  edgetam-davis-vos-smoke)
+    edgetam_davis_vos_smoke
+    ;;
+  edgetam-davis-iou-eval)
+    edgetam_davis_iou_eval
     ;;
   edgetam-sav-eval)
     edgetam_sav_eval

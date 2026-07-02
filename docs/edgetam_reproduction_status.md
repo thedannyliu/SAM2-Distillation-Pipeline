@@ -44,6 +44,8 @@ is the concise engineering runbook.
 | Official EdgeTAM image benchmark | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-image-benchmark` | Passed with A100 image predictor latency/FPS/peak-memory summary. |
 | Official EdgeTAM VOS smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-smoke` | Passed with official EdgeTAM checkpoint on the SA-V smoke video. |
 | Official EdgeTAM VOS late-object flag smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-vos-track-later-smoke` | Passed with upstream `--track_object_appearing_later_in_video` enabled on the SA-V smoke video. |
+| Official EdgeTAM DAVIS packed-mask VOS smoke | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-davis-vos-smoke` | Runs official EdgeTAM checkpoint on the real DAVIS smoke subset using packed indexed PNG prompts/predictions. |
+| DAVIS packed-mask IoU eval | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-davis-iou-eval` | Scores packed indexed PNG predictions against the DAVIS smoke GT with mean per-object IoU. |
 | Official EdgeTAM SA-V eval | `scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-sav-eval` | Passed on existing `edgetam_vos_pred` with official SAM2 SA-V evaluator. |
 
 ## Code Modules
@@ -65,10 +67,12 @@ is the concise engineering runbook.
 | `tools/train/smoke_stage1_features.py` | Minimal real-image feature training smoke. |
 | `tools/eval/sav_identity_smoke.py` | SA-V prediction layout and official evaluator smoke. |
 | `tools/eval/run_edgetam_vos_smoke.py` | Thin wrapper around official EdgeTAM `tools/vos_inference.py`. |
+| `tools/eval/run_edgetam_vos_dataset.py` | Generic in-process official EdgeTAM VOS wrapper for SA-V per-object or DAVIS/MOSE/YTVOS-style packed masks. |
 | `tools/eval/run_edgetam_image_smoke.py` | Thin wrapper around official EdgeTAM image predictor API. |
 | `tools/eval/run_exported_edgetam_image_smoke.py` | Loads an exported TinyViT EdgeTAM checkpoint and runs a real-image `SAM2ImagePredictor` smoke. |
 | `tools/eval/run_exported_edgetam_vos_smoke.py` | Loads an exported TinyViT EdgeTAM checkpoint and runs upstream VOS inference through `SAM2VideoPredictor`. |
 | `tools/eval/run_sav_evaluator.py` | Thin wrapper for official SAM2 `sav_evaluator.py` on existing predictions. |
+| `tools/eval/vos_prediction_iou.py` | Lightweight packed indexed PNG prediction-vs-GT IoU checker for DAVIS/MOSE/YTVOS-style smoke outputs. |
 | `tools/benchmark/benchmark_edgetam_image_predictor.py` | Official EdgeTAM image predictor latency/FPS/peak-memory benchmark. |
 | `tools/data/make_vos_smoke_subset.py` | Builds bounded DAVIS-style VOS subsets, including SA-V per-object to packed-mask conversion. |
 | `tools/eval/vos_identity_smoke.py` | DAVIS-style indexed-mask identity prediction and object IoU sanity check. |
@@ -167,6 +171,11 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
   - `10669832`: `gpu-rtx6000`, `embers`, completed in 1m09s.
   - Reused the SA-V smoke video while enabling upstream `--track_object_appearing_later_in_video`, the flag needed by YouTube-VOS/LVOS-style evaluation.
   - Official SA-V evaluator on the flag-path predictions returned J&F 91.7, J 89.2, F 94.3 on `sav_011944`.
+- Official EdgeTAM DAVIS packed-mask VOS smoke and IoU eval passed:
+  - Initial A100 job `10670207` failed on the upstream EdgeTAM `PerceiverResampler.forward_2d` `expand().view()` bug for packed multi-object VOS prompts; the generic wrapper now applies the repo compatibility patch in-process without editing the third-party checkout.
+  - `10670217`: `gpu-rtx6000`, `embers`, completed in 32s.
+  - Ran official EdgeTAM on the real DAVIS 2017 smoke subset, 2 videos / 120 frames, using packed indexed PNG prompt/prediction layout and wrote 120 prediction PNGs.
+  - `edgetam-davis-iou-eval` passed on the predictions with 158 object-frame scores and mean object IoU 0.9051.
 
 ## Remaining Work
 
@@ -176,4 +185,4 @@ The authoritative table is `docs/experiments/edgetam_smoke.md`.
 | Image pretrain | Swap the local Hiera Tiny smoke fallback for frozen SAM2.1-Hiera-B+/Large image teacher features and scale from 1-image cache smoke to 100-image overfit. | SA-1B single-frame image trainer smoke passed with synthetic targets; SA-1B image forward-cache trainer smoke passed with TinyViT smoke-model and checkpoint-loaded Hiera Tiny teacher cache tensors. |
 | Video train | Swap the local Hiera Tiny smoke fallback for frozen SAM2.1-Hiera-L teacher config/weights in `cache_edgetam_teacher_features.py`. | 2-frame full trainer, checkpoint resume, 8-frame low-memory trainer, deterministic-cache trainer, TinyViT real-forward-cache trainer, and checkpoint-loaded Hiera Tiny teacher-cache trainer smokes passed. |
 | Progressive schedule | Run full-size `8/16/32` progressive phases on company GPUs after teacher/weights are finalized. | Scaled full upstream Trainer `2/4/8` progressive smoke passed; lightweight 8/16/32 shell smoke also passed. |
-| Full eval | Add MOSE/YTVOS wrappers beside SA-V and DAVIS when those datasets are available locally. | Generic indexed-mask layout smoke and the YTVOS/LVOS late-object flag path passed on SA-V smoke data; real MOSE/YTVOS dataset smoke remains pending. |
+| Full eval | Point the generic VOS dataset wrapper at MOSE/YTVOS when those datasets are available locally. | SA-V per-object eval, DAVIS packed-mask eval, generic indexed-mask layout smoke, and the YTVOS/LVOS late-object flag path passed on bounded real data; real MOSE/YTVOS dataset smoke remains pending. |

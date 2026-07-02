@@ -370,6 +370,23 @@ DAVIS_MAX_FRAMES=120 \
 scripts/pace/06_run_edgetam_tinyvit_smoke.sh davis-eval-smoke
 ```
 
+Official EdgeTAM can also be run on the DAVIS-style packed indexed PNG layout:
+
+```bash
+TASK=edgetam-davis-vos-smoke \
+EDGETAM_ROOT=/path/to/EdgeTAM \
+EDGETAM_CHECKPOINT=/path/to/edgetam.pt \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+
+scripts/pace/06_run_edgetam_tinyvit_smoke.sh edgetam-davis-iou-eval
+```
+
+This path uses `tools/eval/run_edgetam_vos_dataset.py`, which supports both
+packed indexed PNG masks and SA-V-style per-object PNG masks. For MOSE/YTVOS,
+point `--image-root`, `--input-mask-root`, and `--video-list-file` at the
+dataset-specific small subset and enable `--track-object-appearing-later-in-video`
+when objects may first appear after frame 0.
+
 The lightweight video training shell smoke checks real clip loading,
 mask-supervised backward, checkpoint writing, and resume. It is intentionally
 not a substitute for the full SAM2/EdgeTAM video trainer.
