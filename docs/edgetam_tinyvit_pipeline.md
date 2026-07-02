@@ -57,6 +57,107 @@ scripts/setup/clone_upstreams.sh
 
 Set `SAM2_REF` and `EDGETAM_REF` to pin exact commits for reproducible runs.
 
+## Company SA-V Download Budget
+
+Use the official Meta SA-V download page:
+`https://ai.meta.com/datasets/segment-anything-video-downloads/`. SA-V
+download links require accepting Meta's dataset terms and are usually
+time-limited. Do not commit signed URLs. Save the current URL list on the
+company data volume:
+
+```bash
+export SAV_ROOT=/danny-dataset/SA-V
+export SAV_URL_LIST=$SAV_ROOT/manifests/sav_download_urls.txt
+export SAV_RAW_ROOT=$SAV_ROOT/_downloads_300g
+export SAV_BUDGET_GB=300
+
+mkdir -p "$SAV_ROOT/manifests" "$SAV_RAW_ROOT"
+# Paste the official SA-V download URLs into:
+#   /danny-dataset/SA-V/manifests/sav_download_urls.txt
+```
+
+Download order for a bounded company pilot:
+
+1. Download `val` and `test` archives first, because they are needed for VOS
+   evaluation and are much smaller than train.
+2. Download train archives until the extracted dataset plus any retained raw
+   archives is near, but not materially above, `300G`.
+3. Delete raw archives after successful extraction unless the company storage
+   plan explicitly budgets for keeping them.
+
+A simple guarded download loop is:
+
+```bash
+budget_bytes=$((SAV_BUDGET_GB * 1024 * 1024 * 1024))
+
+while read -r url; do
+  [ -z "$url" ] && continue
+  case "$url" in \#*) continue ;; esac
+
+  used_bytes=$(du -sb "$SAV_ROOT" 2>/dev/null | awk '{print $1 + 0}')
+  if [ "$used_bytes" -ge "$budget_bytes" ]; then
+    echo "SA-V budget reached: $used_bytes / $budget_bytes bytes"
+    break
+  fi
+
+  aria2c -c -x 8 -s 8 -j 1 -d "$SAV_RAW_ROOT" "$url"
+  du -sh "$SAV_ROOT"
+done < "$SAV_URL_LIST"
+```
+
+If the official page provides archive sizes, select a URL subset that leaves
+20-30GB headroom before running `aria2c`; signed HTTP redirects do not always
+return a reliable `Content-Length` for dry-run sizing. Preserve the official
+split names when extracting. The expected layout is:
+
+```text
+/danny-dataset/SA-V/
+  train/
+    videos/{shard_or_group}/{video_id}.mp4
+    annotations/{video_id}_manual.json
+    annotations/{video_id}_auto.json
+    JPEGImages_24fps/{video_id}/00000.jpg
+  val/
+    sav_val.txt
+    JPEGImages_24fps/{video_id}/00000.jpg
+    Annotations_6fps/{video_id}/{object_id}/00000.png
+  test/
+    sav_test.txt
+    JPEGImages_24fps/{video_id}/00000.jpg
+    Annotations_6fps/{video_id}/{object_id}/00000.png
+```
+
+Extract train frames with the official SAM2 helper after the train mp4 subset is
+in place:
+
+```bash
+python /user-volume/repo/facebookresearch-sam2/training/scripts/sav_frame_extraction_submitit.py \
+  --sav-vid-dir /danny-dataset/SA-V/train/videos \
+  --sav-frame-sample-rate 1 \
+  --n-jobs 64 \
+  --timeout 720 \
+  --partition <cpu_partition> \
+  --account <company_account> \
+  --qos <company_qos> \
+  --output-dir /danny-dataset/SA-V/train/JPEGImages_24fps \
+  --slurm-output-root-dir /danny-dataset/SA-V/logs/frame_extraction
+```
+
+For a quick integrity check:
+
+```bash
+du -sh /danny-dataset/SA-V
+find /danny-dataset/SA-V/train/videos -name '*.mp4' | head
+find /danny-dataset/SA-V/train/annotations -name '*_manual.json' | head
+test -f /danny-dataset/SA-V/val/sav_val.txt
+find /danny-dataset/SA-V/val/JPEGImages_24fps -mindepth 2 -name '*.jpg' | head
+find /danny-dataset/SA-V/val/Annotations_6fps -mindepth 3 -name '*.png' | head
+```
+
+PACE should only use a copied smoke subset of at most 500 frames. Keep full
+SA-V, extracted train frames, teacher caches, and run outputs under
+`/danny-dataset`, not in the git checkout or `/group-volume`.
+
 ## TinyViT Config
 
 Generate an EdgeTAM TinyViT config from timm feature metadata:
