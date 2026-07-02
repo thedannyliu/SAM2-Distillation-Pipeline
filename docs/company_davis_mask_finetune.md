@@ -57,6 +57,34 @@ lambda_mem = 0
 This keeps the run independent of SA-V teacher caches. It is intended as a
 pipeline and speed check, not the final EdgeTAM training recipe.
 
+## 403 Fallback
+
+If the DAVIS download returns `403 Forbidden`, first retry with the default
+script; it sends a browser user-agent and DAVIS referer for `aria2c`, `wget`,
+`curl`, and the Python fallback.
+
+If it still fails, download the zip in a browser or another environment and
+place it here:
+
+```text
+/group-volume/danny-dataset/DAVIS/2017/raw/DAVIS-2017-trainval-480p.zip
+```
+
+Then rerun:
+
+```bash
+scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
+scripts/company/07_run_davis_mask_finetune_1gpu.sh train
+```
+
+The script skips download when `DAVIS_ZIP` already exists. To use a different
+local zip path:
+
+```bash
+DAVIS_ZIP=/path/to/DAVIS-2017-trainval-480p.zip \
+scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
+```
+
 ## Runtime Estimate
 
 After training, read:

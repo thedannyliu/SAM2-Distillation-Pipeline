@@ -7,6 +7,8 @@ DATA_ROOT="${DATA_ROOT:-/group-volume/danny-dataset}"
 SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 DAVIS_ROOT="${DAVIS_ROOT:-${DATA_ROOT}/DAVIS/2017}"
 DAVIS_URL="${DAVIS_URL:-https://data.vision.ee.ethz.ch/csergi/share/davis/DAVIS-2017-trainval-480p.zip}"
+DAVIS_REFERER="${DAVIS_REFERER:-https://davischallenge.org/davis2017/code.html}"
+DAVIS_USER_AGENT="${DAVIS_USER_AGENT:-Mozilla/5.0}"
 DAVIS_ZIP="${DAVIS_ZIP:-${DAVIS_ROOT}/raw/DAVIS-2017-trainval-480p.zip}"
 DAVIS_MAX_FRAMES="${DAVIS_MAX_FRAMES:-500}"
 DAVIS_SUBSET_ROOT="${DAVIS_SUBSET_ROOT:-${DAVIS_ROOT}/trainval_480p_subset_${DAVIS_MAX_FRAMES}}"
@@ -55,6 +57,8 @@ Important defaults:
 
 Useful overrides:
   DAVIS_MAX_FRAMES=500
+  DAVIS_URL=https://data.vision.ee.ethz.ch/csergi/share/davis/DAVIS-2017-trainval-480p.zip
+  DAVIS_REFERER=https://davischallenge.org/davis2017/code.html
   MAX_EPOCHS=1
   BATCH_SIZE=1
   NUM_FRAMES=8
@@ -78,18 +82,29 @@ download_file() {
   echo "download ${dst}"
   if command -v aria2c >/dev/null 2>&1; then
     aria2c -x 8 -s 8 -c --auto-file-renaming=false --allow-overwrite=true \
+      --user-agent="${DAVIS_USER_AGENT}" \
+      --referer="${DAVIS_REFERER}" \
       -d "$(dirname "${dst}")" -o "$(basename "${dst}")" "${url}"
   elif command -v wget >/dev/null 2>&1; then
-    wget -c -O "${dst}" "${url}"
+    wget -c --user-agent="${DAVIS_USER_AGENT}" --referer="${DAVIS_REFERER}" -O "${dst}" "${url}"
   elif command -v curl >/dev/null 2>&1; then
-    curl -L --fail --retry 5 --continue-at - -o "${dst}" "${url}"
+    curl -L --fail --retry 5 --continue-at - \
+      -A "${DAVIS_USER_AGENT}" \
+      -e "${DAVIS_REFERER}" \
+      -o "${dst}" "${url}"
   else
-    python - "${url}" "${dst}" <<'PY'
+    python - "${url}" "${dst}" "${DAVIS_USER_AGENT}" "${DAVIS_REFERER}" <<'PY'
 import sys
 import urllib.request
 
-url, dst = sys.argv[1:3]
-request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+url, dst, user_agent, referer = sys.argv[1:5]
+request = urllib.request.Request(
+    url,
+    headers={
+        "User-Agent": user_agent,
+        "Referer": referer,
+    },
+)
 with urllib.request.urlopen(request, timeout=120) as response, open(dst, "wb") as out:
     out.write(response.read())
 PY

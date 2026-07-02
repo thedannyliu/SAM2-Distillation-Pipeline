@@ -171,6 +171,11 @@ Trainer mask-loss path on one GPU, and writes
 `runtime_estimate.json` so a longer single-GPU run can be projected from the
 observed seconds per step. See `docs/company_davis_mask_finetune.md`.
 
+If DAVIS download returns `403 Forbidden`, manually place
+`DAVIS-2017-trainval-480p.zip` at
+`/group-volume/danny-dataset/DAVIS/2017/raw/DAVIS-2017-trainval-480p.zip` and
+rerun `scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare`.
+
 ## TinyViT Config
 
 Generate an EdgeTAM TinyViT config from timm feature metadata:
