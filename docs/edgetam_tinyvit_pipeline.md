@@ -210,6 +210,22 @@ If DAVIS download returns `403 Forbidden`, manually place
 `/group-volume/danny-dataset/DAVIS/2017/raw/DAVIS-2017-trainval-480p.zip` and
 rerun `scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare`.
 
+## Company SA-V sav_000 Image-Encoder Timing
+
+To estimate one-H100 training time on the local SA-V `sav_000` shard while
+freezing non-image modules:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+DRY_RUN=1 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+```
+
+The warmup phase trains only `image_encoder.neck`; the finetune phase resumes
+and trains the full `image_encoder`. Both phases freeze memory, prompt, mask,
+and other non-image components. See
+`docs/company_sav000_tinyvit_image_encoder_1h100.md`.
+
 ## TinyViT Config
 
 Generate an EdgeTAM TinyViT config from timm feature metadata:

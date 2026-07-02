@@ -29,11 +29,44 @@ class EdgeTAMTrain(SAM2Train):
         *args,
         image_encoder_forward_batch_size: int | None = None,
         image_encoder_activation_checkpoint: bool = False,
+        trainable_module_mode: str | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.image_encoder_forward_batch_size = image_encoder_forward_batch_size
         self.image_encoder_activation_checkpoint = image_encoder_activation_checkpoint
+        self.trainable_module_mode = trainable_module_mode
+        self.trainable_parameter_summary = None
+        if trainable_module_mode is not None:
+            self.trainable_parameter_summary = self._apply_trainable_module_mode(
+                trainable_module_mode
+            )
+
+    def _apply_trainable_module_mode(self, mode: str) -> dict[str, int]:
+        if mode not in {"image_neck_only", "image_encoder_only"}:
+            raise ValueError(
+                "trainable_module_mode must be one of: image_neck_only, image_encoder_only"
+            )
+
+        for param in self.parameters():
+            param.requires_grad = False
+
+        if mode == "image_neck_only":
+            modules = [self.image_encoder.neck]
+        else:
+            modules = [self.image_encoder]
+
+        for module in modules:
+            for param in module.parameters():
+                param.requires_grad = True
+
+        trainable = sum(param.numel() for param in self.parameters() if param.requires_grad)
+        total = sum(param.numel() for param in self.parameters())
+        return {
+            "total_parameters": int(total),
+            "trainable_parameters": int(trainable),
+            "frozen_parameters": int(total - trainable),
+        }
 
     def forward_image(self, img_batch: torch.Tensor):
         if (

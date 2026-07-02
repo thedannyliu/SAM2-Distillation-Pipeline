@@ -27,10 +27,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-num-objects", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--resolution", type=int, default=1024)
-    parser.add_argument("--dataset-mode", choices=("vos", "sa1b-image"), default="vos")
+    parser.add_argument("--dataset-mode", choices=("vos", "sa1b-image", "sav-json"), default="vos")
     parser.add_argument("--vos-image-root", type=Path)
     parser.add_argument("--vos-gt-root", type=Path)
     parser.add_argument("--vos-file-list", type=Path)
+    parser.add_argument("--sav-image-root", type=Path)
+    parser.add_argument("--sav-ann-root", type=Path)
+    parser.add_argument("--sav-file-list", type=Path)
+    parser.add_argument("--sav-ann-every", type=int, default=4)
     parser.add_argument("--sa1b-image-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/images/train"))
     parser.add_argument("--sa1b-ann-root", type=Path, default=Path("data/edgetam_smoke/sa1b_smoke/annotations/train"))
     parser.add_argument("--sa1b-file-list", type=Path)
@@ -39,6 +43,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-encoder-forward-batch-size", type=int, default=0)
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
     parser.add_argument("--freeze-image-encoder", action="store_true")
+    parser.add_argument(
+        "--trainable-module-mode",
+        choices=("image_neck_only", "image_encoder_only"),
+        help="Freeze all modules except the selected image-encoder part.",
+    )
     parser.add_argument("--lambda-img", type=float)
     parser.add_argument("--lambda-mem", type=float)
     parser.add_argument("--teacher-feature-cache", type=Path)
@@ -143,6 +152,17 @@ def main() -> None:
     cfg.trainer.model.num_correction_pt_per_frame = 1
     if args.dataset_mode == "sa1b-image":
         configure_sa1b_image_mode(cfg, args)
+    elif args.dataset_mode == "sav-json":
+        dataset_cfg = cfg.trainer.data.train.datasets[0].dataset.datasets[0]
+        dataset_cfg.video_dataset._target_ = "training.dataset.vos_raw_dataset.JSONRawDataset"
+        if args.sav_image_root is None or args.sav_ann_root is None or args.sav_file_list is None:
+            raise ValueError("--sav-image-root, --sav-ann-root, and --sav-file-list are required for sav-json")
+        dataset_cfg.video_dataset.img_folder = str(args.sav_image_root)
+        dataset_cfg.video_dataset.gt_folder = str(args.sav_ann_root)
+        dataset_cfg.video_dataset.file_list_txt = str(args.sav_file_list)
+        dataset_cfg.video_dataset.ann_every = args.sav_ann_every
+        dataset_cfg.sampler.num_frames = args.num_frames
+        dataset_cfg.sampler.max_num_objects = args.max_num_objects
     else:
         dataset_cfg = cfg.trainer.data.train.datasets[0].dataset.datasets[0]
         if args.vos_image_root is not None:
@@ -158,6 +178,7 @@ def main() -> None:
     )
     cfg.trainer.model.image_encoder_activation_checkpoint = args.image_encoder_activation_checkpoint
     cfg.trainer.model.freeze_image_encoder = args.freeze_image_encoder
+    cfg.trainer.model.trainable_module_mode = args.trainable_module_mode
     if args.lambda_img is not None:
         cfg.trainer.loss.all.lambda_img = args.lambda_img
     if args.lambda_mem is not None:
@@ -181,8 +202,20 @@ def main() -> None:
     )
 
     trainer = instantiate(cfg.trainer, _recursive_=False)
+    trainable_summary_before = {
+        "total_parameters": int(sum(param.numel() for param in trainer.model.parameters())),
+        "trainable_parameters": int(
+            sum(param.numel() for param in trainer.model.parameters() if param.requires_grad)
+        ),
+    }
     trainer.run()
     checkpoint_after = read_checkpoint_summary(checkpoint_path)
+    trainable_summary_after = {
+        "total_parameters": int(sum(param.numel() for param in trainer.model.parameters())),
+        "trainable_parameters": int(
+            sum(param.numel() for param in trainer.model.parameters() if param.requires_grad)
+        ),
+    }
 
     summary = {
         "result": "pass",
@@ -197,11 +230,18 @@ def main() -> None:
         "vos_image_root": str(args.vos_image_root) if args.vos_image_root else None,
         "vos_gt_root": str(args.vos_gt_root) if args.vos_gt_root else None,
         "vos_file_list": str(args.vos_file_list) if args.vos_file_list else None,
+        "sav_image_root": str(args.sav_image_root) if args.sav_image_root else None,
+        "sav_ann_root": str(args.sav_ann_root) if args.sav_ann_root else None,
+        "sav_file_list": str(args.sav_file_list) if args.sav_file_list else None,
+        "sav_ann_every": args.sav_ann_every if args.dataset_mode == "sav-json" else None,
         "sa1b_max_items": args.sa1b_max_items if args.dataset_mode == "sa1b-image" else None,
         "tinyvit_checkpoint": str(args.tinyvit_checkpoint) if args.tinyvit_checkpoint else None,
         "image_encoder_forward_batch_size": args.image_encoder_forward_batch_size,
         "image_encoder_activation_checkpoint": args.image_encoder_activation_checkpoint,
         "freeze_image_encoder": args.freeze_image_encoder,
+        "trainable_module_mode": args.trainable_module_mode,
+        "trainable_summary_before": trainable_summary_before,
+        "trainable_summary_after": trainable_summary_after,
         "lambda_img": float(cfg.trainer.loss.all.lambda_img),
         "lambda_mem": float(cfg.trainer.loss.all.lambda_mem),
         "teacher_feature_cache": str(args.teacher_feature_cache) if args.teacher_feature_cache else None,
