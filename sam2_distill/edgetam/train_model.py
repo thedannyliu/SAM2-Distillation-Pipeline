@@ -10,6 +10,7 @@ import torch
 import torch.utils.checkpoint
 
 from sam2_distill.edgetam.teacher_features import (
+    TeacherFeatureCache,
     attach_synthetic_teacher_features,
     attach_teacher_features,
 )
@@ -203,6 +204,7 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         self,
         *args,
         teacher_model: torch.nn.Module | None = None,
+        teacher_feature_cache_path: str | None = None,
         synthetic_teacher: bool = False,
         synthetic_teacher_offset: float = 0.01,
         freeze_teacher: bool = True,
@@ -210,6 +212,11 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
     ):
         super().__init__(*args, **kwargs)
         self.teacher_model = teacher_model
+        self.teacher_feature_cache = (
+            TeacherFeatureCache(teacher_feature_cache_path)
+            if teacher_feature_cache_path is not None
+            else None
+        )
         self.synthetic_teacher = synthetic_teacher
         self.synthetic_teacher_offset = synthetic_teacher_offset
 
@@ -218,8 +225,16 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
             for param in self.teacher_model.parameters():
                 param.requires_grad = False
 
-        if self.teacher_model is None and not self.synthetic_teacher:
-            raise ValueError("EdgeTAMTrainWithTeacher requires teacher_model or synthetic_teacher=True")
+        teacher_sources = [
+            self.teacher_model is not None,
+            self.teacher_feature_cache is not None,
+            self.synthetic_teacher,
+        ]
+        if sum(teacher_sources) != 1:
+            raise ValueError(
+                "EdgeTAMTrainWithTeacher requires exactly one of teacher_model, "
+                "teacher_feature_cache_path, or synthetic_teacher=True"
+            )
 
     def forward(self, input):
         student_outputs = super().forward(input)
@@ -232,6 +247,8 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
             if was_training:
                 self.teacher_model.train()
             attach_teacher_features(student_outputs, teacher_outputs)
+        elif self.teacher_feature_cache is not None:
+            self.teacher_feature_cache.attach(student_outputs)
         else:
             attach_synthetic_teacher_features(
                 student_outputs,

@@ -96,7 +96,13 @@ teacher_distill_F_M
 `sam2_distill.edgetam.train_model.EdgeTAMTrainWithTeacher` attaches teacher
 features before the upstream SAM2 trainer calls the loss. In smoke mode, the
 same wrapper can use `synthetic_teacher: true`; in full runs, replace that with
-a frozen teacher model config.
+a frozen teacher model config or `teacher_feature_cache_path`.
+
+Cache-backed teacher targets are loaded by
+`sam2_distill.edgetam.teacher_features.TeacherFeatureCache`. The cache is a
+torch checkpoint with frame-major `teacher_distill_F16` and
+`teacher_distill_F_M` tensors. This lets the upstream `Trainer` path consume
+precomputed teacher features without changing the SAM2 loss call signature.
 
 The minimal full-trainer config is:
 
@@ -158,6 +164,20 @@ sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
 The resume smoke first writes an epoch-1 checkpoint and then restarts the
 upstream trainer to epoch 2 in the same output directory. The summary records
 `checkpoint_before` and `checkpoint_after` epochs and train steps.
+
+Validate cache-backed teacher attachment with:
+
+```bash
+TASK=edgetam-full-trainer-cache-smoke \
+EDGETAM_TRAINER_SMOKE_FRAMES=2 \
+sbatch --qos=embers scripts/pace/slurm_edgetam_smoke.sbatch
+```
+
+The smoke task first writes a deterministic cache with
+`tools/train/make_teacher_feature_cache_smoke.py`, then runs the full upstream
+trainer with `teacher_feature_cache_path` instead of `synthetic_teacher`. The
+smoke cache is intentionally synthetic; company runs should replace that file
+with frozen SAM2.1 teacher features.
 
 ## Smoke Train/Eval Entry Points
 

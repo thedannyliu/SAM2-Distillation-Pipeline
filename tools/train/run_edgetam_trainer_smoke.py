@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-num-objects", type=int, default=1)
     parser.add_argument("--image-encoder-forward-batch-size", type=int, default=0)
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
+    parser.add_argument("--teacher-feature-cache", type=Path)
     parser.add_argument("--seed", type=int, default=250107256)
     return parser.parse_args()
 
@@ -94,6 +95,9 @@ def main() -> None:
         args.image_encoder_forward_batch_size if args.image_encoder_forward_batch_size > 0 else None
     )
     cfg.trainer.model.image_encoder_activation_checkpoint = args.image_encoder_activation_checkpoint
+    if args.teacher_feature_cache is not None:
+        cfg.trainer.model.synthetic_teacher = False
+        cfg.trainer.model.teacher_feature_cache_path = str(args.teacher_feature_cache)
     cfg.trainer.logging.log_freq = 1
     cfg.trainer.logging.log_scalar_frequency = 1
     cfg.trainer.logging.log_dir = str(args.out_dir / "logs")
@@ -122,6 +126,7 @@ def main() -> None:
         "max_num_objects": args.max_num_objects,
         "image_encoder_forward_batch_size": args.image_encoder_forward_batch_size,
         "image_encoder_activation_checkpoint": args.image_encoder_activation_checkpoint,
+        "teacher_feature_cache": str(args.teacher_feature_cache) if args.teacher_feature_cache else None,
         "seed": args.seed,
         "checkpoint_before": checkpoint_before,
         "checkpoint_after": checkpoint_after,

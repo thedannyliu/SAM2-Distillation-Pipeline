@@ -43,6 +43,7 @@ trainer:
   model:
     _target_: sam2_distill.edgetam.train_model.EdgeTAMTrainWithTeacher
     synthetic_teacher: true
+    teacher_feature_cache_path: null
     synthetic_teacher_offset: 0.01
     image_encoder_forward_batch_size: null
     image_encoder_activation_checkpoint: false
