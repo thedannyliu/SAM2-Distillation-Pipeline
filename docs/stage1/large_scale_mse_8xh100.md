@@ -7,17 +7,30 @@ This run distills SAM2.1-Large image features into TinyViT-21M with MSE losses. 
 ```bash
 export SAM2D_REPO=/user-volume/repo/SAM2-Distillation-Pipeline
 export SAM2_UPSTREAM=/user-volume/repo/facebookresearch-sam2
-export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
-export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_3pct
+export SAM2D_ROOT=/danny-dataset/sam2_distill
+export SA1B_ROOT=/danny-dataset/SA-1B
+export IMAGE_ROOT=/danny-dataset/SA-1B/images_3pct
+export FINAL_WEIGHT_ROOT=/group-volume/sam2_distill/final_weights
 export GPUS=0,1,2,3,4,5,6,7
 export WANDB_PROJECT=sam2-distill-stage1
+```
+
+Storage policy:
+
+```text
+/danny-dataset
+  Large data lake for SA-1B, manifests, teacher embedding cache, TensorBoard/W&B logs,
+  runs, best.pt, last.pt, and step checkpoints.
+
+/group-volume
+  Shared small volume. Keep only final selected/exported weights here.
+  Do not put SA-1B images, teacher cache, or intermediate training runs here.
 ```
 
 Default output layout:
 
 ```text
-/group-volume/danny-dataset/sam2_distill/
+/danny-dataset/sam2_distill/
   checkpoints/
     sam2.1/sam2.1_hiera_large.pt
     tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
@@ -30,12 +43,15 @@ Default output layout:
     tensorboard/
     wandb_run.json
 
-/group-volume/danny-dataset/SA-1B/
+/danny-dataset/SA-1B/
   sa1b_links.txt
   manifests/
     sa1b_download_selected_3pct_hash.tsv
     sa1b_download_selected_3pct_hash.json
   images_3pct/
+
+/group-volume/sam2_distill/final_weights/
+  stage1_mse_sa1b_3pct_8xh100_best.pt
 ```
 
 The default data sample is a deterministic SA-1B 3% downloaded shard subset. The training manifest then uses all downloaded images and splits them 90/10 into train/validation:
@@ -54,7 +70,7 @@ For a different data size, choose matching dataset/manifest/cache/run names expl
 
 ```bash
 export SA1B_DOWNLOAD_PERCENT=5
-export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_5pct
+export IMAGE_ROOT=/danny-dataset/SA-1B/images_5pct
 export SEED=sam2_stage1_sa1b_5pct_v1
 export MANIFEST=$SAM2D_ROOT/manifests/sa1b_5pct_v1.parquet
 export CACHE_ROOT=$SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_5pct_v1
@@ -88,16 +104,16 @@ ls -lh \
   $SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 ```
 
-If your files are still directly under `/group-volume/danny-dataset`:
+If your files are still directly under `/danny-dataset`:
 
 ```bash
 mkdir -p $SAM2D_ROOT/checkpoints/sam2.1
 mkdir -p $SAM2D_ROOT/checkpoints/tinyvit
 
-cp /group-volume/danny-dataset/SAM2.1_hiera_large.pt \
+cp /danny-dataset/SAM2.1_hiera_large.pt \
   $SAM2D_ROOT/checkpoints/sam2.1/sam2.1_hiera_large.pt
 
-cp /group-volume/danny-dataset/model.safetensors \
+cp /danny-dataset/model.safetensors \
   $SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 ```
 
@@ -123,7 +139,7 @@ The current script can download that link-list file directly. Because fbcdn URLs
 ```bash
 cd $SAM2D_REPO
 
-export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
+export SA1B_ROOT=/danny-dataset/SA-1B
 export SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
 export SA1B_LINK_URL='<paste-current-sa1b-link-list-txt-url-here>'
 export REFRESH_LINK_FILE=1
@@ -146,8 +162,8 @@ bash scripts/company/02_download_sa1b_subset.sh
 Alternatively, save the URL list manually here:
 
 ```bash
-mkdir -p /group-volume/danny-dataset/SA-1B
-$EDITOR /group-volume/danny-dataset/SA-1B/sa1b_links.txt
+mkdir -p /danny-dataset/SA-1B
+$EDITOR /danny-dataset/SA-1B/sa1b_links.txt
 ```
 
 The link file can contain either:
@@ -171,7 +187,7 @@ If `sa1b_links.txt` already exists and you do not want to re-download it, unset 
 ```bash
 cd $SAM2D_REPO
 
-export SA1B_ROOT=/group-volume/danny-dataset/SA-1B
+export SA1B_ROOT=/danny-dataset/SA-1B
 export SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
 unset SA1B_LINK_URL
 export REFRESH_LINK_FILE=0
@@ -257,7 +273,7 @@ For speed, the wrapper skips per-file sha256 by default. It still records image 
 cd $SAM2D_REPO
 
 export SKIP_FILE_SHA256=1
-export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_3pct
+export IMAGE_ROOT=/danny-dataset/SA-1B/images_3pct
 export SAMPLE_PERCENT=100
 export VAL_FRACTION=0.1
 bash scripts/company/05_run_stage1_large_mse_8xh100.sh manifest
@@ -269,7 +285,7 @@ Check split counts:
 python - <<'PY'
 import os
 import pandas as pd
-manifest = os.environ.get("MANIFEST", "/group-volume/danny-dataset/sam2_distill/manifests/sa1b_3pct_v1.parquet")
+manifest = os.environ.get("MANIFEST", "/danny-dataset/sam2_distill/manifests/sa1b_3pct_v1.parquet")
 df = pd.read_parquet(manifest)
 print(df["split"].value_counts())
 print(df.head())
@@ -372,10 +388,22 @@ $RUN_DIR/wandb_run.json
 
 `best.pt` is selected by the lowest `val/loss_stage1_total`. `last.pt` is refreshed periodically at `SAVE_EVERY` and again at the end, so resume should use `last.pt`.
 
+Keep these training checkpoints in `/danny-dataset`; they are part of the active run state. After you decide which checkpoint is the final Stage 1 artifact, copy only that selected weight to `/group-volume`:
+
+```bash
+export FINAL_WEIGHT_ROOT=/group-volume/sam2_distill/final_weights
+mkdir -p $FINAL_WEIGHT_ROOT
+
+cp $RUN_DIR/checkpoints/best.pt \
+  $FINAL_WEIGHT_ROOT/stage1_mse_sa1b_3pct_8xh100_best.pt
+
+ls -lh $FINAL_WEIGHT_ROOT
+```
+
 Default run dir:
 
 ```text
-/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_3pct_8xh100
+/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_3pct_8xh100
 ```
 
 Monitor:
@@ -418,7 +446,7 @@ val step 1,001 | loss ... | mse ... | hr_mse ... | best ...
 ## 8. Resume
 
 ```bash
-export RUN_DIR=/group-volume/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_3pct_8xh100
+export RUN_DIR=/danny-dataset/sam2_distill/runs/stage1_mse_sa1b_3pct_8xh100
 export WANDB_RUN_ID=$(python - <<'PY'
 import json, os
 print(json.load(open(f"{os.environ['RUN_DIR']}/wandb_run.json"))["run_id"])
@@ -473,7 +501,7 @@ If training is stable and too slow to adapt, reduce projection warmup:
 export PROJECTION_WARMUP_STEPS=500
 ```
 
-If data loading is the bottleneck, keep cache and images on `/group-volume/danny-dataset` and avoid reading from home or user-volume.
+If data loading is the bottleneck, keep cache and images on `/danny-dataset` and avoid reading from home, user-volume, or group-volume.
 
 For multiple nodes/jobs, split cache generation with:
 
@@ -493,8 +521,8 @@ After env, checkpoints, and `images_3pct` are ready:
 ```bash
 cd $SAM2D_REPO
 
-export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-export IMAGE_ROOT=/group-volume/danny-dataset/SA-1B/images_3pct
+export SAM2D_ROOT=/danny-dataset/sam2_distill
+export IMAGE_ROOT=/danny-dataset/SA-1B/images_3pct
 export GPUS=0,1,2,3,4,5,6,7
 export WANDB_PROJECT=sam2-distill-stage1
 export WANDB_NAME=stage1-mse-sa1b-3pct-8xh100

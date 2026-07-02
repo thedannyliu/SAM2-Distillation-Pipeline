@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${SAM2D_ROOT:-/group-volume/danny-dataset/sam2_distill}"
-COCO_RAW="${COCO_RAW:-/group-volume/danny-dataset/coco2017_raw}"
+ROOT="${SAM2D_ROOT:-/danny-dataset/sam2_distill}"
+COCO_RAW="${COCO_RAW:-/danny-dataset/coco2017_raw}"
 PILOT_ROOT="${ROOT}/pilot/coco_1000train_100val"
 RUN_DIR="${ROOT}/runs/stage1_coco_pilot"
 GPUS="${GPUS:-0,1}"
@@ -30,8 +30,8 @@ Usage:
   scripts/company/04_run_coco_stage1_pilot.sh all
 
 Environment overrides:
-  SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-  COCO_RAW=/group-volume/danny-dataset/coco2017_raw
+  SAM2D_ROOT=/danny-dataset/sam2_distill
+  COCO_RAW=/danny-dataset/coco2017_raw
   GPUS=0,1
   BATCH_SIZE=4
   MAX_STEPS=1000

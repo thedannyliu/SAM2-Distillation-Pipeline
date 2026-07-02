@@ -77,7 +77,7 @@ PY
 Copy TinyViT into the pipeline path:
 
 ```bash
-export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
+export SAM2D_ROOT=/danny-dataset/sam2_distill
 mkdir -p $SAM2D_ROOT/checkpoints/tinyvit
 
 cp "$(python - <<'PY'

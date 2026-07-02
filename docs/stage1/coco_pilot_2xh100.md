@@ -7,8 +7,8 @@ This pilot runs the complete Stage 1 loop on the company cluster only. Do not ru
 ```bash
 export SAM2D_REPO=/user-volume/repo/SAM2-Distillation-Pipeline
 export SAM2_UPSTREAM=/user-volume/repo/facebookresearch-sam2
-export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-export COCO_RAW=/group-volume/danny-dataset/coco2017_raw
+export SAM2D_ROOT=/danny-dataset/sam2_distill
+export COCO_RAW=/danny-dataset/coco2017_raw
 export GPUS=0,1
 export WANDB_PROJECT=sam2-distill-stage1
 ```
@@ -16,7 +16,7 @@ export WANDB_PROJECT=sam2-distill-stage1
 Expected final layout:
 
 ```text
-/group-volume/danny-dataset/sam2_distill/
+/danny-dataset/sam2_distill/
   checkpoints/
     sam2.1/sam2.1_hiera_large.pt
     tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
@@ -53,7 +53,7 @@ Do not activate a venv in the company container; use the container Python direct
 
 ## 2. Organize Existing Checkpoints
 
-You said these already exist under `/group-volume/danny-dataset`:
+You said these already exist under `/danny-dataset`:
 
 ```text
 SAM2.1_hiera_large.pt
@@ -66,10 +66,10 @@ Move or copy them into the pipeline layout:
 mkdir -p $SAM2D_ROOT/checkpoints/sam2.1
 mkdir -p $SAM2D_ROOT/checkpoints/tinyvit
 
-cp /group-volume/danny-dataset/SAM2.1_hiera_large.pt \
+cp /danny-dataset/SAM2.1_hiera_large.pt \
   $SAM2D_ROOT/checkpoints/sam2.1/sam2.1_hiera_large.pt
 
-cp /group-volume/danny-dataset/model.safetensors \
+cp /danny-dataset/model.safetensors \
   $SAM2D_ROOT/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 
 sha256sum \
@@ -100,7 +100,7 @@ mkdir -p $SAM2D_ROOT/logs/tensorboard-smoke
 
 python - <<'PY'
 from torch.utils.tensorboard import SummaryWriter
-logdir = "/group-volume/danny-dataset/sam2_distill/logs/tensorboard-smoke"
+logdir = "/danny-dataset/sam2_distill/logs/tensorboard-smoke"
 writer = SummaryWriter(logdir)
 writer.add_scalar("smoke/ok", 1, 0)
 writer.close()
@@ -204,7 +204,7 @@ Resume:
 ```bash
 export WANDB_RUN_ID=$(python - <<'PY'
 import json
-print(json.load(open("/group-volume/danny-dataset/sam2_distill/runs/stage1_coco_pilot/wandb_run.json"))["run_id"])
+print(json.load(open("/danny-dataset/sam2_distill/runs/stage1_coco_pilot/wandb_run.json"))["run_id"])
 PY
 )
 export WANDB_RESUME=allow
@@ -245,8 +245,8 @@ After checkpoints and COCO are in place:
 ```bash
 cd $SAM2D_REPO
 
-export SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill
-export COCO_RAW=/group-volume/danny-dataset/coco2017_raw
+export SAM2D_ROOT=/danny-dataset/sam2_distill
+export COCO_RAW=/danny-dataset/coco2017_raw
 export GPUS=0,1
 export BATCH_SIZE=4
 export MAX_STEPS=1000

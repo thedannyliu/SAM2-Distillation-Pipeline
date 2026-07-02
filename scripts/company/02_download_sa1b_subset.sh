@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SA1B_ROOT="${SA1B_ROOT:-/group-volume/danny-dataset/SA-1B}"
+SA1B_ROOT="${SA1B_ROOT:-/danny-dataset/SA-1B}"
 LINK_FILE="${SA1B_LINK_FILE:-${SA1B_ROOT}/sa1b_links.txt}"
 LINK_URL="${SA1B_LINK_URL:-}"
 REFRESH_LINK_FILE="${REFRESH_LINK_FILE:-0}"
@@ -24,20 +24,20 @@ Usage:
 
 Required:
   Put the official SA-1B URL list at:
-    /group-volume/danny-dataset/SA-1B/sa1b_links.txt
+    /danny-dataset/SA-1B/sa1b_links.txt
   or set SA1B_LINK_URL to a URL that serves that text file.
 
 Default behavior:
   - deterministically selects 3% of shards from the link list
-  - downloads archives to /group-volume/danny-dataset/SA-1B/raw_3pct
-  - extracts images to /group-volume/danny-dataset/SA-1B/images_3pct
+  - downloads archives to /danny-dataset/SA-1B/raw_3pct
+  - extracts images to /danny-dataset/SA-1B/images_3pct
   - removes archives after successful extraction
   - removes the raw archive directory if it is empty
   - keeps only the original link list plus a small selected-shard TSV and JSON provenance file
   - does not extract mask JSON annotations unless EXTRACT_ANNOTATIONS=1
 
 Environment overrides:
-  SA1B_ROOT=/group-volume/danny-dataset/SA-1B
+  SA1B_ROOT=/danny-dataset/SA-1B
   SA1B_LINK_FILE=$SA1B_ROOT/sa1b_links.txt
   SA1B_LINK_URL=              # optional URL for the official link-list .txt
   REFRESH_LINK_FILE=0         # set 1 to re-download SA1B_LINK_FILE from SA1B_LINK_URL
