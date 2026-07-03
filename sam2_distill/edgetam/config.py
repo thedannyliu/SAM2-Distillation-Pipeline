@@ -224,6 +224,22 @@ def write_edgetam_tinyvit_yaml(
     out.write_text(text, encoding="utf-8")
     return probe
 KNOWN_TIMM_FEATURE_METADATA = {
+    "tiny_vit_5m_224.dist_in22k_ft_in1k": {
+        "reductions": [4, 8, 16, 32],
+        "channels": [64, 128, 160, 320],
+    },
+    "tiny_vit_5m_224.in1k": {
+        "reductions": [4, 8, 16, 32],
+        "channels": [64, 128, 160, 320],
+    },
+    "tiny_vit_11m_224.dist_in22k_ft_in1k": {
+        "reductions": [4, 8, 16, 32],
+        "channels": [64, 128, 256, 448],
+    },
+    "tiny_vit_11m_224.in1k": {
+        "reductions": [4, 8, 16, 32],
+        "channels": [64, 128, 256, 448],
+    },
     "tiny_vit_21m_512.dist_in22k_ft_in1k": {
         "reductions": [4, 8, 16, 32],
         "channels": [96, 192, 384, 576],

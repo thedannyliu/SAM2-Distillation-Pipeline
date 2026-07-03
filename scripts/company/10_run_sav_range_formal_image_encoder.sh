@@ -14,6 +14,7 @@ RANGE_NAME="${RANGE_NAME:-sav${START_SHARD_PAD}_${END_SHARD_PAD}}"
 COMBINED_ROOT="${COMBINED_ROOT:-${SAV_ROOT}/${RANGE_NAME}_formal}"
 
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${SAM2D_ROOT}/checkpoints}"
+CONFIG="${CONFIG:-${REPO_ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml}"
 TINYVIT_CKPT="${TINYVIT_CKPT:-${CHECKPOINT_ROOT}/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
@@ -157,7 +158,7 @@ PY
 
 write_run_metadata() {
   local out_dir="$1"
-  python - "${out_dir}" "${WANDB_PROJECT}" "${WANDB_NAME}" "${WANDB_RUN_ID}" "${NO_WANDB}" <<'PY'
+  python - "${out_dir}" "${CONFIG}" "${TINYVIT_CKPT}" "${WANDB_PROJECT}" "${WANDB_NAME}" "${WANDB_RUN_ID}" "${NO_WANDB}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -165,12 +166,14 @@ from pathlib import Path
 out_dir = Path(sys.argv[1])
 metadata = {
     "out_dir": str(out_dir),
+    "config": sys.argv[2],
+    "tinyvit_checkpoint": sys.argv[3],
     "tensorboard_dir": str(out_dir / "tensorboard"),
     "checkpoint_dir": str(out_dir / "checkpoints"),
-    "wandb_project": sys.argv[2],
-    "wandb_name": sys.argv[3],
-    "wandb_run_id": sys.argv[4] or None,
-    "wandb_disabled": sys.argv[5] == "1",
+    "wandb_project": sys.argv[4],
+    "wandb_name": sys.argv[5],
+    "wandb_run_id": sys.argv[6] or None,
+    "wandb_disabled": sys.argv[7] == "1",
 }
 (out_dir / "run_metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
 print(json.dumps(metadata, indent=2))
@@ -202,7 +205,7 @@ phase_command() {
     activation_args+=(--image-encoder-activation-checkpoint)
   fi
   local train_args=(
-    --config "${REPO_ROOT}/configs/edgetam/tinyvit_video_distill_smoke.yaml"
+    --config "${CONFIG}"
     --sam2-training-root "${SAM2_TRAINING_ROOT}"
     --edgetam-root "${EDGETAM_ROOT}"
     --out-dir "${out_dir}"
