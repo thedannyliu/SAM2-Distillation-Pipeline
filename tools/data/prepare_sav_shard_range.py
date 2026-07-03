@@ -195,9 +195,12 @@ def main() -> None:
             if args.move_frames_to_out_root:
                 canonicalize_video_dir(video_dir, canonical_video_dir)
             else:
-                if canonical_video_dir.exists() and not canonical_video_dir.is_symlink():
+                if canonical_video_dir.exists() and video_dir.resolve() == canonical_video_dir.resolve():
+                    pass
+                elif canonical_video_dir.exists() and not canonical_video_dir.is_symlink():
                     raise FileExistsError(canonical_video_dir)
-                symlink_force(video_dir.resolve(), canonical_video_dir)
+                else:
+                    symlink_force(video_dir.resolve(), canonical_video_dir)
             symlink_force(ann.resolve(), ann_out / ann.name)
             videos.append(video_dir.name)
             shard_videos.append(video_dir.name)

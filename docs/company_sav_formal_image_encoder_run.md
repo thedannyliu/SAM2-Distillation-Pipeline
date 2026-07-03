@@ -120,6 +120,7 @@ One H100:
 ```bash
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
+MOVE_FRAMES_TO_COMBINED=1 \
 RUN_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w3_f15 \
 WANDB_PROJECT=sam2-distill-edgetam-formal-1gpu \
 WANDB_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w3_f15 \
@@ -138,6 +139,7 @@ Four H100s:
 ```bash
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
+MOVE_FRAMES_TO_COMBINED=1 \
 RUN_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15 \
 WANDB_PROJECT=sam2-distill-edgetam-formal-4gpu \
 WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15 \
@@ -220,6 +222,7 @@ Run TinyViT-11M on four H100s in the same W&B project as the 21M 4-GPU run:
 ```bash
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
+MOVE_FRAMES_TO_COMBINED=1 \
 CONFIG=/group-volume/danny-dataset/sam2_distill/configs/edgetam/tinyvit11m_video_distill.yaml \
 TINYVIT_CKPT=/group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_11m_224.dist_in22k_ft_in1k.safetensors \
 RUN_NAME=sav000_018_4gpu_tinyvit11m_b1_ieb8_ckpt0_w3_f15 \
@@ -240,6 +243,7 @@ Run TinyViT-5M on four H100s:
 ```bash
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
+MOVE_FRAMES_TO_COMBINED=1 \
 CONFIG=/group-volume/danny-dataset/sam2_distill/configs/edgetam/tinyvit5m_video_distill.yaml \
 TINYVIT_CKPT=/group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_5m_224.dist_in22k_ft_in1k.safetensors \
 RUN_NAME=sav000_018_4gpu_tinyvit5m_b1_ieb8_ckpt0_w3_f15 \
