@@ -196,6 +196,14 @@ def main() -> None:
         pass
 
     cfg = OmegaConf.load(args.config)
+    missing_top_keys = [key for key in ("scratch", "trainer") if key not in cfg]
+    if missing_top_keys:
+        raise ValueError(
+            f"{args.config} is missing top-level {missing_top_keys}. "
+            "This trainer expects a full training config. If you generated a "
+            "TinyViT variant with tools/edgetam/write_tinyvit_edgetam_config.py, "
+            "regenerate it with --template configs/edgetam/tinyvit_video_distill_smoke.yaml."
+        )
     cfg.scratch.num_epochs = args.max_epochs
     cfg.scratch.phases_per_epoch = 1
     cfg.scratch.num_train_workers = args.num_workers

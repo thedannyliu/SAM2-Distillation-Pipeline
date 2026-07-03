@@ -240,10 +240,12 @@ mkdir -p /group-volume/danny-dataset/sam2_distill/configs/edgetam
 
 python tools/edgetam/write_tinyvit_edgetam_config.py \
   --model-name tiny_vit_11m_224.dist_in22k_ft_in1k \
+  --template configs/edgetam/tinyvit_video_distill_smoke.yaml \
   --out /group-volume/danny-dataset/sam2_distill/configs/edgetam/tinyvit11m_video_distill.yaml
 
 python tools/edgetam/write_tinyvit_edgetam_config.py \
   --model-name tiny_vit_5m_224.dist_in22k_ft_in1k \
+  --template configs/edgetam/tinyvit_video_distill_smoke.yaml \
   --out /group-volume/danny-dataset/sam2_distill/configs/edgetam/tinyvit5m_video_distill.yaml
 ```
 
