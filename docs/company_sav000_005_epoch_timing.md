@@ -1,7 +1,8 @@
 # Company SA-V sav_000-sav_005 Epoch Timing
 
 Use this run to measure one full training epoch on SA-V shards `sav_000`
-through `sav_005` with aggressive H100 settings.
+through `sav_005` with aggressive H100 settings. Override `START_SHARD` and
+`END_SHARD` to time a larger range such as `sav_000` through `sav_018`.
 
 Default training setting:
 
@@ -32,6 +33,18 @@ frames once with:
 ```bash
 EXTRACT_MISSING_FRAMES=1 scripts/company/09_run_sav000_005_epoch_timing.sh prepare
 ```
+
+The default combined layout uses symlinks and does not duplicate JPEG frames.
+If you want a single canonical frame root and want to remove duplicate
+shard-local frame directories, use:
+
+```bash
+START_SHARD=0 END_SHARD=18 MOVE_FRAMES_TO_COMBINED=1 \
+scripts/company/09_run_sav000_005_epoch_timing.sh prepare
+```
+
+This moves per-video frame directories into the combined root and leaves
+symlinks at the old shard locations, so existing shard-local paths still work.
 
 Run one epoch on one H100:
 
@@ -81,4 +94,10 @@ Read the final timing summary:
 ```bash
 cat /group-volume/danny-dataset/sam2_distill/runs/sav000_005_epoch_timing/1gpu_b4_ieb16_ckpt0/epoch_timing_summary.json
 cat /group-volume/danny-dataset/sam2_distill/runs/sav000_005_epoch_timing/4gpu_b4_ieb16_ckpt0/epoch_timing_summary.json
+```
+
+For `sav_000` through `sav_018`, the default output root is:
+
+```text
+/group-volume/danny-dataset/sam2_distill/runs/sav000_018_epoch_timing/
 ```

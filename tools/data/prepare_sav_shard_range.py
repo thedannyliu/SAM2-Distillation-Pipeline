@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 from pathlib import Path
 
 
@@ -17,6 +18,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, required=True)
     parser.add_argument("--extract-missing-frames", action="store_true")
     parser.add_argument("--frame-sample-rate", type=int, default=1)
+    parser.add_argument(
+        "--move-frames-to-out-root",
+        action="store_true",
+        help=(
+            "Move per-video JPEG frame directories into OUT_ROOT/JPEGImages_24fps "
+            "and leave symlinks at the original shard locations. This removes "
+            "duplicate frame storage while preserving shard-local paths."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -126,6 +136,30 @@ def symlink_force(src: Path, dst: Path) -> None:
     dst.symlink_to(src)
 
 
+def canonicalize_video_dir(video_dir: Path, canonical_dir: Path) -> Path:
+    canonical_dir.parent.mkdir(parents=True, exist_ok=True)
+    if video_dir.is_symlink():
+        return video_dir.resolve()
+    if canonical_dir.is_symlink():
+        target = canonical_dir.resolve(strict=False)
+        if target == video_dir.resolve():
+            canonical_dir.unlink()
+        elif target.exists():
+            shutil.rmtree(video_dir)
+            symlink_force(target, video_dir)
+            return target
+        else:
+            canonical_dir.unlink()
+    if canonical_dir.exists():
+        if not canonical_dir.is_dir():
+            raise FileExistsError(canonical_dir)
+        shutil.rmtree(video_dir)
+    else:
+        shutil.move(str(video_dir), str(canonical_dir))
+    symlink_force(canonical_dir.resolve(), video_dir)
+    return canonical_dir.resolve()
+
+
 def main() -> None:
     args = parse_args()
     image_out = args.out_root / "JPEGImages_24fps"
@@ -155,11 +189,15 @@ def main() -> None:
             ann = ann_root / f"{video_dir.name}_manual.json"
             if not ann.exists() or not any(video_dir.glob("*.jpg")):
                 continue
-            if (image_out / video_dir.name).exists() and not (image_out / video_dir.name).is_symlink():
-                raise FileExistsError(image_out / video_dir.name)
             if video_dir.name in videos:
                 raise ValueError(f"Duplicate video id across shards: {video_dir.name}")
-            symlink_force(video_dir.resolve(), image_out / video_dir.name)
+            canonical_video_dir = image_out / video_dir.name
+            if args.move_frames_to_out_root:
+                canonicalize_video_dir(video_dir, canonical_video_dir)
+            else:
+                if canonical_video_dir.exists() and not canonical_video_dir.is_symlink():
+                    raise FileExistsError(canonical_video_dir)
+                symlink_force(video_dir.resolve(), canonical_video_dir)
             symlink_force(ann.resolve(), ann_out / ann.name)
             videos.append(video_dir.name)
             shard_videos.append(video_dir.name)
@@ -169,6 +207,7 @@ def main() -> None:
                 "image_root": str(image_root),
                 "ann_root": str(ann_root),
                 "videos": len(shard_videos),
+                "moved_frames_to_out_root": args.move_frames_to_out_root,
             }
         )
 
@@ -184,6 +223,7 @@ def main() -> None:
         "image_root": str(image_out),
         "ann_root": str(ann_out),
         "file_list": str(manifest),
+        "move_frames_to_out_root": args.move_frames_to_out_root,
         "shards": shard_summaries,
     }
     (args.out_root / "prepare_summary.json").write_text(json.dumps(summary, indent=2) + "\n")

@@ -8,14 +8,17 @@ SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 SAV_ROOT="${SAV_ROOT:-${DATA_ROOT}/SA-V}"
 START_SHARD="${START_SHARD:-0}"
 END_SHARD="${END_SHARD:-5}"
-COMBINED_ROOT="${COMBINED_ROOT:-${SAV_ROOT}/sav_000_005_epoch_timing}"
+printf -v START_SHARD_PAD "%03d" "${START_SHARD}"
+printf -v END_SHARD_PAD "%03d" "${END_SHARD}"
+RANGE_NAME="${RANGE_NAME:-sav${START_SHARD_PAD}_${END_SHARD_PAD}}"
+COMBINED_ROOT="${COMBINED_ROOT:-${SAV_ROOT}/${RANGE_NAME}_epoch_timing}"
 
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${SAM2D_ROOT}/checkpoints}"
 TINYVIT_CKPT="${TINYVIT_CKPT:-${CHECKPOINT_ROOT}/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
 
-RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/sav000_005_epoch_timing}"
+RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/${RANGE_NAME}_epoch_timing}"
 RUN_NAME="${RUN_NAME:-}"
 GPUS="${GPUS:-}"
 NPROC="${NPROC:-1}"
@@ -34,6 +37,7 @@ BASELINE_SEC_PER_STEP="${BASELINE_SEC_PER_STEP:-2.35}"
 SEED="${SEED:-250107256}"
 GPU_SAMPLE_INTERVAL="${GPU_SAMPLE_INTERVAL:-5}"
 EXTRACT_MISSING_FRAMES="${EXTRACT_MISSING_FRAMES:-0}"
+MOVE_FRAMES_TO_COMBINED="${MOVE_FRAMES_TO_COMBINED:-0}"
 SAV_FRAME_SAMPLE_RATE="${SAV_FRAME_SAMPLE_RATE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -46,7 +50,7 @@ Usage:
   scripts/company/09_run_sav000_005_epoch_timing.sh summarize
 
 Defaults:
-  - Data: /group-volume/danny-dataset/SA-V/sav_000 ... sav_005
+  - Data: /group-volume/danny-dataset/SA-V/sav_000 ... sav_005 by default
   - Aggressive timing: BATCH_SIZE=4, IMAGE_ENCODER_BATCH=16, IMAGE_ENCODER_CKPT=0
   - One epoch, full image_encoder trainable, non-image modules frozen
   - 1gpu uses GPUS=0, NPROC=1
@@ -58,6 +62,9 @@ prepare() {
   local extract_args=()
   if [[ "${EXTRACT_MISSING_FRAMES}" -eq 1 ]]; then
     extract_args+=(--extract-missing-frames)
+  fi
+  if [[ "${MOVE_FRAMES_TO_COMBINED}" -eq 1 ]]; then
+    extract_args+=(--move-frames-to-out-root)
   fi
   python "${REPO_ROOT}/tools/data/prepare_sav_shard_range.py" \
     --sav-root "${SAV_ROOT}" \
