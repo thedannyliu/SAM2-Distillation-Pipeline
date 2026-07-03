@@ -41,7 +41,7 @@ MOVE_FRAMES_TO_COMBINED="${MOVE_FRAMES_TO_COMBINED:-0}"
 SAV_FRAME_SAMPLE_RATE="${SAV_FRAME_SAMPLE_RATE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 NO_WANDB="${NO_WANDB:-0}"
-WANDB_PROJECT="${WANDB_PROJECT:-sam2-distill-edgetam-formal}"
+WANDB_PROJECT="${WANDB_PROJECT:-}"
 WANDB_NAME="${WANDB_NAME:-${RANGE_NAME}_formal_image_encoder}"
 WANDB_RUN_ID="${WANDB_RUN_ID:-}"
 
@@ -358,6 +358,9 @@ PY
 run_formal() {
   local mode="$1"
   local out_dir total_epochs
+  if [[ -z "${WANDB_PROJECT}" ]]; then
+    WANDB_PROJECT="sam2-distill-edgetam-formal-${mode}"
+  fi
   out_dir="$(run_dir "${mode}")"
   prepare
   mkdir -p "${out_dir}"

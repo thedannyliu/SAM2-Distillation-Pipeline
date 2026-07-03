@@ -74,17 +74,18 @@ TensorBoard is written by the SAM2 trainer under:
 W&B companion logging records preflight metadata, phase runtime, throughput,
 checkpoint path, TensorBoard path, and final summaries.
 
-Default W&B project:
+Default W&B projects are separated by GPU setup:
 
 ```text
-sam2-distill-edgetam-formal
+sam2-distill-edgetam-formal-1gpu
+sam2-distill-edgetam-formal-4gpu
 ```
 
 Set W&B before running:
 
 ```bash
 wandb login
-export WANDB_PROJECT=sam2-distill-edgetam-formal
+export WANDB_PROJECT=sam2-distill-edgetam-formal-4gpu
 export WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15
 ```
 
@@ -108,7 +109,7 @@ One H100:
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
 RUN_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w3_f15 \
-WANDB_PROJECT=sam2-distill-edgetam-formal \
+WANDB_PROJECT=sam2-distill-edgetam-formal-1gpu \
 WANDB_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w3_f15 \
 BATCH_SIZE=1 \
 IMAGE_ENCODER_BATCH=8 \
@@ -126,7 +127,7 @@ Four H100s:
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
 RUN_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15 \
-WANDB_PROJECT=sam2-distill-edgetam-formal \
+WANDB_PROJECT=sam2-distill-edgetam-formal-4gpu \
 WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15 \
 BATCH_SIZE=1 \
 IMAGE_ENCODER_BATCH=8 \
