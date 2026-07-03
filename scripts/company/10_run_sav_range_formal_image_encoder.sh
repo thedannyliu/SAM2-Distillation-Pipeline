@@ -31,8 +31,9 @@ RESOLUTION="${RESOLUTION:-1024}"
 IMAGE_ENCODER_BATCH="${IMAGE_ENCODER_BATCH:-8}"
 IMAGE_ENCODER_CKPT="${IMAGE_ENCODER_CKPT:-0}"
 SAV_ANN_EVERY="${SAV_ANN_EVERY:-4}"
-WARMUP_EPOCHS="${WARMUP_EPOCHS:-1}"
-FINETUNE_EPOCHS="${FINETUNE_EPOCHS:-9}"
+WARMUP_EPOCHS="${WARMUP_EPOCHS:-3}"
+FINETUNE_EPOCHS="${FINETUNE_EPOCHS:-15}"
+CHECKPOINT_SAVE_FREQ="${CHECKPOINT_SAVE_FREQ:-1}"
 SEED="${SEED:-250107256}"
 GPU_SAMPLE_INTERVAL="${GPU_SAMPLE_INTERVAL:-10}"
 EXTRACT_MISSING_FRAMES="${EXTRACT_MISSING_FRAMES:-0}"
@@ -59,8 +60,9 @@ Formal flow:
 
 Defaults:
   START_SHARD=0 END_SHARD=18
-  WARMUP_EPOCHS=1 FINETUNE_EPOCHS=9
+  WARMUP_EPOCHS=3 FINETUNE_EPOCHS=15
   BATCH_SIZE=1 IMAGE_ENCODER_BATCH=8 IMAGE_ENCODER_CKPT=0
+  CHECKPOINT_SAVE_FREQ=1 saves every checkpoint interval supported by SAM2 Trainer.
   TensorBoard writes under RUN_DIR/tensorboard.
   W&B companion logging uses WANDB_PROJECT, WANDB_NAME, and optional WANDB_RUN_ID.
 EOF
@@ -129,7 +131,7 @@ print_preflight() {
   global_batch=$((BATCH_SIZE * NPROC))
   steps_per_epoch=$(((videos + global_batch - 1) / global_batch))
   total_epochs=$((WARMUP_EPOCHS + FINETUNE_EPOCHS))
-  python - "${mode}" "${videos}" "${NPROC}" "${BATCH_SIZE}" "${global_batch}" "${steps_per_epoch}" "${WARMUP_EPOCHS}" "${FINETUNE_EPOCHS}" "${NUM_FRAMES}" "${IMAGE_ENCODER_BATCH}" "${IMAGE_ENCODER_CKPT}" <<'PY' | tee "${out_dir}/preflight.json"
+  python - "${mode}" "${videos}" "${NPROC}" "${BATCH_SIZE}" "${global_batch}" "${steps_per_epoch}" "${WARMUP_EPOCHS}" "${FINETUNE_EPOCHS}" "${NUM_FRAMES}" "${IMAGE_ENCODER_BATCH}" "${IMAGE_ENCODER_CKPT}" "${CHECKPOINT_SAVE_FREQ}" <<'PY' | tee "${out_dir}/preflight.json"
 import json
 import sys
 
@@ -137,7 +139,7 @@ mode = sys.argv[1]
 keys = [
     "videos", "nproc", "per_gpu_batch_size", "global_batch_size",
     "steps_per_epoch", "warmup_epochs", "finetune_epochs", "num_frames",
-    "image_encoder_batch", "image_encoder_ckpt",
+    "image_encoder_batch", "image_encoder_ckpt", "checkpoint_save_freq",
 ]
 vals = {key: int(value) for key, value in zip(keys, sys.argv[2:])}
 vals["mode"] = mode
@@ -204,6 +206,7 @@ phase_command() {
     --trainable-module-mode "${trainable_mode}"
     --lambda-img 0
     --lambda-mem 0
+    --checkpoint-save-freq "${CHECKPOINT_SAVE_FREQ}"
     --seed "${SEED}"
     "${activation_args[@]}"
   )

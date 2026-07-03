@@ -51,6 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda-img", type=float)
     parser.add_argument("--lambda-mem", type=float)
     parser.add_argument("--teacher-feature-cache", type=Path)
+    parser.add_argument("--checkpoint-save-freq", type=int, default=0)
     parser.add_argument("--seed", type=int, default=250107256)
     return parser.parse_args()
 
@@ -195,6 +196,7 @@ def main() -> None:
     cfg.trainer.logging.log_dir = str(args.out_dir / "logs")
     cfg.trainer.logging.tensorboard_writer.log_dir = str(args.out_dir / "tensorboard")
     cfg.trainer.checkpoint.save_dir = str(args.out_dir / "checkpoints")
+    cfg.trainer.checkpoint.save_freq = args.checkpoint_save_freq
     cfg.launcher.experiment_log_dir = str(args.out_dir)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -250,6 +252,7 @@ def main() -> None:
         "lambda_img": float(cfg.trainer.loss.all.lambda_img),
         "lambda_mem": float(cfg.trainer.loss.all.lambda_mem),
         "teacher_feature_cache": str(args.teacher_feature_cache) if args.teacher_feature_cache else None,
+        "checkpoint_save_freq": args.checkpoint_save_freq,
         "seed": args.seed,
         "checkpoint_before": checkpoint_before,
         "checkpoint_after": checkpoint_after,

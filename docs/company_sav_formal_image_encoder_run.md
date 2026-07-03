@@ -12,8 +12,8 @@ sav_000 ... sav_018
 Default schedule:
 
 ```text
-warmup:   1 epoch, train image_encoder.neck only
-finetune: 9 epochs, train full image_encoder only
+warmup:   3 epochs, train image_encoder.neck only
+finetune: 15 epochs, train full image_encoder only
 ```
 
 Default runtime:
@@ -85,7 +85,7 @@ Set W&B before running:
 ```bash
 wandb login
 export WANDB_PROJECT=sam2-distill-edgetam-formal
-export WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w1_f9
+export WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15
 ```
 
 To resume the same W&B run after interruption:
@@ -107,14 +107,15 @@ One H100:
 ```bash
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
-RUN_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w1_f9 \
+RUN_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w3_f15 \
 WANDB_PROJECT=sam2-distill-edgetam-formal \
-WANDB_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w1_f9 \
+WANDB_NAME=sav000_018_1gpu_b1_ieb8_ckpt0_w3_f15 \
 BATCH_SIZE=1 \
 IMAGE_ENCODER_BATCH=8 \
 IMAGE_ENCODER_CKPT=0 \
-WARMUP_EPOCHS=1 \
-FINETUNE_EPOCHS=9 \
+WARMUP_EPOCHS=3 \
+FINETUNE_EPOCHS=15 \
+CHECKPOINT_SAVE_FREQ=1 \
 NUM_WORKERS=8 \
 scripts/company/10_run_sav_range_formal_image_encoder.sh 1gpu
 ```
@@ -124,14 +125,15 @@ Four H100s:
 ```bash
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
-RUN_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w1_f9 \
+RUN_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15 \
 WANDB_PROJECT=sam2-distill-edgetam-formal \
-WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w1_f9 \
+WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15 \
 BATCH_SIZE=1 \
 IMAGE_ENCODER_BATCH=8 \
 IMAGE_ENCODER_CKPT=0 \
-WARMUP_EPOCHS=1 \
-FINETUNE_EPOCHS=9 \
+WARMUP_EPOCHS=3 \
+FINETUNE_EPOCHS=15 \
+CHECKPOINT_SAVE_FREQ=1 \
 NUM_WORKERS=8 \
 scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
 ```
@@ -152,4 +154,3 @@ Outputs:
   formal_summary.json
   wandb_run.json
 ```
-
