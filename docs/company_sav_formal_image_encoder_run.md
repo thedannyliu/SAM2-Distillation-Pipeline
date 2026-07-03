@@ -97,8 +97,25 @@ Set W&B before running:
 
 ```bash
 wandb login
+wandb status
 export WANDB_PROJECT=sam2-distill-edgetam-formal-4gpu
 export WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15
+```
+
+`wandb status` must show a non-null `api_key` for online logging. The formal
+wrapper fails before training when W&B is requested but the current shell is not
+logged in. W&B local files are written under:
+
+```text
+<RUN_DIR>/wandb
+```
+
+If online W&B is blocked, run offline and sync later:
+
+```bash
+export WANDB_MODE=offline
+# run training
+wandb sync <RUN_DIR>/wandb/offline-run-*
 ```
 
 To resume the same W&B run after interruption:

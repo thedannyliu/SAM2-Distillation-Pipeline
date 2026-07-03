@@ -45,6 +45,7 @@ NO_WANDB="${NO_WANDB:-0}"
 WANDB_PROJECT="${WANDB_PROJECT:-}"
 WANDB_NAME="${WANDB_NAME:-${RANGE_NAME}_formal_image_encoder}"
 WANDB_RUN_ID="${WANDB_RUN_ID:-}"
+WANDB_REQUIRE_LOGIN="${WANDB_REQUIRE_LOGIN:-1}"
 
 usage() {
   cat <<'EOF'
@@ -170,6 +171,7 @@ metadata = {
     "tinyvit_checkpoint": sys.argv[3],
     "tensorboard_dir": str(out_dir / "tensorboard"),
     "checkpoint_dir": str(out_dir / "checkpoints"),
+    "wandb_dir": str(out_dir / "wandb"),
     "wandb_project": sys.argv[4],
     "wandb_name": sys.argv[5],
     "wandb_run_id": sys.argv[6] or None,
@@ -177,6 +179,41 @@ metadata = {
 }
 (out_dir / "run_metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
 print(json.dumps(metadata, indent=2))
+PY
+}
+
+check_wandb_ready() {
+  if [[ "${NO_WANDB}" -eq 1 || "${DRY_RUN}" -eq 1 || "${WANDB_REQUIRE_LOGIN}" -eq 0 ]]; then
+    return 0
+  fi
+  case "${WANDB_MODE:-online}" in
+    offline|disabled|dryrun)
+      return 0
+      ;;
+  esac
+  python - <<'PY'
+import os
+import subprocess
+import sys
+
+if os.environ.get("WANDB_API_KEY"):
+    raise SystemExit(0)
+
+try:
+    status = subprocess.check_output(
+        ["wandb", "status"],
+        text=True,
+        stderr=subprocess.STDOUT,
+    )
+except Exception as exc:
+    print(f"W&B requested but `wandb status` failed: {exc}", file=sys.stderr)
+    print("Run `python -m pip install -U wandb` and `wandb login`, or set NO_WANDB=1.", file=sys.stderr)
+    raise SystemExit(1)
+
+if '"api_key": null' in status or '"api_key": ""' in status:
+    print("W&B requested but this shell is not logged in.", file=sys.stderr)
+    print("Run `wandb login`, or set WANDB_MODE=offline to sync later, or set NO_WANDB=1.", file=sys.stderr)
+    raise SystemExit(1)
 PY
 }
 
@@ -363,10 +400,12 @@ run = wandb.init(
     name=name,
     id=run_id,
     resume="allow" if run_id else None,
+    dir=str(out_dir / "wandb"),
     config={
         "preflight": summary.get("preflight", {}),
         "tensorboard_dir": metadata.get("tensorboard_dir"),
         "checkpoint_dir": metadata.get("checkpoint_dir"),
+        "wandb_dir": metadata.get("wandb_dir"),
     },
 )
 (out_dir / "wandb_run.json").write_text(json.dumps({"run_id": run.id, "project": project, "name": name}) + "\n")
@@ -390,8 +429,10 @@ run_formal() {
   if [[ -z "${WANDB_PROJECT}" ]]; then
     WANDB_PROJECT="sam2-distill-edgetam-formal-${mode}"
   fi
+  check_wandb_ready
   ensure_wandb_run_id
   out_dir="$(run_dir "${mode}")"
+  export WANDB_DIR="${out_dir}/wandb"
   prepare
   mkdir -p "${out_dir}"
   print_preflight "${mode}" "${out_dir}"

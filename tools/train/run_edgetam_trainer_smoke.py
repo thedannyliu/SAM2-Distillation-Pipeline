@@ -104,18 +104,22 @@ def setup_wandb(args: argparse.Namespace, cfg: Any) -> Any | None:
         raise ImportError("W&B logging requested but wandb is not installed.") from exc
 
     tensorboard_dir = args.out_dir / "tensorboard"
+    wandb_dir = args.out_dir / "wandb"
+    wandb_dir.mkdir(parents=True, exist_ok=True)
     wandb.tensorboard.patch(root_logdir=str(tensorboard_dir))
     run = wandb.init(
         project=args.wandb_project,
         name=args.wandb_name,
         id=args.wandb_run_id or None,
         resume="allow" if args.wandb_run_id else None,
+        dir=str(wandb_dir),
         sync_tensorboard=True,
         config={
             "phase": args.wandb_phase,
             "config": str(args.config),
             "out_dir": str(args.out_dir),
             "tensorboard_dir": str(tensorboard_dir),
+            "wandb_dir": str(wandb_dir),
             "max_epochs": args.max_epochs,
             "num_frames": args.num_frames,
             "max_num_objects": args.max_num_objects,
@@ -128,7 +132,17 @@ def setup_wandb(args: argparse.Namespace, cfg: Any) -> Any | None:
         },
     )
     (args.out_dir / "wandb_run.json").write_text(
-        json.dumps({"run_id": run.id, "project": args.wandb_project, "name": args.wandb_name}) + "\n",
+        json.dumps(
+            {
+                "run_id": run.id,
+                "project": args.wandb_project,
+                "name": args.wandb_name,
+                "url": run.url,
+                "dir": str(wandb_dir),
+                "mode": run.settings.mode,
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     return run
