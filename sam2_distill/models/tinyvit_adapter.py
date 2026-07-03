@@ -34,18 +34,17 @@ class TinyViTSAM2Adapter(nn.Module):
         input_size: int = 1024,
     ) -> None:
         super().__init__()
-        try:
-            import timm
-        except ImportError as exc:
-            raise ImportError("TinyViTSAM2Adapter requires timm.") from exc
+        from sam2_distill.edgetam.timm_backbone import TimmBackbone
 
-        kwargs = {"features_only": True, "pretrained": False}
-        if checkpoint_path:
-            kwargs["checkpoint_path"] = checkpoint_path
-        self.backbone = timm.create_model(model_name, **kwargs)
+        self.backbone = TimmBackbone(
+            name=model_name,
+            features=("layer0", "layer1", "layer2", "layer3"),
+            pretrained=False,
+            checkpoint_path=checkpoint_path,
+        )
         self.input_size = input_size
 
-        info = self.backbone.feature_info
+        info = self.backbone.body.feature_info
         reductions = list(info.reduction())
         channels = list(info.channels())
         self.target_to_feature_idx = {
