@@ -231,6 +231,10 @@ and trains the full `image_encoder`. Both phases freeze memory, prompt, mask,
 and other non-image components. See
 `docs/company_sav000_tinyvit_image_encoder_1h100.md`.
 
+For full `sav_000` through `sav_005` one-epoch timing on either one H100 or
+four H100s, use `scripts/company/09_run_sav000_005_epoch_timing.sh`; see
+`docs/company_sav000_005_epoch_timing.md`.
+
 ## TinyViT Config
 
 Generate an EdgeTAM TinyViT config from timm feature metadata:

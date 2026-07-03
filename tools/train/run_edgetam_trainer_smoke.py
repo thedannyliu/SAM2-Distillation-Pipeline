@@ -72,6 +72,10 @@ def set_single_process_dist_env() -> None:
     os.environ.setdefault("WORLD_SIZE", "1")
 
 
+def get_rank() -> int:
+    return int(os.environ.get("RANK", "0"))
+
+
 def read_checkpoint_summary(checkpoint_path: Path) -> dict[str, Any] | None:
     if not checkpoint_path.exists():
         return None
@@ -196,10 +200,11 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = args.out_dir / "checkpoints" / "checkpoint.pt"
     checkpoint_before = read_checkpoint_summary(checkpoint_path)
-    (args.out_dir / "config_resolved.yaml").write_text(
-        OmegaConf.to_yaml(cfg, resolve=True),
-        encoding="utf-8",
-    )
+    if get_rank() == 0:
+        (args.out_dir / "config_resolved.yaml").write_text(
+            OmegaConf.to_yaml(cfg, resolve=True),
+            encoding="utf-8",
+        )
 
     trainer = instantiate(cfg.trainer, _recursive_=False)
     trainable_summary_before = {
@@ -250,8 +255,9 @@ def main() -> None:
         "checkpoint_after": checkpoint_after,
         "resumed": checkpoint_before is not None,
     }
-    (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(summary, indent=2))
+    if get_rank() == 0:
+        (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
