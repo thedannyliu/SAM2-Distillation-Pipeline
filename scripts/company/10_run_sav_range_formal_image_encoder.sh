@@ -192,27 +192,21 @@ check_wandb_ready() {
       ;;
   esac
   python - <<'PY'
+import netrc
 import os
-import subprocess
 import sys
 
 if os.environ.get("WANDB_API_KEY"):
     raise SystemExit(0)
 
 try:
-    status = subprocess.check_output(
-        ["wandb", "status"],
-        text=True,
-        stderr=subprocess.STDOUT,
-    )
-except Exception as exc:
-    print(f"W&B requested but `wandb status` failed: {exc}", file=sys.stderr)
-    print("Run `python -m pip install -U wandb` and `wandb login`, or set NO_WANDB=1.", file=sys.stderr)
-    raise SystemExit(1)
+    auth = netrc.netrc().authenticators("api.wandb.ai")
+except Exception:
+    auth = None
 
-if '"api_key": null' in status or '"api_key": ""' in status:
-    print("W&B requested but this shell is not logged in.", file=sys.stderr)
-    print("Run `wandb login`, or set WANDB_MODE=offline to sync later, or set NO_WANDB=1.", file=sys.stderr)
+if not auth or not auth[2]:
+    print("W&B requested but no API key was found in WANDB_API_KEY or ~/.netrc.", file=sys.stderr)
+    print("Run `wandb login --relogin`, or set WANDB_MODE=offline to sync later, or set NO_WANDB=1.", file=sys.stderr)
     raise SystemExit(1)
 PY
 }

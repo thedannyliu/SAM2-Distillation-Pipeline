@@ -102,9 +102,22 @@ export WANDB_PROJECT=sam2-distill-edgetam-formal-4gpu
 export WANDB_NAME=sav000_018_4gpu_b1_ieb8_ckpt0_w3_f15
 ```
 
-`wandb status` must show a non-null `api_key` for online logging. The formal
-wrapper fails before training when W&B is requested but the current shell is not
-logged in. W&B local files are written under:
+In W&B 0.28, `wandb status` can still print `"api_key": null` even when
+credentials were loaded from `~/.netrc`. Treat `wandb login` plus a smoke run as
+the source of truth:
+
+```bash
+python - <<'PY'
+import wandb
+run = wandb.init(project="sam2-distill-wandb-smoke", name="company-login-smoke")
+wandb.log({"ok": 1})
+run.finish()
+PY
+```
+
+The formal wrapper fails before training when W&B is requested but neither
+`WANDB_API_KEY` nor a `~/.netrc` credential for `api.wandb.ai` exists. W&B local
+files are written under:
 
 ```text
 <RUN_DIR>/wandb
