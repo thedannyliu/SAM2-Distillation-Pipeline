@@ -46,6 +46,8 @@ WANDB_PROJECT="${WANDB_PROJECT:-}"
 WANDB_NAME="${WANDB_NAME:-${RANGE_NAME}_formal_image_encoder}"
 WANDB_RUN_ID="${WANDB_RUN_ID:-}"
 WANDB_REQUIRE_LOGIN="${WANDB_REQUIRE_LOGIN:-1}"
+WANDB_LIVE_LOGGER="${WANDB_LIVE_LOGGER:-1}"
+WANDB_SAVE_SUMMARY_FILES="${WANDB_SAVE_SUMMARY_FILES:-0}"
 
 usage() {
   cat <<'EOF'
@@ -125,6 +127,24 @@ stop_gpu_monitor() {
   fi
 }
 
+start_wandb_log_monitor() {
+  local phase="$1"
+  local out_dir="$2"
+  local log_file="$3"
+  if [[ "${NO_WANDB}" -eq 1 || "${WANDB_LIVE_LOGGER}" -ne 1 ]]; then
+    return 0
+  fi
+  python "${REPO_ROOT}/tools/monitor/log_sam2_train_log_to_wandb.py" \
+    --log-file "${log_file}" \
+    --out-dir "${out_dir}" \
+    --project "${WANDB_PROJECT}" \
+    --name "${WANDB_NAME}" \
+    --run-id "${WANDB_RUN_ID}" \
+    --phase "${phase}" \
+    > "${out_dir}/wandb_live_${phase}.log" 2>&1 &
+  echo "$!"
+}
+
 print_preflight() {
   local mode="$1"
   local out_dir="$2"
@@ -161,6 +181,7 @@ write_run_metadata() {
   local out_dir="$1"
   python - "${out_dir}" "${CONFIG}" "${TINYVIT_CKPT}" "${WANDB_PROJECT}" "${WANDB_NAME}" "${WANDB_RUN_ID}" "${NO_WANDB}" <<'PY'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -260,7 +281,7 @@ phase_command() {
     --seed "${SEED}"
     "${activation_args[@]}"
   )
-  if [[ "${NO_WANDB}" -eq 1 ]]; then
+  if [[ "${NO_WANDB}" -eq 1 || "${WANDB_LIVE_LOGGER}" -eq 1 ]]; then
     train_args+=(--no-wandb)
   else
     train_args+=(
@@ -282,14 +303,17 @@ run_phase() {
   local out_dir="$2"
   local max_epochs="$3"
   local trainable_mode="$4"
-  local cmd_str runtime_json monitor_pid start end rc
+  local cmd_str runtime_json monitor_pid wandb_monitor_pid train_log start end rc
   cmd_str="$(phase_command "${out_dir}" "${max_epochs}" "${trainable_mode}")"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf 'DRY_RUN %s command:\nCUDA_VISIBLE_DEVICES=%q %s\n' "${phase}" "${GPUS}" "${cmd_str}" | tee -a "${out_dir}/commands.txt"
     return 0
   fi
   runtime_json="${out_dir}/runtime_${phase}.json"
+  train_log="${out_dir}/train_${phase}.log"
+  : > "${train_log}"
   monitor_pid="$(start_gpu_monitor "${out_dir}/gpu_usage_${phase}.csv" || true)"
+  wandb_monitor_pid="$(start_wandb_log_monitor "${phase}" "${out_dir}" "${train_log}" || true)"
   start="$(date +%s)"
   python - "${phase}" "${start}" "${cmd_str}" > "${runtime_json}" <<'PY'
 import json
@@ -297,10 +321,11 @@ import sys
 print(json.dumps({"phase": sys.argv[1], "start_unix": int(sys.argv[2]), "command": sys.argv[3]}, indent=2))
 PY
   set +e
-  CUDA_VISIBLE_DEVICES="${GPUS}" bash -lc "${cmd_str}" 2>&1 | tee "${out_dir}/train_${phase}.log"
+  CUDA_VISIBLE_DEVICES="${GPUS}" bash -lc "${cmd_str}" 2>&1 | tee -a "${train_log}"
   rc=${PIPESTATUS[0]}
   set -e
   stop_gpu_monitor "${monitor_pid}"
+  stop_gpu_monitor "${wandb_monitor_pid}"
   end="$(date +%s)"
   python - "${runtime_json}" "${end}" "${rc}" <<'PY'
 import json
@@ -409,10 +434,11 @@ for phase, values in summary.get("phases", {}).items():
         if key in values:
             metrics[f"{phase}/{key}"] = values[key]
 wandb.log(metrics)
-for file_name in ("formal_summary.json", "preflight.json", "run_metadata.json"):
-    path = out_dir / file_name
-    if path.exists():
-        wandb.save(str(path), base_path=str(out_dir))
+if os.environ.get("WANDB_SAVE_SUMMARY_FILES", "0") == "1":
+    for file_name in ("formal_summary.json", "preflight.json", "run_metadata.json"):
+        path = out_dir / file_name
+        if path.exists():
+            wandb.save(str(path), base_path=str(out_dir))
 run.finish()
 PY
 }

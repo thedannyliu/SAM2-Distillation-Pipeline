@@ -101,6 +101,25 @@ Trainer/steps_train
 Trainer/where
 ```
 
+By default, formal runs use a live text-log sidecar instead of uploading
+TensorBoard event files. This avoids company upload policies that can block W&B
+file uploads to `storage.googleapis.com`. The sidecar parses `train_warmup.log`
+and `train_finetune.log` and sends scalar metrics such as:
+
+```text
+warmup/loss/train_all_loss
+warmup/loss/train_all_loss_avg
+warmup/Batch_Time
+warmup/progress_pct
+finetune/loss/train_all_loss
+finetune/loss/train_all_loss_avg
+finetune/progress_pct
+```
+
+Leave `WANDB_LIVE_LOGGER=1` unless debugging TensorBoard sync explicitly. Do
+not set `WANDB_IGNORE_GLOBS="*.tfevents.*"` for normal formal runs; it prevents
+TensorBoard sync and is unnecessary with the live logger path.
+
 Default W&B projects are separated by GPU setup:
 
 ```text
@@ -156,6 +175,29 @@ Disable W&B if needed:
 
 ```bash
 NO_WANDB=1 scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
+```
+
+To attach W&B live logging to a run that is already training, use the run id
+from `wandb_run.json` and the current phase log:
+
+```bash
+RUN_NAME=sav000_018_4gpu_tinyvit21m_b1_ieb8_ckpt0_w3_f15_wandb2
+RUN_DIR=/group-volume/danny-dataset/sam2_distill/runs/sav000_018_formal_image_encoder/$RUN_NAME
+RUN_ID=$(python - "$RUN_DIR/wandb_run.json" <<'PY'
+import json
+import sys
+print(json.load(open(sys.argv[1]))["run_id"])
+PY
+)
+
+nohup python tools/monitor/log_sam2_train_log_to_wandb.py \
+  --log-file "$RUN_DIR/train_warmup.log" \
+  --out-dir "$RUN_DIR" \
+  --project sam2-distill-edgetam-formal-4gpu \
+  --name "$RUN_NAME" \
+  --run-id "$RUN_ID" \
+  --phase warmup \
+  > "$RUN_DIR/wandb_live_warmup_attach.log" 2>&1 &
 ```
 
 ## Run
