@@ -235,6 +235,10 @@ For full `sav_000` through `sav_005` one-epoch timing on either one H100 or
 four H100s, use `scripts/company/09_run_sav000_005_epoch_timing.sh`; see
 `docs/company_sav000_005_epoch_timing.md`.
 
+For formal SA-V range training with W&B/TensorBoard, warmup, and full image
+encoder finetuning, use `scripts/company/10_run_sav_range_formal_image_encoder.sh`;
+see `docs/company_sav_formal_image_encoder_run.md`.
+
 ## TinyViT Config
 
 Generate an EdgeTAM TinyViT config from timm feature metadata:
