@@ -4,6 +4,7 @@ set -euo pipefail
 SKIP_SAM2_SMOKE=0
 SAM2_UPSTREAM="${SAM2_UPSTREAM:-}"
 INSTALL_MODE="${INSTALL_MODE:-user}"
+REQUIREMENTS_FILE="${REQUIREMENTS_FILE:-requirements-stage1.txt}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -17,6 +18,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --install-mode)
       INSTALL_MODE="$2"
+      shift 2
+      ;;
+    --requirements)
+      REQUIREMENTS_FILE="$2"
       shift 2
       ;;
     --venv)
@@ -56,8 +61,8 @@ PY
 
 python -m pip install "${PIP_PREFIX[@]}" --upgrade pip setuptools wheel
 
-if [[ -f requirements-stage1.txt ]]; then
-  python -m pip install "${PIP_PREFIX[@]}" -r requirements-stage1.txt
+if [[ -n "${REQUIREMENTS_FILE}" && -f "${REQUIREMENTS_FILE}" ]]; then
+  python -m pip install "${PIP_PREFIX[@]}" -r "${REQUIREMENTS_FILE}"
 fi
 
 if [[ -f pyproject.toml || -f setup.py ]]; then
@@ -72,7 +77,7 @@ if [[ "${SKIP_SAM2_SMOKE}" -eq 0 ]]; then
   python - <<'PY'
 import importlib
 
-for module in ["torch", "timm", "tensordict", "huggingface_hub", "wandb", "pandas", "pyarrow", "zarr", "PIL"]:
+for module in ["torch", "timm", "tensordict", "huggingface_hub", "wandb", "pandas", "pyarrow", "zarr", "PIL", "fvcore", "iopath"]:
     importlib.import_module(module)
     print(f"import_ok={module}")
 

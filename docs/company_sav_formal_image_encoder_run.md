@@ -35,6 +35,21 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 ```
 
+Install EdgeTAM/SAM2 trainer Python dependencies once per fresh company node:
+
+```bash
+python -m pip install --user fvcore iopath
+```
+
+For a fuller repo setup, use the checked-in requirements file without changing
+the container PyTorch runtime:
+
+```bash
+bash scripts/company/00_setup_env.sh \
+  --sam2-upstream /user-volume/repo/facebookresearch-sam2 \
+  --requirements requirements-edgetam.txt
+```
+
 Move frame directories into one canonical combined root and leave shard-local
 symlinks so there is no duplicate JPEG storage:
 
