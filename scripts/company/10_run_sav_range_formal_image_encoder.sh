@@ -177,6 +177,22 @@ print(json.dumps(metadata, indent=2))
 PY
 }
 
+ensure_wandb_run_id() {
+  if [[ "${NO_WANDB}" -eq 1 || -n "${WANDB_RUN_ID}" ]]; then
+    return 0
+  fi
+  WANDB_RUN_ID="$(python - <<'PY'
+try:
+    import wandb
+    print(wandb.util.generate_id())
+except Exception:
+    import secrets
+    print(secrets.token_hex(8))
+PY
+)"
+  export WANDB_RUN_ID
+}
+
 phase_command() {
   local out_dir="$1"
   local max_epochs="$2"
@@ -210,6 +226,16 @@ phase_command() {
     --seed "${SEED}"
     "${activation_args[@]}"
   )
+  if [[ "${NO_WANDB}" -eq 1 ]]; then
+    train_args+=(--no-wandb)
+  else
+    train_args+=(
+      --wandb-project "${WANDB_PROJECT}"
+      --wandb-name "${WANDB_NAME}"
+      --wandb-run-id "${WANDB_RUN_ID}"
+      --wandb-phase "${trainable_mode}"
+    )
+  fi
   if [[ "${NPROC}" -gt 1 ]]; then
     printf '%q ' torchrun --standalone --nproc_per_node="${NPROC}" "${REPO_ROOT}/tools/train/run_edgetam_trainer_smoke.py" "${train_args[@]}"
   else
@@ -350,7 +376,7 @@ wandb.log(metrics)
 for file_name in ("formal_summary.json", "preflight.json", "run_metadata.json"):
     path = out_dir / file_name
     if path.exists():
-wandb.save(str(path), base_path=str(out_dir))
+        wandb.save(str(path), base_path=str(out_dir))
 run.finish()
 PY
 }
@@ -361,6 +387,7 @@ run_formal() {
   if [[ -z "${WANDB_PROJECT}" ]]; then
     WANDB_PROJECT="sam2-distill-edgetam-formal-${mode}"
   fi
+  ensure_wandb_run_id
   out_dir="$(run_dir "${mode}")"
   prepare
   mkdir -p "${out_dir}"

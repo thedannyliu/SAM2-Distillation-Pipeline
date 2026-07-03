@@ -71,8 +71,20 @@ TensorBoard is written by the SAM2 trainer under:
 <RUN_DIR>/tensorboard
 ```
 
-W&B companion logging records preflight metadata, phase runtime, throughput,
-checkpoint path, TensorBoard path, and final summaries.
+W&B logging records preflight metadata, phase runtime, throughput, checkpoint
+path, TensorBoard path, final summaries, and synced TensorBoard scalars from
+rank 0. The synced training curves include the SAM2 trainer scalars such as:
+
+```text
+Losses/train_all_loss
+Losses/train_all_loss_mask
+Losses/train_all_loss_dice
+Losses/train_all_loss_iou
+Losses/train_all_loss_class
+Trainer/epoch
+Trainer/steps_train
+Trainer/where
+```
 
 Default W&B projects are separated by GPU setup:
 

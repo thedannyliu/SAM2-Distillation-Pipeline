@@ -52,6 +52,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda-mem", type=float)
     parser.add_argument("--teacher-feature-cache", type=Path)
     parser.add_argument("--checkpoint-save-freq", type=int, default=0)
+    parser.add_argument("--wandb-project")
+    parser.add_argument("--wandb-name")
+    parser.add_argument("--wandb-run-id")
+    parser.add_argument("--wandb-phase")
+    parser.add_argument("--no-wandb", action="store_true")
     parser.add_argument("--seed", type=int, default=250107256)
     return parser.parse_args()
 
@@ -87,6 +92,46 @@ def read_checkpoint_summary(checkpoint_path: Path) -> dict[str, Any] | None:
         "epoch": int(checkpoint.get("epoch", -1)),
         "steps": {key: int(value) for key, value in checkpoint.get("steps", {}).items()},
     }
+
+
+def setup_wandb(args: argparse.Namespace, cfg: Any) -> Any | None:
+    if args.no_wandb or get_rank() != 0 or not args.wandb_project:
+        return None
+
+    try:
+        import wandb
+    except ImportError as exc:
+        raise ImportError("W&B logging requested but wandb is not installed.") from exc
+
+    tensorboard_dir = args.out_dir / "tensorboard"
+    wandb.tensorboard.patch(root_logdir=str(tensorboard_dir))
+    run = wandb.init(
+        project=args.wandb_project,
+        name=args.wandb_name,
+        id=args.wandb_run_id or None,
+        resume="allow" if args.wandb_run_id else None,
+        sync_tensorboard=True,
+        config={
+            "phase": args.wandb_phase,
+            "config": str(args.config),
+            "out_dir": str(args.out_dir),
+            "tensorboard_dir": str(tensorboard_dir),
+            "max_epochs": args.max_epochs,
+            "num_frames": args.num_frames,
+            "max_num_objects": args.max_num_objects,
+            "batch_size": args.batch_size,
+            "resolution": args.resolution,
+            "dataset_mode": args.dataset_mode,
+            "trainable_module_mode": args.trainable_module_mode,
+            "lambda_img": float(cfg.trainer.loss.all.lambda_img),
+            "lambda_mem": float(cfg.trainer.loss.all.lambda_mem),
+        },
+    )
+    (args.out_dir / "wandb_run.json").write_text(
+        json.dumps({"run_id": run.id, "project": args.wandb_project, "name": args.wandb_name}) + "\n",
+        encoding="utf-8",
+    )
+    return run
 
 
 def configure_sa1b_image_mode(cfg: Any, args: argparse.Namespace) -> None:
@@ -208,6 +253,7 @@ def main() -> None:
             encoding="utf-8",
         )
 
+    wandb_run = setup_wandb(args, cfg)
     trainer = instantiate(cfg.trainer, _recursive_=False)
     trainable_summary_before = {
         "total_parameters": int(sum(param.numel() for param in trainer.model.parameters())),
@@ -261,6 +307,18 @@ def main() -> None:
     if get_rank() == 0:
         (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(summary, indent=2))
+    if wandb_run is not None:
+        wandb_run.log(
+            {
+                f"{args.wandb_phase or 'phase'}/checkpoint_epoch": checkpoint_after["epoch"]
+                if checkpoint_after
+                else -1,
+                f"{args.wandb_phase or 'phase'}/train_steps": checkpoint_after["steps"].get("train", 0)
+                if checkpoint_after
+                else 0,
+            }
+        )
+        wandb_run.finish()
 
 
 if __name__ == "__main__":
