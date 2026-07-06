@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import math
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import pandas as pd
@@ -79,6 +80,25 @@ def split_for(relative_path: str, seed: str, val_fraction: float) -> str:
     return "val_sa1b" if value < val_fraction else "train"
 
 
+def read_image_row(task: tuple[str, str, str, str, bool, str, float]) -> dict:
+    path_s, image_root_s, source, seed, skip_file_sha256, rel, val_fraction = task
+    path = Path(path_s)
+    with Image.open(path) as image:
+        width, height = image.size
+
+    sha256 = "" if skip_file_sha256 else file_sha256(path)
+    sample_key = stable_digest(f"{source}|{rel}")
+    return {
+        "sample_id": f"{source}_{sample_key[:20]}",
+        "source": source,
+        "image_path": str(path),
+        "height": int(height),
+        "width": int(width),
+        "sha256": sha256,
+        "split": split_for(rel, seed, val_fraction),
+    }
+
+
 def build_manifest(args: argparse.Namespace) -> pd.DataFrame:
     image_root = Path(args.image_root).expanduser().resolve()
     paths = scan_images(image_root)
@@ -100,25 +120,29 @@ def build_manifest(args: argparse.Namespace) -> pd.DataFrame:
         max_per_parent=args.max_images_per_parent_dir,
     )
 
-    rows = []
-    for path in tqdm(selected, desc="manifest"):
-        rel = path.relative_to(image_root).as_posix()
-        with Image.open(path) as image:
-            width, height = image.size
-
-        sha256 = "" if args.skip_file_sha256 else file_sha256(path)
-        sample_key = stable_digest(f"{args.source}|{rel}")
-        rows.append(
-            {
-                "sample_id": f"{args.source}_{sample_key[:20]}",
-                "source": args.source,
-                "image_path": str(path),
-                "height": int(height),
-                "width": int(width),
-                "sha256": sha256,
-                "split": split_for(rel, args.seed, args.val_fraction),
-            }
+    tasks = [
+        (
+            str(path),
+            str(image_root),
+            args.source,
+            args.seed,
+            args.skip_file_sha256,
+            path.relative_to(image_root).as_posix(),
+            args.val_fraction,
         )
+        for path in selected
+    ]
+    if args.num_workers and args.num_workers > 1:
+        with ProcessPoolExecutor(max_workers=args.num_workers) as executor:
+            rows = list(
+                tqdm(
+                    executor.map(read_image_row, tasks, chunksize=args.worker_chunk_size),
+                    total=len(tasks),
+                    desc="manifest",
+                )
+            )
+    else:
+        rows = [read_image_row(task) for task in tqdm(tasks, desc="manifest")]
 
     df = pd.DataFrame(rows).sort_values("sample_id").reset_index(drop=True)
     return df
@@ -155,6 +179,18 @@ def parse_args() -> argparse.Namespace:
         "--skip-file-sha256",
         action="store_true",
         help="Leave sha256 blank for fast local smoke tests only.",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Parallel workers for reading selected image metadata. 0 or 1 runs single-process.",
+    )
+    parser.add_argument(
+        "--worker-chunk-size",
+        type=int,
+        default=64,
+        help="Chunk size for parallel metadata reads.",
     )
     return parser.parse_args()
 
