@@ -1,0 +1,353 @@
+#!/usr/bin/env python3
+"""Benchmark promptable image masks on SA-V validation annotations."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import sys
+import time
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+from PIL import Image
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class ObjectRecord:
+    video: str
+    object_id: str
+    frame_stem: str
+    image_path: Path
+    mask_path: Path
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model-kind", choices=("edgetam-trainer", "sam2"), required=True)
+    parser.add_argument("--prompt-kind", choices=("box", "point"), required=True)
+    parser.add_argument("--image-root", required=True, type=Path)
+    parser.add_argument("--ann-root", required=True, type=Path)
+    parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--checkpoint", required=True, type=Path)
+    parser.add_argument("--config", required=True, help="Trainer/model config for edgetam-trainer, SAM2 config name for sam2.")
+    parser.add_argument("--sam2-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam2"))
+    parser.add_argument("--edgetam-root", type=Path, default=Path("/user-volume/repo/EdgeTAM"))
+    parser.add_argument("--max-videos", type=int, default=0, help="0 means all.")
+    parser.add_argument("--max-objects", type=int, default=2000, help="0 means all.")
+    parser.add_argument("--warmup-images", type=int, default=5)
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    return parser.parse_args()
+
+
+def add_import_roots(args: argparse.Namespace) -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    for root in (args.sam2_root, args.edgetam_root):
+        if root.exists():
+            sys.path.insert(0, str(root))
+
+
+def sync(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+
+def strip_module_prefix(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    if not any(key.startswith("module.") for key in state_dict):
+        return state_dict
+    return {key.removeprefix("module."): value for key, value in state_dict.items()}
+
+
+def extract_state_dict(checkpoint: dict[str, Any]) -> dict[str, torch.Tensor]:
+    for key in ("model", "model_state", "state_dict"):
+        value = checkpoint.get(key)
+        if isinstance(value, dict):
+            return strip_module_prefix(value)
+    raise KeyError("checkpoint must contain one of: model, model_state, state_dict")
+
+
+def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
+    from hydra.utils import instantiate
+    from omegaconf import OmegaConf
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+    from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
+
+    patch_edgetam_perceiver_view()
+    cfg = OmegaConf.load(args.config)
+    model_cfg = cfg.model if "model" in cfg else cfg.trainer.model
+    model_cfg._target_ = "sam2_distill.edgetam.train_model.EdgeTAMTrain"
+    if "synthetic_teacher" in model_cfg:
+        del model_cfg.synthetic_teacher
+    if "teacher_feature_cache_path" in model_cfg:
+        del model_cfg.teacher_feature_cache_path
+    if "synthetic_teacher_offset" in model_cfg:
+        del model_cfg.synthetic_teacher_offset
+    model = instantiate(model_cfg, _recursive_=True)
+
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    state_dict = extract_state_dict(checkpoint)
+    incompatible = model.load_state_dict(state_dict, strict=False)
+    model = model.to(device)
+    model.eval()
+    return SAM2ImagePredictor(model), {
+        "checkpoint_epoch": checkpoint.get("epoch"),
+        "checkpoint_steps": checkpoint.get("steps"),
+        "num_tensors": len(state_dict),
+        "missing_keys": list(incompatible.missing_keys),
+        "unexpected_keys": list(incompatible.unexpected_keys),
+    }
+
+
+def load_sam2_predictor(args: argparse.Namespace, device: torch.device):
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+    model = build_sam2(args.config, str(args.checkpoint), device=str(device), mode="eval")
+    model.eval()
+    for param in model.parameters():
+        param.requires_grad_(False)
+    return SAM2ImagePredictor(model), {"checkpoint": str(args.checkpoint), "config": args.config}
+
+
+def image_for_mask(image_video_dir: Path, frame_stem: str) -> Path | None:
+    for suffix in (".jpg", ".jpeg", ".png"):
+        candidate = image_video_dir / f"{frame_stem}{suffix}"
+        if candidate.exists():
+            return candidate
+    if frame_stem.isdigit():
+        value = int(frame_stem)
+        for mapped in (value * 4, value // 4):
+            for width in (len(frame_stem), 6, 5, 4):
+                mapped_stem = f"{mapped:0{width}d}"
+                for suffix in (".jpg", ".jpeg", ".png"):
+                    candidate = image_video_dir / f"{mapped_stem}{suffix}"
+                    if candidate.exists():
+                        return candidate
+    return None
+
+
+def collect_records(args: argparse.Namespace) -> list[ObjectRecord]:
+    if not args.image_root.exists():
+        raise FileNotFoundError(args.image_root)
+    if not args.ann_root.exists():
+        raise FileNotFoundError(args.ann_root)
+
+    records: list[ObjectRecord] = []
+    videos = sorted(path.name for path in args.ann_root.iterdir() if path.is_dir())
+    if args.max_videos > 0:
+        videos = videos[: args.max_videos]
+    for video in videos:
+        image_video_dir = args.image_root / video
+        ann_video_dir = args.ann_root / video
+        if not image_video_dir.exists():
+            continue
+        for object_dir in sorted(path for path in ann_video_dir.iterdir() if path.is_dir()):
+            for mask_path in sorted(object_dir.glob("*.png")):
+                image_path = image_for_mask(image_video_dir, mask_path.stem)
+                if image_path is None:
+                    continue
+                records.append(
+                    ObjectRecord(
+                        video=video,
+                        object_id=object_dir.name,
+                        frame_stem=mask_path.stem,
+                        image_path=image_path,
+                        mask_path=mask_path,
+                    )
+                )
+                if args.max_objects > 0 and len(records) >= args.max_objects:
+                    return records
+    return records
+
+
+def load_mask(path: Path) -> np.ndarray:
+    with Image.open(path) as image:
+        return np.asarray(image) > 0
+
+
+def mask_bbox(mask: np.ndarray) -> np.ndarray | None:
+    ys, xs = np.where(mask)
+    if len(xs) == 0:
+        return None
+    return np.asarray([xs.min(), ys.min(), xs.max(), ys.max()], dtype=np.float32)
+
+
+def mask_point(mask: np.ndarray) -> np.ndarray | None:
+    ys, xs = np.where(mask)
+    if len(xs) == 0:
+        return None
+    cx = xs.mean()
+    cy = ys.mean()
+    best = int(np.argmin((xs - cx) ** 2 + (ys - cy) ** 2))
+    return np.asarray([[xs[best], ys[best]]], dtype=np.float32)
+
+
+def iou(pred: np.ndarray, gt: np.ndarray) -> float:
+    pred = pred.astype(bool)
+    gt = gt.astype(bool)
+    union = np.logical_or(pred, gt).sum()
+    if union == 0:
+        return 1.0
+    return float(np.logical_and(pred, gt).sum() / union)
+
+
+def average_precision(ious: list[float], scores: list[float], threshold: float) -> float:
+    if not ious:
+        return 0.0
+    order = np.argsort(-np.asarray(scores))
+    tp = np.asarray([ious[idx] >= threshold for idx in order], dtype=np.float32)
+    fp = 1.0 - tp
+    tp_cum = np.cumsum(tp)
+    fp_cum = np.cumsum(fp)
+    recalls = tp_cum / max(len(ious), 1)
+    precisions = tp_cum / np.maximum(tp_cum + fp_cum, 1e-12)
+    ap = 0.0
+    for recall_threshold in np.linspace(0.0, 1.0, 101):
+        valid = precisions[recalls >= recall_threshold]
+        ap += float(valid.max()) if valid.size else 0.0
+    return ap / 101.0
+
+
+def percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    return float(np.percentile(np.asarray(values, dtype=np.float64), q))
+
+
+def predict_one(predictor, prompt_kind: str, gt_mask: np.ndarray):
+    if prompt_kind == "box":
+        box = mask_bbox(gt_mask)
+        if box is None:
+            return None
+        return predictor.predict(box=box, multimask_output=False)
+    point = mask_point(gt_mask)
+    if point is None:
+        return None
+    labels = np.asarray([1], dtype=np.int32)
+    return predictor.predict(point_coords=point, point_labels=labels, multimask_output=True)
+
+
+def main() -> None:
+    args = parse_args()
+    add_import_roots(args)
+    device = torch.device(args.device)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise SystemExit("CUDA requested but not available")
+
+    records = collect_records(args)
+    if not records:
+        raise RuntimeError(f"No benchmarkable object masks under {args.ann_root}")
+
+    predictor, load_summary = (
+        load_edgetam_predictor(args, device)
+        if args.model_kind == "edgetam-trainer"
+        else load_sam2_predictor(args, device)
+    )
+
+    by_image: dict[Path, list[ObjectRecord]] = defaultdict(list)
+    for record in records:
+        by_image[record.image_path].append(record)
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    set_image_latencies: list[float] = []
+    prompt_latencies: list[float] = []
+
+    image_items = list(by_image.items())
+    with torch.inference_mode():
+        for warm_image_path, _ in image_items[: max(args.warmup_images, 0)]:
+            with Image.open(warm_image_path) as image:
+                predictor.set_image(np.asarray(image.convert("RGB")))
+            sync(device)
+
+        for image_path, image_records in image_items:
+            with Image.open(image_path) as image:
+                image_np = np.asarray(image.convert("RGB"))
+            sync(device)
+            start = time.perf_counter()
+            predictor.set_image(image_np)
+            sync(device)
+            set_image_sec = time.perf_counter() - start
+            set_image_latencies.append(set_image_sec)
+
+            for record in image_records:
+                gt_mask = load_mask(record.mask_path)
+                sync(device)
+                prompt_start = time.perf_counter()
+                prediction = predict_one(predictor, args.prompt_kind, gt_mask)
+                sync(device)
+                prompt_sec = time.perf_counter() - prompt_start
+                if prediction is None:
+                    continue
+                masks, scores, _ = prediction
+                scores_np = np.asarray(scores).reshape(-1)
+                best_idx = int(np.argmax(scores_np))
+                pred_mask = masks[best_idx] if masks.ndim == 3 else masks
+                row_iou = iou(pred_mask, gt_mask)
+                prompt_latencies.append(prompt_sec)
+                rows.append(
+                    {
+                        "video": record.video,
+                        "object_id": record.object_id,
+                        "frame_stem": record.frame_stem,
+                        "image_path": str(record.image_path),
+                        "mask_path": str(record.mask_path),
+                        "iou": row_iou,
+                        "score": float(scores_np[best_idx]),
+                        "num_candidates": int(len(scores_np)),
+                        "set_image_seconds": set_image_sec,
+                        "prompt_seconds": prompt_sec,
+                        "total_object_seconds": set_image_sec + prompt_sec,
+                    }
+                )
+
+    thresholds = [round(x, 2) for x in np.arange(0.50, 0.96, 0.05)]
+    ious = [float(row["iou"]) for row in rows]
+    scores = [float(row["score"]) for row in rows]
+    ap_by_threshold = {f"AP{int(t * 100)}": average_precision(ious, scores, t) for t in thresholds}
+    summary = {
+        "status": "pass",
+        "model_kind": args.model_kind,
+        "prompt_kind": args.prompt_kind,
+        "config": args.config,
+        "checkpoint": str(args.checkpoint),
+        "image_root": str(args.image_root),
+        "ann_root": str(args.ann_root),
+        "out_dir": str(args.out_dir),
+        "num_images": len(by_image),
+        "num_objects": len(rows),
+        "mIoU": float(np.mean(ious)) if ious else 0.0,
+        "median_IoU": percentile(ious, 50),
+        "AP": float(np.mean(list(ap_by_threshold.values()))) if ap_by_threshold else 0.0,
+        **ap_by_threshold,
+        "latency": {
+            "mean_set_image_seconds": float(np.mean(set_image_latencies)) if set_image_latencies else 0.0,
+            "p50_set_image_seconds": percentile(set_image_latencies, 50),
+            "p95_set_image_seconds": percentile(set_image_latencies, 95),
+            "mean_prompt_seconds": float(np.mean(prompt_latencies)) if prompt_latencies else 0.0,
+            "p50_prompt_seconds": percentile(prompt_latencies, 50),
+            "p95_prompt_seconds": percentile(prompt_latencies, 95),
+            "mean_total_object_seconds": float(np.mean([row["total_object_seconds"] for row in rows])) if rows else 0.0,
+        },
+        "load": load_summary,
+    }
+
+    csv_path = args.out_dir / "per_object_metrics.csv"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["video"])
+        writer.writeheader()
+        writer.writerows(rows)
+    (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(summary, indent=2))
+
+
+if __name__ == "__main__":
+    main()
