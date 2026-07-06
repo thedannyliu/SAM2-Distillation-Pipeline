@@ -177,6 +177,34 @@ def compute_loss(
     )
 
 
+def evaluate(
+    model: nn.Module,
+    teacher,
+    loader: DataLoader,
+    device: torch.device,
+    world_size: int,
+    max_batches: int,
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    model.eval()
+    totals: dict[str, float] = {}
+    count = 0
+    for batch_idx, (images, paths, _sample_ids) in enumerate(loader):
+        if max_batches and batch_idx >= max_batches:
+            break
+        images = images.to(device, non_blocking=True)
+        teacher_targets = teacher_features_from_paths(teacher, paths, device, args.teacher_amp_dtype)
+        with torch.no_grad(), autocast_context(device, args.amp_dtype):
+            student = model(images)
+            _, metrics = compute_loss(student, teacher_targets, args)
+        metrics = reduce_metrics(metrics, world_size)
+        for key, value in metrics.items():
+            totals[key] = totals.get(key, 0.0) + value
+        count += 1
+    model.train()
+    return {f"val/{key}": value / max(count, 1) for key, value in totals.items()}
+
+
 def save_checkpoint(
     path: Path,
     model: nn.Module,
@@ -445,9 +473,43 @@ def main() -> None:
             if is_main(rank) and step > 0 and step % args.save_every == 0:
                 save_checkpoint(ckpt_dir / f"step_{step:07d}.pt", model, optimizer, step + 1, wandb_run_id, args, best_val_loss)
                 save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step + 1, wandb_run_id, args, best_val_loss)
+            if step > 0 and step % args.eval_every == 0:
+                val_metrics = evaluate(model, teacher, val_loader, device, world_size, args.val_max_batches, args)
+                if is_main(rank):
+                    for key, value in val_metrics.items():
+                        if writer:
+                            writer.add_scalar(key, value, step)
+                    if wandb_run:
+                        wandb_run.log(val_metrics, step=step)
+                    val_loss = val_metrics.get("val/loss_stage1_total")
+                    print(
+                        " | ".join(
+                            [
+                                f"val step {step + 1:,}",
+                                f"loss {val_metrics.get('val/loss_stage1_total', float('nan')):.6f}",
+                                f"mse {val_metrics.get('val/loss_image_mse', float('nan')):.6f}",
+                                f"hr_mse {val_metrics.get('val/loss_high_res_mse', float('nan')):.6f}",
+                                f"best {best_val_loss if best_val_loss != float('inf') else float('nan'):.6f}",
+                            ]
+                        ),
+                        flush=True,
+                    )
+                    if val_loss is not None and val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        save_checkpoint(ckpt_dir / "best.pt", model, optimizer, step + 1, wandb_run_id, args, best_val_loss)
             step += 1
 
+    final_val_metrics = evaluate(model, teacher, val_loader, device, world_size, args.val_max_batches, args)
     if is_main(rank):
+        for key, value in final_val_metrics.items():
+            if writer:
+                writer.add_scalar(key, value, step)
+        if wandb_run:
+            wandb_run.log(final_val_metrics, step=step)
+        final_val_loss = final_val_metrics.get("val/loss_stage1_total")
+        if final_val_loss is not None and final_val_loss < best_val_loss:
+            best_val_loss = final_val_loss
+            save_checkpoint(ckpt_dir / "best.pt", model, optimizer, step, wandb_run_id, args, best_val_loss)
         save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step, wandb_run_id, args, best_val_loss)
         if writer:
             writer.close()
