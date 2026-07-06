@@ -55,6 +55,8 @@ Usage:
   scripts/company/10_run_sav_range_formal_image_encoder.sh prepare
   scripts/company/10_run_sav_range_formal_image_encoder.sh 1gpu
   scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
+  scripts/company/10_run_sav_range_formal_image_encoder.sh 1gpu-finetune
+  scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu-finetune
 
 Formal flow:
   - Prepare SA-V shard range into a combined root.
@@ -87,6 +89,24 @@ prepare() {
     --out-root "${COMBINED_ROOT}" \
     --frame-sample-rate "${SAV_FRAME_SAMPLE_RATE}" \
     "${args[@]}"
+}
+
+require_prepared() {
+  local missing=0
+  for path in \
+    "${COMBINED_ROOT}/manifests/sav_train_filelist.txt" \
+    "${COMBINED_ROOT}/JPEGImages_24fps" \
+    "${COMBINED_ROOT}/annotations"
+  do
+    if [[ ! -e "${path}" ]]; then
+      echo "missing prepared SA-V path: ${path}" >&2
+      missing=1
+    fi
+  done
+  if [[ "${missing}" -ne 0 ]]; then
+    echo "Run scripts/company/10_run_sav_range_formal_image_encoder.sh prepare first." >&2
+    exit 1
+  fi
 }
 
 run_dir() {
@@ -483,6 +503,33 @@ run_formal() {
   fi
 }
 
+run_formal_finetune_only() {
+  local mode="$1"
+  local out_dir total_epochs checkpoint_path
+  if [[ -z "${WANDB_PROJECT}" ]]; then
+    WANDB_PROJECT="sam2-distill-edgetam-formal-${mode}"
+  fi
+  check_wandb_ready
+  out_dir="$(run_dir "${mode}")"
+  checkpoint_path="${out_dir}/checkpoints/checkpoint.pt"
+  if [[ ! -f "${checkpoint_path}" ]]; then
+    echo "missing warmup checkpoint for finetune resume: ${checkpoint_path}" >&2
+    exit 1
+  fi
+  ensure_wandb_run_id "${out_dir}"
+  export WANDB_DIR="${out_dir}/wandb"
+  require_prepared
+  mkdir -p "${out_dir}"
+  print_preflight "${mode}" "${out_dir}"
+  write_run_metadata "${out_dir}"
+  total_epochs=$((WARMUP_EPOCHS + FINETUNE_EPOCHS))
+  run_phase "finetune" "${out_dir}" "${total_epochs}" "image_encoder_only"
+  if [[ "${DRY_RUN}" -ne 1 ]]; then
+    summarize_formal "${out_dir}"
+    log_wandb_summary "${out_dir}"
+  fi
+}
+
 case "${1:-}" in
   prepare)
     prepare
@@ -496,6 +543,16 @@ case "${1:-}" in
     GPUS="${GPUS:-0,1,2,3}"
     NPROC=4
     run_formal "4gpu"
+    ;;
+  1gpu-finetune)
+    GPUS="${GPUS:-0}"
+    NPROC=1
+    run_formal_finetune_only "1gpu"
+    ;;
+  4gpu-finetune)
+    GPUS="${GPUS:-0,1,2,3}"
+    NPROC=4
+    run_formal_finetune_only "4gpu"
     ;;
   -h|--help|"")
     usage

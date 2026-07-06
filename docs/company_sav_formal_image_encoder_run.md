@@ -283,6 +283,22 @@ git pull origin edgetam-tinyvit-pipeline
 The script reuses `wandb_run.json` or `run_metadata.json` from the existing run
 directory when `WANDB_RUN_ID` is not explicitly set.
 
+If warmup already completed and only finetune needs to resume, use the
+finetune-only entrypoint with the same environment variables:
+
+```bash
+scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu-finetune
+```
+
+or:
+
+```bash
+scripts/company/10_run_sav_range_formal_image_encoder.sh 1gpu-finetune
+```
+
+This mode requires `<RUN_DIR>/checkpoints/checkpoint.pt` to exist and does not
+rerun `prepare`.
+
 ## TinyViT 11M And 5M 4-GPU Runs
 
 The 11M and 5M open pretrained timm checkpoints are 224px ImageNet-22k
