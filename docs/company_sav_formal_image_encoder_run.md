@@ -257,6 +257,32 @@ Outputs:
   wandb_run.json
 ```
 
+## Resume After Finetune Seed Overflow
+
+Older formal runs used `SEED=250107256` directly. The upstream SAM2 Trainer
+derives its machine seed as `(seed_value + distributed_rank) * max_epochs`.
+Warmup uses `max_epochs=3`, so it is valid. Finetune resumes with cumulative
+`max_epochs=18`, which produced `4501930608` on rank 0 and exceeded NumPy's
+`2**32 - 1` seed limit.
+
+Current code clamps the effective trainer seed before SAM2 instantiation and
+records both `seed` and `effective_seed` in `summary_warmup.json` and
+`summary_finetune.json`.
+
+To resume a run where warmup completed but finetune failed:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+git pull origin edgetam-tinyvit-pipeline
+
+# Re-run the same command with the same RUN_NAME, WANDB_PROJECT, and WANDB_NAME.
+# Do not delete the run directory if you want to resume from the warmup
+# checkpoint and continue logging to the same W&B run.
+```
+
+The script reuses `wandb_run.json` or `run_metadata.json` from the existing run
+directory when `WANDB_RUN_ID` is not explicitly set.
+
 ## TinyViT 11M And 5M 4-GPU Runs
 
 The 11M and 5M open pretrained timm checkpoints are 224px ImageNet-22k

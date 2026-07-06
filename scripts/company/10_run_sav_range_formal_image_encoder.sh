@@ -233,10 +233,27 @@ PY
 }
 
 ensure_wandb_run_id() {
+  local out_dir="${1:-}"
   if [[ "${NO_WANDB}" -eq 1 || -n "${WANDB_RUN_ID}" ]]; then
     return 0
   fi
-  WANDB_RUN_ID="$(python - <<'PY'
+  WANDB_RUN_ID="$(python - "${out_dir}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+out_dir = Path(sys.argv[1]) if sys.argv[1] else None
+if out_dir is not None:
+    for name in ("wandb_run.json", "run_metadata.json"):
+        path = out_dir / name
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        run_id = data.get("run_id") or data.get("wandb_run_id")
+        if run_id:
+            print(run_id)
+            raise SystemExit(0)
+
 try:
     import wandb
     print(wandb.util.generate_id())
@@ -450,8 +467,8 @@ run_formal() {
     WANDB_PROJECT="sam2-distill-edgetam-formal-${mode}"
   fi
   check_wandb_ready
-  ensure_wandb_run_id
   out_dir="$(run_dir "${mode}")"
+  ensure_wandb_run_id "${out_dir}"
   export WANDB_DIR="${out_dir}/wandb"
   prepare
   mkdir -p "${out_dir}"

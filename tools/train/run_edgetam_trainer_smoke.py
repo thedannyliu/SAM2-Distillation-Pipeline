@@ -82,6 +82,15 @@ def get_rank() -> int:
     return int(os.environ.get("RANK", "0"))
 
 
+def safe_sam2_seed(requested_seed: int, max_epochs: int) -> int:
+    """Keep SAM2 Trainer's derived machine seed inside NumPy's uint32 range."""
+    max_machine_seed = 2**32 - 1
+    max_epochs = max(1, int(max_epochs))
+    max_rank = max(0, int(os.environ.get("WORLD_SIZE", "1")) - 1)
+    max_base_seed = max(1, max_machine_seed // max_epochs - max_rank)
+    return int(requested_seed) % max_base_seed
+
+
 def read_checkpoint_summary(checkpoint_path: Path) -> dict[str, Any] | None:
     if not checkpoint_path.exists():
         return None
@@ -212,7 +221,8 @@ def main() -> None:
     cfg.scratch.train_batch_size = args.batch_size
     cfg.scratch.resolution = args.resolution
     cfg.trainer.max_epochs = args.max_epochs
-    cfg.trainer.seed_value = args.seed
+    effective_seed = safe_sam2_seed(args.seed, args.max_epochs)
+    cfg.trainer.seed_value = effective_seed
     cfg.trainer.data.train.batch_sizes = [args.batch_size]
     cfg.trainer.data.train.num_workers = args.num_workers
     cfg.trainer.data.train.pin_memory = True
@@ -322,6 +332,7 @@ def main() -> None:
         "teacher_feature_cache": str(args.teacher_feature_cache) if args.teacher_feature_cache else None,
         "checkpoint_save_freq": args.checkpoint_save_freq,
         "seed": args.seed,
+        "effective_seed": effective_seed,
         "checkpoint_before": checkpoint_before,
         "checkpoint_after": checkpoint_after,
         "resumed": checkpoint_before is not None,
