@@ -127,6 +127,36 @@ LR_WARMUP_STEPS=1000 \
 scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh train
 ```
 
+If `train` reports a missing manifest, run `download` first. `train` now checks
+manifest and checkpoint paths before launching `torchrun`, so missing inputs fail
+once with a clear message instead of once per rank.
+
+Formal 4-GPU hyperparameters for the first company run:
+
+```text
+teacher: SAM2.1 Hiera-L
+student: TinyViT-21M 512, pretrained timm checkpoint
+data: HF SA-1B image subset, deterministic shuffled stream
+image size: 1024
+per-GPU batch size: 1
+global batch size: 4
+max steps: 10000
+optimizer: AdamW
+lr: 1e-4
+weight decay: 0.05
+LR warmup: 1000 steps
+projection-only warmup: 1000 steps
+after warmup: TinyViT backbone plus projection/adapters trainable
+grad clipping: 1.0
+student AMP: bf16
+teacher AMP: bf16
+loss: 1.0 * image_embed MSE + 1.0 * high_res MSE + 1.0 * image_embed cosine
+checkpoint save interval: 1000 steps
+resume: RESUME=auto, using <RUN_DIR>/checkpoints/last.pt when present
+W&B project: sam2-distill-stage1-online-teacher
+TensorBoard: <RUN_DIR>/tensorboard
+```
+
 Useful overrides:
 
 ```text
@@ -137,6 +167,7 @@ TINYVIT_CKPT=/group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_v
 MAX_TRAIN_ITEMS=5000
 MAX_VAL_ITEMS=500
 NO_WANDB=1
+RESUME=auto
 ```
 
 ## Outputs
@@ -155,6 +186,7 @@ W&B logs direct scalars:
 ```text
 loss_stage1_total
 loss_image_mse
+loss_image_cos
 loss_high_res_mse
 train/sec_per_step
 train/teacher_sec_per_step

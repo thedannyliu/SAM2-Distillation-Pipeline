@@ -238,8 +238,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_input_paths(args: argparse.Namespace) -> None:
+    missing = [
+        str(path)
+        for path in (
+            Path(args.manifest),
+            Path(args.teacher_checkpoint),
+            Path(args.tinyvit_checkpoint),
+        )
+        if not path.exists()
+    ]
+    if missing:
+        raise SystemExit("Missing required input file(s):\n  " + "\n  ".join(missing))
+
+
 def main() -> None:
     args = parse_args()
+    validate_input_paths(args)
     rank, world_size, _, device = init_distributed()
     out_dir = Path(args.out_dir).expanduser().resolve()
     tb_dir = out_dir / "tensorboard"

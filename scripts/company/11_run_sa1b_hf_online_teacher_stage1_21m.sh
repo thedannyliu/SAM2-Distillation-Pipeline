@@ -41,6 +41,11 @@ AMP_DTYPE="${AMP_DTYPE:-bf16}"
 TEACHER_AMP_DTYPE="${TEACHER_AMP_DTYPE:-bf16}"
 MAX_TRAIN_ITEMS="${MAX_TRAIN_ITEMS:-}"
 MAX_VAL_ITEMS="${MAX_VAL_ITEMS:-1000}"
+RESUME="${RESUME:-auto}"
+LAMBDA_MSE="${LAMBDA_MSE:-1.0}"
+LAMBDA_L1="${LAMBDA_L1:-0.0}"
+LAMBDA_COS="${LAMBDA_COS:-1.0}"
+LAMBDA_HR="${LAMBDA_HR:-1.0}"
 
 WANDB_PROJECT="${WANDB_PROJECT:-sam2-distill-stage1-online-teacher}"
 WANDB_NAME="${WANDB_NAME:-hf-sa1b-online-teacher-tinyvit21m}"
@@ -86,8 +91,34 @@ download() {
     --resume
 }
 
+check_train_inputs() {
+  local missing=0
+  for path in "${MANIFEST}" "${SAM2_CKPT}" "${TINYVIT_CKPT}"; do
+    if [[ ! -f "${path}" ]]; then
+      echo "missing required training input: ${path}" >&2
+      missing=1
+    fi
+  done
+  if [[ "${missing}" -ne 0 ]]; then
+    cat >&2 <<EOF
+
+Fix:
+  cd /user-volume/repo/SAM2-Distillation-Pipeline
+  scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh download
+
+If weights are missing:
+  bash scripts/company/01_download_weights.sh --out ${CHECKPOINT_ROOT}
+
+Current manifest path:
+  MANIFEST=${MANIFEST}
+EOF
+    exit 1
+  fi
+}
+
 train() {
   local nproc args
+  check_train_inputs
   nproc="$(nproc_from_gpus)"
   mkdir -p "${RUN_DIR}"
   args=(
@@ -104,10 +135,10 @@ train() {
     --projection-warmup-steps "${PROJECTION_WARMUP_STEPS}"
     --lr-warmup-steps "${LR_WARMUP_STEPS}"
     --max-grad-norm "${MAX_GRAD_NORM}"
-    --lambda-mse 1.0
-    --lambda-l1 0.0
-    --lambda-cos 0.0
-    --lambda-hr 1.0
+    --lambda-mse "${LAMBDA_MSE}"
+    --lambda-l1 "${LAMBDA_L1}"
+    --lambda-cos "${LAMBDA_COS}"
+    --lambda-hr "${LAMBDA_HR}"
     --amp-dtype "${AMP_DTYPE}"
     --teacher-amp-dtype "${TEACHER_AMP_DTYPE}"
     --log-every "${LOG_EVERY}"
@@ -118,6 +149,11 @@ train() {
   )
   if [[ -n "${MAX_TRAIN_ITEMS}" ]]; then
     args+=(--max-train-items "${MAX_TRAIN_ITEMS}")
+  fi
+  if [[ "${RESUME}" == "auto" && -f "${RUN_DIR}/checkpoints/last.pt" ]]; then
+    args+=(--resume "${RUN_DIR}/checkpoints/last.pt")
+  elif [[ "${RESUME}" != "auto" && -n "${RESUME}" ]]; then
+    args+=(--resume "${RESUME}")
   fi
   if [[ "${NO_WANDB}" -eq 1 ]]; then
     args+=(--no-wandb)
