@@ -45,6 +45,33 @@ def choose_subset(paths: list[Path], root: Path, source: str, seed: str, percent
     return ranked[:count]
 
 
+def limit_per_parent_dir(
+    paths: list[Path],
+    root: Path,
+    source: str,
+    seed: str,
+    max_per_parent: int | None,
+) -> list[Path]:
+    if max_per_parent is None or max_per_parent <= 0:
+        return paths
+
+    groups: dict[str, list[Path]] = {}
+    for path in paths:
+        rel = path.relative_to(root)
+        groups.setdefault(rel.parent.as_posix(), []).append(path)
+
+    selected = []
+    for parent, group_paths in groups.items():
+        ranked = sorted(
+            group_paths,
+            key=lambda p: stable_digest(
+                f"{seed}|{source}|parent={parent}|{p.relative_to(root).as_posix()}"
+            ),
+        )
+        selected.extend(ranked[:max_per_parent])
+    return sorted(selected)
+
+
 def split_for(relative_path: str, seed: str, val_fraction: float) -> str:
     if val_fraction < 0 or val_fraction >= 1:
         raise ValueError("--val-fraction must be in [0, 1)")
@@ -58,12 +85,19 @@ def build_manifest(args: argparse.Namespace) -> pd.DataFrame:
     if not paths:
         raise SystemExit(f"No images found under {image_root}")
 
-    selected = choose_subset(
+    subset = choose_subset(
         paths=paths,
         root=image_root,
         source=args.source,
         seed=args.seed,
         percent=args.sample_percent,
+    )
+    selected = limit_per_parent_dir(
+        paths=subset,
+        root=image_root,
+        source=args.source,
+        seed=args.seed,
+        max_per_parent=args.max_images_per_parent_dir,
     )
 
     rows = []
@@ -99,6 +133,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=100.0,
         help="Deterministic percent of images to keep from --image-root.",
+    )
+    parser.add_argument(
+        "--max-images-per-parent-dir",
+        type=int,
+        help="After sampling, keep at most this many deterministic images from each parent directory.",
     )
     parser.add_argument(
         "--seed",
