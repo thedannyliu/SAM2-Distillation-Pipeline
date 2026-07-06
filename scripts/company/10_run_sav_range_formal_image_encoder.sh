@@ -31,6 +31,7 @@ MAX_OBJECTS="${MAX_OBJECTS:-3}"
 RESOLUTION="${RESOLUTION:-1024}"
 IMAGE_ENCODER_BATCH="${IMAGE_ENCODER_BATCH:-8}"
 IMAGE_ENCODER_CKPT="${IMAGE_ENCODER_CKPT:-0}"
+FREEZE_BATCHNORM="${FREEZE_BATCHNORM:-0}"
 SAV_ANN_EVERY="${SAV_ANN_EVERY:-4}"
 WARMUP_EPOCHS="${WARMUP_EPOCHS:-3}"
 FINETUNE_EPOCHS="${FINETUNE_EPOCHS:-15}"
@@ -68,6 +69,7 @@ Defaults:
   START_SHARD=0 END_SHARD=18
   WARMUP_EPOCHS=3 FINETUNE_EPOCHS=15
   BATCH_SIZE=1 IMAGE_ENCODER_BATCH=8 IMAGE_ENCODER_CKPT=0
+  FREEZE_BATCHNORM=1 keeps BatchNorm layers in eval mode and freezes BN affine params.
   CHECKPOINT_SAVE_FREQ=1 saves every checkpoint interval supported by SAM2 Trainer.
   TensorBoard writes under RUN_DIR/tensorboard.
   W&B companion logging uses WANDB_PROJECT, WANDB_NAME, and optional WANDB_RUN_ID.
@@ -173,7 +175,7 @@ print_preflight() {
   global_batch=$((BATCH_SIZE * NPROC))
   steps_per_epoch=$(((videos + global_batch - 1) / global_batch))
   total_epochs=$((WARMUP_EPOCHS + FINETUNE_EPOCHS))
-  python - "${mode}" "${videos}" "${NPROC}" "${BATCH_SIZE}" "${global_batch}" "${steps_per_epoch}" "${WARMUP_EPOCHS}" "${FINETUNE_EPOCHS}" "${NUM_FRAMES}" "${IMAGE_ENCODER_BATCH}" "${IMAGE_ENCODER_CKPT}" "${CHECKPOINT_SAVE_FREQ}" <<'PY' | tee "${out_dir}/preflight.json"
+  python - "${mode}" "${videos}" "${NPROC}" "${BATCH_SIZE}" "${global_batch}" "${steps_per_epoch}" "${WARMUP_EPOCHS}" "${FINETUNE_EPOCHS}" "${NUM_FRAMES}" "${IMAGE_ENCODER_BATCH}" "${IMAGE_ENCODER_CKPT}" "${CHECKPOINT_SAVE_FREQ}" "${FREEZE_BATCHNORM}" <<'PY' | tee "${out_dir}/preflight.json"
 import json
 import sys
 
@@ -182,6 +184,7 @@ keys = [
     "videos", "nproc", "per_gpu_batch_size", "global_batch_size",
     "steps_per_epoch", "warmup_epochs", "finetune_epochs", "num_frames",
     "image_encoder_batch", "image_encoder_ckpt", "checkpoint_save_freq",
+    "freeze_batchnorm",
 ]
 vals = {key: int(value) for key, value in zip(keys, sys.argv[2:])}
 vals["mode"] = mode
@@ -318,6 +321,9 @@ phase_command() {
     --seed "${SEED}"
     "${activation_args[@]}"
   )
+  if [[ "${FREEZE_BATCHNORM}" -eq 1 ]]; then
+    train_args+=(--freeze-batchnorm)
+  fi
   if [[ "${NO_WANDB}" -eq 1 || "${WANDB_LIVE_LOGGER}" -eq 1 ]]; then
     train_args+=(--no-wandb)
   else

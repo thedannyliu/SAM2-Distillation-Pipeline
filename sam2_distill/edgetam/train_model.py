@@ -30,17 +30,21 @@ class EdgeTAMTrain(SAM2Train):
         image_encoder_forward_batch_size: int | None = None,
         image_encoder_activation_checkpoint: bool = False,
         trainable_module_mode: str | None = None,
+        freeze_batchnorm: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.image_encoder_forward_batch_size = image_encoder_forward_batch_size
         self.image_encoder_activation_checkpoint = image_encoder_activation_checkpoint
         self.trainable_module_mode = trainable_module_mode
+        self.freeze_batchnorm = freeze_batchnorm
         self.trainable_parameter_summary = None
         if trainable_module_mode is not None:
             self.trainable_parameter_summary = self._apply_trainable_module_mode(
                 trainable_module_mode
             )
+        if self.freeze_batchnorm:
+            self._freeze_batchnorm_modules()
 
     def _apply_trainable_module_mode(self, mode: str) -> dict[str, int]:
         if mode not in {"image_neck_only", "image_encoder_only"}:
@@ -67,6 +71,19 @@ class EdgeTAMTrain(SAM2Train):
             "trainable_parameters": int(trainable),
             "frozen_parameters": int(total - trainable),
         }
+
+    def _freeze_batchnorm_modules(self) -> None:
+        for module in self.modules():
+            if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                module.eval()
+                for param in module.parameters(recurse=False):
+                    param.requires_grad = False
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if mode and self.freeze_batchnorm:
+            self._freeze_batchnorm_modules()
+        return self
 
     def forward_image(self, img_batch: torch.Tensor):
         if (

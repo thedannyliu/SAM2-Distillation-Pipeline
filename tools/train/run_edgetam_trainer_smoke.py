@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-encoder-activation-checkpoint", action="store_true")
     parser.add_argument("--freeze-image-encoder", action="store_true")
     parser.add_argument(
+        "--freeze-batchnorm",
+        action="store_true",
+        help="Keep BatchNorm modules in eval mode and freeze their affine parameters.",
+    )
+    parser.add_argument(
         "--trainable-module-mode",
         choices=("image_neck_only", "image_encoder_only"),
         help="Freeze all modules except the selected image-encoder part.",
@@ -136,6 +141,7 @@ def setup_wandb(args: argparse.Namespace, cfg: Any) -> Any | None:
             "resolution": args.resolution,
             "dataset_mode": args.dataset_mode,
             "trainable_module_mode": args.trainable_module_mode,
+            "freeze_batchnorm": args.freeze_batchnorm,
             "lambda_img": float(cfg.trainer.loss.all.lambda_img),
             "lambda_mem": float(cfg.trainer.loss.all.lambda_mem),
         },
@@ -261,6 +267,7 @@ def main() -> None:
     cfg.trainer.model.image_encoder_activation_checkpoint = args.image_encoder_activation_checkpoint
     cfg.trainer.model.freeze_image_encoder = args.freeze_image_encoder
     cfg.trainer.model.trainable_module_mode = args.trainable_module_mode
+    cfg.trainer.model.freeze_batchnorm = args.freeze_batchnorm
     if args.lambda_img is not None:
         cfg.trainer.loss.all.lambda_img = args.lambda_img
     if args.lambda_mem is not None:
@@ -324,6 +331,7 @@ def main() -> None:
         "image_encoder_forward_batch_size": args.image_encoder_forward_batch_size,
         "image_encoder_activation_checkpoint": args.image_encoder_activation_checkpoint,
         "freeze_image_encoder": args.freeze_image_encoder,
+        "freeze_batchnorm": args.freeze_batchnorm,
         "trainable_module_mode": args.trainable_module_mode,
         "trainable_summary_before": trainable_summary_before,
         "trainable_summary_after": trainable_summary_after,
