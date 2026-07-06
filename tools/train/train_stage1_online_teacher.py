@@ -359,6 +359,7 @@ def main() -> None:
     if is_main(rank) and not args.no_wandb:
         import wandb
 
+        (out_dir / "wandb").mkdir(parents=True, exist_ok=True)
         wandb_run = wandb.init(
             project=args.wandb_project,
             name=args.wandb_name,
@@ -371,6 +372,15 @@ def main() -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "wandb_run.json").write_text(
             json.dumps({"run_id": wandb_run_id, "url": wandb_run.url, "project": args.wandb_project}) + "\n"
+        )
+        wandb_run.log(
+            {
+                "run/started": 1,
+                "train/global_step": float(start_step),
+                "train/global_batch_size": float(global_batch_size),
+                "train/start_step": float(start_step),
+            },
+            step=start_step,
         )
 
     if is_main(rank):
@@ -434,6 +444,7 @@ def main() -> None:
 
             reduced = reduce_metrics(metrics, world_size)
             reduced["train/lr"] = current_lr
+            reduced["train/global_step"] = float(step + 1)
             reduced["train/sec_per_step"] = time.time() - start_time
             reduced["train/teacher_sec_per_step"] = teacher_sec
             reduced["train/backbone_trainable"] = float(should_train_backbone)

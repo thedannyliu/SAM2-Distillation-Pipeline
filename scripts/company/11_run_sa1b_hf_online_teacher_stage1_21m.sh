@@ -151,6 +151,9 @@ train() {
     --wandb-project "${WANDB_PROJECT}"
     --wandb-name "${WANDB_NAME}"
   )
+  if [[ -n "${WANDB_RUN_ID:-}" ]]; then
+    args+=(--wandb-run-id "${WANDB_RUN_ID}")
+  fi
   if [[ -n "${MAX_TRAIN_ITEMS}" ]]; then
     args+=(--max-train-items "${MAX_TRAIN_ITEMS}")
   fi
