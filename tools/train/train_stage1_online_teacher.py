@@ -109,11 +109,12 @@ def teacher_features_from_paths(predictor, paths: list[str], device: torch.devic
         predictor.set_image_batch(images)
         features = predictor._features
         high_res = features["high_res_feats"]
-        return {
+        teacher_features = {
             "image_embed": features["image_embed"].detach(),
             "high_res_s0": high_res[0].detach(),
             "high_res_s1": high_res[1].detach(),
         }
+    return {name: tensor.clone() for name, tensor in teacher_features.items()}
 
 
 def reduce_metrics(metrics: dict[str, torch.Tensor], world_size: int) -> dict[str, float]:
