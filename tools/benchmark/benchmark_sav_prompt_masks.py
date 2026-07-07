@@ -48,6 +48,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-objects", type=int, default=2000, help="0 means all.")
     parser.add_argument("--warmup-images", type=int, default=5)
     parser.add_argument("--save-artifacts", type=int, default=0, help="Save this many predicted masks and overlays.")
+    parser.add_argument(
+        "--save-video-frame-artifacts",
+        type=int,
+        default=0,
+        help="For this many videos, save combined first/middle/last frame overlays and masks.",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -266,6 +272,59 @@ def save_mask_and_overlay(image_path: Path, pred_mask: np.ndarray, gt_mask: np.n
     overlay.convert("RGB").save(overlay_dir / f"{name}_overlay.jpg", quality=92)
 
 
+def save_combined_mask_and_overlay(
+    image_path: Path,
+    pred_mask: np.ndarray,
+    gt_mask: np.ndarray,
+    out_dir: Path,
+    name: str,
+) -> None:
+    frame_dir = out_dir / "frame_artifacts"
+    mask_dir = frame_dir / "masks"
+    overlay_dir = frame_dir / "overlays"
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    overlay_dir.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(pred_mask.astype(np.uint8) * 255).save(mask_dir / f"{name}_pred.png")
+    Image.fromarray(gt_mask.astype(np.uint8) * 255).save(mask_dir / f"{name}_gt.png")
+
+    with Image.open(image_path) as image:
+        base = image.convert("RGBA")
+    pred = pred_mask.astype(bool)
+    gt = gt_mask.astype(bool)
+    color = np.zeros((base.height, base.width, 4), dtype=np.uint8)
+    color[gt] = [0, 255, 0, 90]
+    color[pred] = [255, 0, 0, 90]
+    color[np.logical_and(gt, pred)] = [255, 220, 0, 130]
+    overlay = Image.alpha_composite(base, Image.fromarray(color, mode="RGBA"))
+    overlay.convert("RGB").save(overlay_dir / f"{name}_overlay.jpg", quality=92)
+
+
+def frame_sort_key(record: ObjectRecord) -> tuple[int, str]:
+    return (int(record.frame_stem), record.frame_stem) if record.frame_stem.isdigit() else (10**12, record.frame_stem)
+
+
+def select_video_frame_artifacts(records: list[ObjectRecord], max_videos: int) -> dict[Path, str]:
+    if max_videos <= 0:
+        return {}
+    by_video: dict[str, dict[str, ObjectRecord]] = defaultdict(dict)
+    for record in records:
+        by_video[record.video].setdefault(record.frame_stem, record)
+
+    targets: dict[Path, str] = {}
+    for video in sorted(by_video)[:max_videos]:
+        frames = sorted(by_video[video].values(), key=frame_sort_key)
+        if not frames:
+            continue
+        picks = [
+            ("first", frames[0]),
+            ("middle", frames[len(frames) // 2]),
+            ("last", frames[-1]),
+        ]
+        for label, record in picks:
+            targets[record.image_path] = f"{video}_{label}_{record.frame_stem}"
+    return targets
+
+
 def mask_bbox(mask: np.ndarray) -> np.ndarray | None:
     ys, xs = np.where(mask)
     if len(xs) == 0:
@@ -355,6 +414,8 @@ def main() -> None:
     set_image_latencies: list[float] = []
     prompt_latencies: list[float] = []
     saved_artifacts = 0
+    saved_frame_artifacts = 0
+    frame_artifact_targets = select_video_frame_artifacts(records, args.save_video_frame_artifacts)
 
     image_items = list(by_image.items())
     with torch.inference_mode():
@@ -372,6 +433,9 @@ def main() -> None:
             sync(device)
             set_image_sec = time.perf_counter() - start
             set_image_latencies.append(set_image_sec)
+            target_name = frame_artifact_targets.get(image_path)
+            frame_pred_union = np.zeros(image_np.shape[:2], dtype=bool) if target_name is not None else None
+            frame_gt_union = np.zeros(image_np.shape[:2], dtype=bool) if target_name is not None else None
 
             for record in image_records:
                 gt_mask = load_mask(record.mask_path)
@@ -409,6 +473,18 @@ def main() -> None:
                     )
                     save_mask_and_overlay(record.image_path, pred_mask, gt_mask, args.out_dir, artifact_name)
                     saved_artifacts += 1
+                if frame_pred_union is not None and frame_gt_union is not None:
+                    frame_pred_union |= pred_mask.astype(bool)
+                    frame_gt_union |= gt_mask.astype(bool)
+            if target_name is not None and frame_pred_union is not None and frame_gt_union is not None:
+                save_combined_mask_and_overlay(
+                    image_path,
+                    frame_pred_union,
+                    frame_gt_union,
+                    args.out_dir,
+                    f"{target_name}_{args.prompt_kind}",
+                )
+                saved_frame_artifacts += 1
 
     thresholds = [round(x, 2) for x in np.arange(0.50, 0.96, 0.05)]
     ious = [float(row["iou"]) for row in rows]
@@ -439,6 +515,7 @@ def main() -> None:
             "mean_total_object_seconds": float(np.mean([row["total_object_seconds"] for row in rows])) if rows else 0.0,
         },
         "artifacts_saved": saved_artifacts,
+        "frame_artifacts_saved": saved_frame_artifacts,
         "load": load_summary,
     }
 

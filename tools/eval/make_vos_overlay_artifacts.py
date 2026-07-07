@@ -48,13 +48,24 @@ def frame_for_mask(image_dir: Path, frame_stem: str) -> Path | None:
     return None
 
 
-def object_mask_pairs(gt_video: Path, pred_video: Path) -> list[tuple[Path, Path]]:
+def object_mask_pairs(gt_video: Path, pred_video: Path) -> list[tuple[str, Path, Path]]:
     pairs = []
     for gt_path in sorted(gt_video.glob("*/*.png")):
         pred_path = pred_video / gt_path.relative_to(gt_video)
         if pred_path.exists():
-            pairs.append((gt_path, pred_path))
+            pairs.append((gt_path.stem, gt_path, pred_path))
     return pairs
+
+
+def group_pairs_by_frame(pairs: list[tuple[str, Path, Path]]) -> dict[str, list[tuple[Path, Path]]]:
+    grouped: dict[str, list[tuple[Path, Path]]] = {}
+    for frame_stem, gt_path, pred_path in pairs:
+        grouped.setdefault(frame_stem, []).append((gt_path, pred_path))
+    return grouped
+
+
+def frame_sort_key(frame_stem: str) -> tuple[int, str]:
+    return (int(frame_stem), frame_stem) if frame_stem.isdigit() else (10**12, frame_stem)
 
 
 def make_overlay(image_bgr: np.ndarray, gt: np.ndarray, pred: np.ndarray) -> np.ndarray:
@@ -82,9 +93,10 @@ def main() -> None:
         pairs = object_mask_pairs(gt_video, pred_video)
         if not pairs:
             continue
+        grouped = group_pairs_by_frame(pairs)
         first_image = None
-        for gt_path, _ in pairs:
-            first_image = frame_for_mask(image_dir, gt_path.stem)
+        for frame_stem in sorted(grouped):
+            first_image = frame_for_mask(image_dir, frame_stem)
             if first_image is not None:
                 break
         if first_image is None:
@@ -102,27 +114,32 @@ def main() -> None:
         )
         frames_written = 0
         mask_copy_root = args.out_dir / "masks" / video
-        for gt_path, pred_path in pairs:
-            if frames_written >= args.max_frames:
+        for frame_stem in sorted(grouped, key=frame_sort_key):
+            if args.max_frames > 0 and frames_written >= args.max_frames:
                 break
-            image_path = frame_for_mask(image_dir, gt_path.stem)
+            image_path = frame_for_mask(image_dir, frame_stem)
             if image_path is None:
                 continue
             image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if image_bgr is None:
                 continue
-            gt = read_binary_mask(gt_path)
-            pred = read_binary_mask(pred_path)
-            if gt.shape != image_bgr.shape[:2]:
-                gt = cv2.resize(gt.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
-            if pred.shape != image_bgr.shape[:2]:
-                pred = cv2.resize(pred.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
-            writer.write(make_overlay(image_bgr, gt, pred))
-            rel = gt_path.relative_to(gt_video)
-            (mask_copy_root / "gt" / rel.parent).mkdir(parents=True, exist_ok=True)
-            (mask_copy_root / "pred" / rel.parent).mkdir(parents=True, exist_ok=True)
-            shutil.copy2(gt_path, mask_copy_root / "gt" / rel)
-            shutil.copy2(pred_path, mask_copy_root / "pred" / rel)
+            gt_union = np.zeros(image_bgr.shape[:2], dtype=bool)
+            pred_union = np.zeros(image_bgr.shape[:2], dtype=bool)
+            for gt_path, pred_path in grouped[frame_stem]:
+                gt = read_binary_mask(gt_path)
+                pred = read_binary_mask(pred_path)
+                if gt.shape != image_bgr.shape[:2]:
+                    gt = cv2.resize(gt.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+                if pred.shape != image_bgr.shape[:2]:
+                    pred = cv2.resize(pred.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+                gt_union |= gt
+                pred_union |= pred
+                rel = gt_path.relative_to(gt_video)
+                (mask_copy_root / "gt" / rel.parent).mkdir(parents=True, exist_ok=True)
+                (mask_copy_root / "pred" / rel.parent).mkdir(parents=True, exist_ok=True)
+                shutil.copy2(gt_path, mask_copy_root / "gt" / rel)
+                shutil.copy2(pred_path, mask_copy_root / "pred" / rel)
+            writer.write(make_overlay(image_bgr, gt_union, pred_union))
             frames_written += 1
         writer.release()
         summaries.append({"video": video, "overlay_video": str(video_out), "frames": frames_written})

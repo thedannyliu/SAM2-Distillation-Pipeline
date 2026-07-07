@@ -32,6 +32,9 @@ MAX_VIDEOS="${MAX_VIDEOS:-2}"
 MAX_OBJECTS_PER_VIDEO="${MAX_OBJECTS_PER_VIDEO:-2}"
 MAX_IMAGE_OBJECTS="${MAX_IMAGE_OBJECTS:-200}"
 SAVE_IMAGE_ARTIFACTS="${SAVE_IMAGE_ARTIFACTS:-0}"
+IMAGE_ARTIFACT_VIDEOS="${IMAGE_ARTIFACT_VIDEOS:-3}"
+VOS_OVERLAY_VIDEOS="${VOS_OVERLAY_VIDEOS:-3}"
+VOS_OVERLAY_FRAMES="${VOS_OVERLAY_FRAMES:-0}"
 NUM_EVAL_PROCESSES="${NUM_EVAL_PROCESSES:-4}"
 VOS_TRACK_LATER="${VOS_TRACK_LATER:-1}"
 DEVICE="${DEVICE:-cuda}"
@@ -44,6 +47,7 @@ Usage:
   scripts/company/15_benchmark_raw_sav_shard_suite.sh prepare
   scripts/company/15_benchmark_raw_sav_shard_suite.sh image
   scripts/company/15_benchmark_raw_sav_shard_suite.sh vos
+  scripts/company/15_benchmark_raw_sav_shard_suite.sh artifacts
   scripts/company/15_benchmark_raw_sav_shard_suite.sh summarize
   scripts/company/15_benchmark_raw_sav_shard_suite.sh all
 
@@ -99,6 +103,7 @@ run_image_sam2() {
     --out-dir "${OUT_ROOT}/image/${name}/${prompt}" \
     --max-objects "${MAX_IMAGE_OBJECTS}" \
     --save-artifacts "${SAVE_IMAGE_ARTIFACTS}" \
+    --save-video-frame-artifacts "${IMAGE_ARTIFACT_VIDEOS}" \
     --device "${DEVICE}"
 }
 
@@ -128,6 +133,7 @@ run_image_stage1() {
     --out-dir "${OUT_ROOT}/image/${name}/${prompt}" \
     --max-objects "${MAX_IMAGE_OBJECTS}" \
     --save-artifacts "${SAVE_IMAGE_ARTIFACTS}" \
+    --save-video-frame-artifacts "${IMAGE_ARTIFACT_VIDEOS}" \
     --device "${DEVICE}"
 }
 
@@ -231,6 +237,23 @@ vos() {
   done
 }
 
+artifacts() {
+  local pred_root model_prompt_dir
+  shopt -s nullglob
+  for pred_root in "${OUT_ROOT}"/vos/*/*/pred; do
+    model_prompt_dir="$(dirname "${pred_root}")"
+    python tools/eval/make_vos_overlay_artifacts.py \
+      --image-root "${PREP_ROOT}/JPEGImages_24fps" \
+      --gt-root "${PREP_ROOT}/Annotations_6fps" \
+      --pred-root "${pred_root}" \
+      --video-list-file "${PREP_ROOT}/sav_train_benchmark.txt" \
+      --out-dir "${model_prompt_dir}/artifacts" \
+      --max-videos "${VOS_OVERLAY_VIDEOS}" \
+      --max-frames "${VOS_OVERLAY_FRAMES}"
+  done
+  shopt -u nullglob
+}
+
 summarize() {
   python tools/benchmark/summarize_sav_benchmark_suite.py \
     --root "${OUT_ROOT}" \
@@ -242,11 +265,13 @@ case "${1:-}" in
   prepare) prepare ;;
   image) image ;;
   vos) vos ;;
+  artifacts) artifacts ;;
   summarize) summarize ;;
   all)
     prepare
     image
     vos
+    artifacts
     summarize
     ;;
   -h|--help|"") usage ;;
