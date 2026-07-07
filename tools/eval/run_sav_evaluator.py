@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +21,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--do-not-skip-first-and-last-frame", action="store_true")
     return parser.parse_args()
+
+
+def clean_output(text: str) -> str:
+    lines = []
+    for line in text.replace("\r", "\n").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "%" in stripped and "it/s" in stripped:
+            continue
+        lines.append(stripped)
+    return "\n".join(lines)
+
+
+def parse_global_metrics(text: str) -> dict[str, float]:
+    match = re.search(r"Global score:\s+J&F:\s*([0-9.]+)\s+J:\s*([0-9.]+)\s+F:\s*([0-9.]+)", text)
+    if not match:
+        return {}
+    return {
+        "J&F": float(match.group(1)),
+        "J": float(match.group(2)),
+        "F": float(match.group(3)),
+    }
 
 
 def main() -> None:
@@ -54,11 +78,13 @@ def main() -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+    output_clean = clean_output(result.stdout)
     summary = {
         "status": "pass" if result.returncode == 0 else "failed",
         "returncode": result.returncode,
         "command": " ".join(command),
-        "output_tail": result.stdout[-4000:],
+        "metrics": parse_global_metrics(output_clean),
+        "output_tail": output_clean[-4000:],
         "results_csv": str(args.pred_root / "results.csv"),
     }
     args.out_json.parent.mkdir(parents=True, exist_ok=True)
