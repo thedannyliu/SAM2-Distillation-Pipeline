@@ -32,13 +32,16 @@ class ObjectRecord:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-kind", choices=("edgetam-trainer", "sam2"), required=True)
+    parser.add_argument("--model-kind", choices=("edgetam-trainer", "sam2", "stage1-student"), required=True)
     parser.add_argument("--prompt-kind", choices=("box", "point"), required=True)
     parser.add_argument("--image-root", required=True, type=Path)
     parser.add_argument("--ann-root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--config", required=True, help="Trainer/model config for edgetam-trainer, SAM2 config name for sam2.")
+    parser.add_argument("--sam2-checkpoint", type=Path, help="SAM2 checkpoint for prompt encoder/mask decoder with stage1-student.")
+    parser.add_argument("--tinyvit-checkpoint", type=Path, help="TinyViT pretrained checkpoint used to instantiate stage1-student.")
+    parser.add_argument("--tinyvit-model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
     parser.add_argument("--sam2-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam2"))
     parser.add_argument("--edgetam-root", type=Path, default=Path("/user-volume/repo/EdgeTAM"))
     parser.add_argument("--max-videos", type=int, default=0, help="0 means all.")
@@ -115,6 +118,70 @@ def load_sam2_predictor(args: argparse.Namespace, device: torch.device):
     for param in model.parameters():
         param.requires_grad_(False)
     return SAM2ImagePredictor(model), {"checkpoint": str(args.checkpoint), "config": args.config}
+
+
+def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device):
+    if args.sam2_checkpoint is None:
+        raise SystemExit("--sam2-checkpoint is required for --model-kind stage1-student")
+    if args.tinyvit_checkpoint is None:
+        raise SystemExit("--tinyvit-checkpoint is required for --model-kind stage1-student")
+
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+    from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
+
+    model = build_sam2(args.config, str(args.sam2_checkpoint), device=str(device), mode="eval")
+    model.eval()
+    for param in model.parameters():
+        param.requires_grad_(False)
+
+    student = TinyViTSAM2Adapter(
+        model_name=args.tinyvit_model_name,
+        checkpoint_path=str(args.tinyvit_checkpoint),
+    ).to(device)
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    state_dict = extract_state_dict(checkpoint)
+    incompatible = student.load_state_dict(state_dict, strict=False)
+    student.eval()
+    for param in student.parameters():
+        param.requires_grad_(False)
+
+    predictor = SAM2ImagePredictor(model)
+    predictor._stage1_student = student
+    return predictor, {
+        "student_checkpoint": str(args.checkpoint),
+        "sam2_checkpoint": str(args.sam2_checkpoint),
+        "tinyvit_checkpoint": str(args.tinyvit_checkpoint),
+        "tinyvit_model_name": args.tinyvit_model_name,
+        "checkpoint_step": checkpoint.get("step"),
+        "checkpoint_epoch": checkpoint.get("epoch"),
+        "num_tensors": len(state_dict),
+        "missing_keys": list(incompatible.missing_keys),
+        "unexpected_keys": list(incompatible.unexpected_keys),
+    }
+
+
+def set_image_with_stage1_student(predictor, image_np: np.ndarray, device: torch.device) -> None:
+    image = Image.fromarray(image_np)
+    predictor.reset_predictor()
+    predictor._orig_hw = [(image.height, image.width)]
+    input_image = predictor._transforms(image)
+    input_image = input_image[None, ...].to(device)
+    with torch.inference_mode():
+        features = predictor._stage1_student(input_image)
+    predictor._features = {
+        "image_embed": features["image_embed"],
+        "high_res_feats": [features["high_res_s0"], features["high_res_s1"]],
+    }
+    predictor._is_image_set = True
+    predictor._is_batch = False
+
+
+def set_image_for_model(predictor, model_kind: str, image_np: np.ndarray, device: torch.device) -> None:
+    if model_kind == "stage1-student":
+        set_image_with_stage1_student(predictor, image_np, device)
+    else:
+        predictor.set_image(image_np)
 
 
 def image_for_mask(image_video_dir: Path, frame_stem: str) -> Path | None:
@@ -246,11 +313,12 @@ def main() -> None:
     if not records:
         raise RuntimeError(f"No benchmarkable object masks under {args.ann_root}")
 
-    predictor, load_summary = (
-        load_edgetam_predictor(args, device)
-        if args.model_kind == "edgetam-trainer"
-        else load_sam2_predictor(args, device)
-    )
+    if args.model_kind == "edgetam-trainer":
+        predictor, load_summary = load_edgetam_predictor(args, device)
+    elif args.model_kind == "sam2":
+        predictor, load_summary = load_sam2_predictor(args, device)
+    else:
+        predictor, load_summary = load_stage1_student_predictor(args, device)
 
     by_image: dict[Path, list[ObjectRecord]] = defaultdict(list)
     for record in records:
@@ -265,7 +333,7 @@ def main() -> None:
     with torch.inference_mode():
         for warm_image_path, _ in image_items[: max(args.warmup_images, 0)]:
             with Image.open(warm_image_path) as image:
-                predictor.set_image(np.asarray(image.convert("RGB")))
+                set_image_for_model(predictor, args.model_kind, np.asarray(image.convert("RGB")), device)
             sync(device)
 
         for image_path, image_records in image_items:
@@ -273,7 +341,7 @@ def main() -> None:
                 image_np = np.asarray(image.convert("RGB"))
             sync(device)
             start = time.perf_counter()
-            predictor.set_image(image_np)
+            set_image_for_model(predictor, args.model_kind, image_np, device)
             sync(device)
             set_image_sec = time.perf_counter() - start
             set_image_latencies.append(set_image_sec)
