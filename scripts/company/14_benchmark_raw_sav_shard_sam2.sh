@@ -20,6 +20,7 @@ MAX_IMAGE_OBJECTS="${MAX_IMAGE_OBJECTS:-200}"
 SAVE_IMAGE_ARTIFACTS="${SAVE_IMAGE_ARTIFACTS:-10}"
 VOS_OVERLAY_VIDEOS="${VOS_OVERLAY_VIDEOS:-2}"
 VOS_OVERLAY_FRAMES="${VOS_OVERLAY_FRAMES:-240}"
+VOS_TRACK_LATER="${VOS_TRACK_LATER:-1}"
 NUM_EVAL_PROCESSES="${NUM_EVAL_PROCESSES:-4}"
 DEVICE="${DEVICE:-cuda}"
 
@@ -37,6 +38,7 @@ Environment overrides:
   PREP_ROOT=/group-volume/danny-dataset/sam2_distill/benchmarks/raw_sav030_prepared
   OUT_ROOT=/group-volume/danny-dataset/sam2_distill/runs/raw_sav030_sam2p1l_benchmark
   MAX_VIDEOS=2 MAX_OBJECTS_PER_VIDEO=2 MAX_IMAGE_OBJECTS=200
+  VOS_TRACK_LATER=1 tracks objects whose first available GT mask is after frame 0.
 EOF
 }
 
@@ -83,6 +85,10 @@ vos() {
   local pred_root="${OUT_ROOT}/vos_pred"
   mkdir -p "${pred_root}"
   local start end elapsed
+  local track_later_args=()
+  if [[ "${VOS_TRACK_LATER}" == "1" ]]; then
+    track_later_args+=(--track-object-appearing-later-in-video)
+  fi
   start="$(date +%s)"
   python tools/eval/run_edgetam_vos_dataset.py \
     --edgetam-root "${SAM2_ROOT}" \
@@ -93,6 +99,7 @@ vos() {
     --out-dir "${pred_root}" \
     --video-list-file "${PREP_ROOT}/sav_train_benchmark.txt" \
     --per-obj-png-file \
+    "${track_later_args[@]}" \
     --device "${DEVICE}"
   end="$(date +%s)"
   elapsed="$((end - start))"
