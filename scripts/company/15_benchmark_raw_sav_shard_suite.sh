@@ -36,6 +36,7 @@ NUM_EVAL_PROCESSES="${NUM_EVAL_PROCESSES:-4}"
 VOS_TRACK_LATER="${VOS_TRACK_LATER:-1}"
 DEVICE="${DEVICE:-cuda}"
 SKIP_MISSING="${SKIP_MISSING:-1}"
+SKIP_DONE="${SKIP_DONE:-1}"
 
 usage() {
   cat <<'EOF'
@@ -83,6 +84,10 @@ run_image_sam2() {
   local cfg="$3"
   local prompt="$4"
   run_or_skip "${name}" "${ckpt}" || return 0
+  if [[ "${SKIP_DONE}" == "1" && -f "${OUT_ROOT}/image/${name}/${prompt}/summary.json" ]]; then
+    echo "skip completed image/${name}/${prompt}" >&2
+    return 0
+  fi
   python tools/benchmark/benchmark_sav_prompt_masks.py \
     --model-kind sam2 \
     --prompt-kind "${prompt}" \
@@ -105,6 +110,10 @@ run_image_stage1() {
   local prompt="$5"
   run_or_skip "${name}" "${ckpt}" || return 0
   run_or_skip "${name} tinyvit init" "${tinyvit_ckpt}" || return 0
+  if [[ "${SKIP_DONE}" == "1" && -f "${OUT_ROOT}/image/${name}/${prompt}/summary.json" ]]; then
+    echo "skip completed image/${name}/${prompt}" >&2
+    return 0
+  fi
   python tools/benchmark/benchmark_sav_prompt_masks.py \
     --model-kind stage1-student \
     --prompt-kind "${prompt}" \
@@ -144,6 +153,10 @@ run_vos_sam2() {
   run_or_skip "${name}" "${ckpt}" || return 0
   local model_out="${OUT_ROOT}/vos/${name}/${prompt}"
   local pred_root="${model_out}/pred"
+  if [[ "${SKIP_DONE}" == "1" && -f "${model_out}/eval_summary.json" ]]; then
+    echo "skip completed vos/${name}/${prompt}" >&2
+    return 0
+  fi
   mkdir -p "${pred_root}"
   python tools/eval/run_sam2_vos_prompt_dataset.py \
     --model-kind sam2 \
@@ -176,6 +189,10 @@ run_vos_stage1() {
   run_or_skip "sam2p1_l" "${SAM2L_CKPT}" || return 0
   local model_out="${OUT_ROOT}/vos/${name}/${prompt}"
   local pred_root="${model_out}/pred"
+  if [[ "${SKIP_DONE}" == "1" && -f "${model_out}/eval_summary.json" ]]; then
+    echo "skip completed vos/${name}/${prompt}" >&2
+    return 0
+  fi
   mkdir -p "${pred_root}"
   python tools/eval/run_sam2_vos_prompt_dataset.py \
     --model-kind stage1-student \

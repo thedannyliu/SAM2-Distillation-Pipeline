@@ -63,14 +63,17 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     if args.tinyvit_checkpoint is None:
         raise SystemExit("--tinyvit-checkpoint is required for --model-kind stage1-student")
 
+    from sam2_distill.models.stage1_checkpoint import infer_tinyvit_model_name, resolve_tinyvit_checkpoint
     from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
 
-    student = TinyViTSAM2Adapter(
-        model_name=args.tinyvit_model_name,
-        checkpoint_path=str(args.tinyvit_checkpoint),
-    ).to(device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
+    tinyvit_model_name = infer_tinyvit_model_name(state_dict, args.tinyvit_model_name)
+    tinyvit_checkpoint = resolve_tinyvit_checkpoint(tinyvit_model_name, args.tinyvit_checkpoint)
+    student = TinyViTSAM2Adapter(
+        model_name=tinyvit_model_name,
+        checkpoint_path=str(tinyvit_checkpoint),
+    ).to(device)
     incompatible = student.load_state_dict(state_dict, strict=False)
     student.eval()
     for param in student.parameters():
@@ -98,8 +101,10 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     return {
         "student_checkpoint": str(args.checkpoint),
         "sam2_checkpoint": str(args.sam2_checkpoint),
-        "tinyvit_checkpoint": str(args.tinyvit_checkpoint),
-        "tinyvit_model_name": args.tinyvit_model_name,
+        "tinyvit_checkpoint": str(tinyvit_checkpoint),
+        "requested_tinyvit_checkpoint": str(args.tinyvit_checkpoint),
+        "tinyvit_model_name": tinyvit_model_name,
+        "requested_tinyvit_model_name": args.tinyvit_model_name,
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),
         "missing_keys": list(incompatible.missing_keys),

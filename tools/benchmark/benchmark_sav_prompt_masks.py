@@ -129,6 +129,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
 
     from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
+    from sam2_distill.models.stage1_checkpoint import infer_tinyvit_model_name, resolve_tinyvit_checkpoint
     from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
 
     model = build_sam2(args.config, str(args.sam2_checkpoint), device=str(device), mode="eval")
@@ -136,12 +137,14 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
     for param in model.parameters():
         param.requires_grad_(False)
 
-    student = TinyViTSAM2Adapter(
-        model_name=args.tinyvit_model_name,
-        checkpoint_path=str(args.tinyvit_checkpoint),
-    ).to(device)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
+    tinyvit_model_name = infer_tinyvit_model_name(state_dict, args.tinyvit_model_name)
+    tinyvit_checkpoint = resolve_tinyvit_checkpoint(tinyvit_model_name, args.tinyvit_checkpoint)
+    student = TinyViTSAM2Adapter(
+        model_name=tinyvit_model_name,
+        checkpoint_path=str(tinyvit_checkpoint),
+    ).to(device)
     incompatible = student.load_state_dict(state_dict, strict=False)
     student.eval()
     for param in student.parameters():
@@ -152,8 +155,10 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
     return predictor, {
         "student_checkpoint": str(args.checkpoint),
         "sam2_checkpoint": str(args.sam2_checkpoint),
-        "tinyvit_checkpoint": str(args.tinyvit_checkpoint),
-        "tinyvit_model_name": args.tinyvit_model_name,
+        "tinyvit_checkpoint": str(tinyvit_checkpoint),
+        "requested_tinyvit_checkpoint": str(args.tinyvit_checkpoint),
+        "tinyvit_model_name": tinyvit_model_name,
+        "requested_tinyvit_model_name": args.tinyvit_model_name,
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),
         "num_tensors": len(state_dict),
