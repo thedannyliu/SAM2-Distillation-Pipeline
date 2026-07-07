@@ -85,11 +85,11 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     def forward_image(self, img_batch: torch.Tensor):
         features = student(img_batch)
         backbone_fpn = [
-            features["high_res_s0"],
-            features["high_res_s1"],
-            features["image_embed"],
+            features["high_res_s0"].float(),
+            features["high_res_s1"].float(),
+            features["image_embed"].float(),
         ]
-        vision_pos_enc = [position_encoding(feat).to(feat.dtype) for feat in backbone_fpn]
+        vision_pos_enc = [position_encoding(feat).float() for feat in backbone_fpn]
         return {
             "vision_features": backbone_fpn[-1],
             "vision_pos_enc": vision_pos_enc,
