@@ -14,7 +14,12 @@ def patch_edgetam_perceiver_view() -> None:
     tensor layout and supports the same single-object path.
     """
 
-    from sam2.modeling.perceiver import PerceiverResampler, window_partition
+    try:
+        from sam2.modeling.perceiver import PerceiverResampler, window_partition
+    except ModuleNotFoundError as exc:
+        if exc.name == "sam2.modeling.perceiver":
+            return
+        raise
 
     if getattr(PerceiverResampler, "_sam2_distill_forward_2d_patch", False):
         return
