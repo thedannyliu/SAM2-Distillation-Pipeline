@@ -40,28 +40,20 @@ def read_binary_mask(path: Path) -> np.ndarray:
         return np.asarray(image) > 0
 
 
-def frame_for_mask(image_dir: Path, frame_stem: str) -> Path | None:
-    for suffix in (".jpg", ".jpeg", ".png"):
-        candidate = image_dir / f"{frame_stem}{suffix}"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def object_mask_pairs(gt_video: Path, pred_video: Path) -> list[tuple[str, Path, Path]]:
-    pairs = []
-    for gt_path in sorted(gt_video.glob("*/*.png")):
-        pred_path = pred_video / gt_path.relative_to(gt_video)
-        if pred_path.exists():
-            pairs.append((gt_path.stem, gt_path, pred_path))
-    return pairs
-
-
-def group_pairs_by_frame(pairs: list[tuple[str, Path, Path]]) -> dict[str, list[tuple[Path, Path]]]:
-    grouped: dict[str, list[tuple[Path, Path]]] = {}
-    for frame_stem, gt_path, pred_path in pairs:
-        grouped.setdefault(frame_stem, []).append((gt_path, pred_path))
+def mask_paths_by_frame(video_root: Path) -> dict[str, list[Path]]:
+    grouped: dict[str, list[Path]] = {}
+    if not video_root.exists():
+        return grouped
+    for mask_path in sorted(video_root.glob("*/*.png")):
+        grouped.setdefault(mask_path.stem, []).append(mask_path)
     return grouped
+
+
+def image_frames(image_dir: Path) -> list[Path]:
+    frames = []
+    for suffix in ("*.jpg", "*.jpeg", "*.png"):
+        frames.extend(image_dir.glob(suffix))
+    return sorted(frames, key=lambda path: frame_sort_key(path.stem))
 
 
 def frame_sort_key(frame_stem: str) -> tuple[int, str]:
@@ -90,17 +82,12 @@ def main() -> None:
         image_dir = args.image_root / video
         gt_video = args.gt_root / video
         pred_video = args.pred_root / video
-        pairs = object_mask_pairs(gt_video, pred_video)
-        if not pairs:
+        frame_paths = image_frames(image_dir)
+        if not frame_paths:
             continue
-        grouped = group_pairs_by_frame(pairs)
-        first_image = None
-        for frame_stem in sorted(grouped):
-            first_image = frame_for_mask(image_dir, frame_stem)
-            if first_image is not None:
-                break
-        if first_image is None:
-            continue
+        gt_by_frame = mask_paths_by_frame(gt_video)
+        pred_by_frame = mask_paths_by_frame(pred_video)
+        first_image = frame_paths[0]
         first_bgr = cv2.imread(str(first_image), cv2.IMREAD_COLOR)
         if first_bgr is None:
             continue
@@ -114,30 +101,30 @@ def main() -> None:
         )
         frames_written = 0
         mask_copy_root = args.out_dir / "masks" / video
-        for frame_stem in sorted(grouped, key=frame_sort_key):
+        for image_path in frame_paths:
             if args.max_frames > 0 and frames_written >= args.max_frames:
                 break
-            image_path = frame_for_mask(image_dir, frame_stem)
-            if image_path is None:
-                continue
             image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if image_bgr is None:
                 continue
+            frame_stem = image_path.stem
             gt_union = np.zeros(image_bgr.shape[:2], dtype=bool)
             pred_union = np.zeros(image_bgr.shape[:2], dtype=bool)
-            for gt_path, pred_path in grouped[frame_stem]:
+            for gt_path in gt_by_frame.get(frame_stem, []):
                 gt = read_binary_mask(gt_path)
-                pred = read_binary_mask(pred_path)
                 if gt.shape != image_bgr.shape[:2]:
                     gt = cv2.resize(gt.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
-                if pred.shape != image_bgr.shape[:2]:
-                    pred = cv2.resize(pred.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
                 gt_union |= gt
-                pred_union |= pred
                 rel = gt_path.relative_to(gt_video)
                 (mask_copy_root / "gt" / rel.parent).mkdir(parents=True, exist_ok=True)
-                (mask_copy_root / "pred" / rel.parent).mkdir(parents=True, exist_ok=True)
                 shutil.copy2(gt_path, mask_copy_root / "gt" / rel)
+            for pred_path in pred_by_frame.get(frame_stem, []):
+                pred = read_binary_mask(pred_path)
+                if pred.shape != image_bgr.shape[:2]:
+                    pred = cv2.resize(pred.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+                pred_union |= pred
+                rel = pred_path.relative_to(pred_video)
+                (mask_copy_root / "pred" / rel.parent).mkdir(parents=True, exist_ok=True)
                 shutil.copy2(pred_path, mask_copy_root / "pred" / rel)
             writer.write(make_overlay(image_bgr, gt_union, pred_union))
             frames_written += 1
