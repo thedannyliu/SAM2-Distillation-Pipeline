@@ -21,6 +21,7 @@ VAL_FRACTION="${VAL_FRACTION:-0.02}"
 KEEP_ARCHIVES="${KEEP_ARCHIVES:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 NUM_MANIFEST_WORKERS="${NUM_MANIFEST_WORKERS:-64}"
+HF_DOWNLOAD_MAX_WORKERS="${HF_DOWNLOAD_MAX_WORKERS:-4}"
 
 usage() {
   cat <<'EOF'
@@ -179,7 +180,7 @@ while IFS= read -r hf_path; do
     --repo-type dataset \
     --revision "${HF_REVISION}" \
     --local-dir "${RAW_ROOT}" \
-    --resume-download
+    --max-workers "${HF_DOWNLOAD_MAX_WORKERS}"
 
   archive="${RAW_ROOT}/${hf_path}"
   if [[ ! -f "${archive}" ]]; then
