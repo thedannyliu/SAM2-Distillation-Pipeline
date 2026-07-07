@@ -47,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-videos", type=int, default=0, help="0 means all.")
     parser.add_argument("--max-objects", type=int, default=2000, help="0 means all.")
     parser.add_argument("--warmup-images", type=int, default=5)
+    parser.add_argument("--save-artifacts", type=int, default=0, help="Save this many predicted masks and overlays.")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -240,6 +241,26 @@ def load_mask(path: Path) -> np.ndarray:
         return np.asarray(image) > 0
 
 
+def save_mask_and_overlay(image_path: Path, pred_mask: np.ndarray, gt_mask: np.ndarray, out_dir: Path, name: str) -> None:
+    mask_dir = out_dir / "masks"
+    overlay_dir = out_dir / "overlays"
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    overlay_dir.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(pred_mask.astype(np.uint8) * 255).save(mask_dir / f"{name}_pred.png")
+    Image.fromarray(gt_mask.astype(np.uint8) * 255).save(mask_dir / f"{name}_gt.png")
+
+    with Image.open(image_path) as image:
+        base = image.convert("RGBA")
+    pred = pred_mask.astype(bool)
+    gt = gt_mask.astype(bool)
+    color = np.zeros((base.height, base.width, 4), dtype=np.uint8)
+    color[gt] = [0, 255, 0, 90]
+    color[pred] = [255, 0, 0, 90]
+    color[np.logical_and(gt, pred)] = [255, 220, 0, 130]
+    overlay = Image.alpha_composite(base, Image.fromarray(color, mode="RGBA"))
+    overlay.convert("RGB").save(overlay_dir / f"{name}_overlay.jpg", quality=92)
+
+
 def mask_bbox(mask: np.ndarray) -> np.ndarray | None:
     ys, xs = np.where(mask)
     if len(xs) == 0:
@@ -328,6 +349,7 @@ def main() -> None:
     rows = []
     set_image_latencies: list[float] = []
     prompt_latencies: list[float] = []
+    saved_artifacts = 0
 
     image_items = list(by_image.items())
     with torch.inference_mode():
@@ -376,6 +398,12 @@ def main() -> None:
                         "total_object_seconds": set_image_sec + prompt_sec,
                     }
                 )
+                if saved_artifacts < args.save_artifacts:
+                    artifact_name = (
+                        f"{saved_artifacts:04d}_{record.video}_{record.object_id}_{record.frame_stem}_{args.prompt_kind}"
+                    )
+                    save_mask_and_overlay(record.image_path, pred_mask, gt_mask, args.out_dir, artifact_name)
+                    saved_artifacts += 1
 
     thresholds = [round(x, 2) for x in np.arange(0.50, 0.96, 0.05)]
     ious = [float(row["iou"]) for row in rows]
@@ -405,6 +433,7 @@ def main() -> None:
             "p95_prompt_seconds": percentile(prompt_latencies, 95),
             "mean_total_object_seconds": float(np.mean([row["total_object_seconds"] for row in rows])) if rows else 0.0,
         },
+        "artifacts_saved": saved_artifacts,
         "load": load_summary,
     }
 
