@@ -131,6 +131,53 @@ The official evaluator wrapper cleans progress-bar output and parses the global 
 - output cleanup and metric parsing: `tools/eval/run_sav_evaluator.py:26`
 - official evaluator command: `tools/eval/run_sav_evaluator.py:58`
 
+## Overlay Artifacts
+
+The benchmark can generate visual artifacts after VOS prediction PNGs exist. This is a post-processing step and does not rerun model inference.
+
+Image mode artifacts are written by `tools/benchmark/benchmark_sav_prompt_masks.py` when `--save-video-frame-artifacts` is enabled. The company suite passes this through `IMAGE_ARTIFACT_VIDEOS`:
+
+- image artifact selection for first/middle/last annotated frames: `tools/benchmark/benchmark_sav_prompt_masks.py:316`
+- image masks and overlays are saved under `<OUT_ROOT>/image/<model>/<prompt>/frame_artifacts/`
+- suite wiring: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:106`
+
+Video tracking overlays are generated from saved VOS prediction PNGs:
+
+- scans all prediction roots matching `<OUT_ROOT>/vos/*/*/pred`: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:240`
+- writes one full-timeline MP4 per selected video: `tools/eval/make_vos_overlay_artifacts.py:95`
+- uses all frames from `JPEGImages_24fps`, not only sparse GT annotation frames: `tools/eval/make_vos_overlay_artifacts.py:52`
+- copies GT and predicted masks under `<OUT_ROOT>/vos/<model>/<prompt>/artifacts/masks/`
+
+Overlay colors:
+
+- yellow: GT and prediction overlap
+- green: GT only, missed by prediction
+- red: prediction only, false positive area
+
+To generate or regenerate overlay MP4s for every completed VOS prediction root in an existing run:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+git pull origin edgetam-tinyvit-pipeline
+
+RAW_SHARD_ROOT=/mnt/dataset/data/danny-dataset/SA-V/sav_train/sav_030 \
+MAX_VIDEOS=10 \
+MAX_OBJECTS_PER_VIDEO=2 \
+IMAGE_ARTIFACT_VIDEOS=3 \
+VOS_OVERLAY_VIDEOS=3 \
+VOS_OVERLAY_FRAMES=0 \
+OUT_ROOT=/group-volume/danny-dataset/sam2_distill/runs/raw_sav030_stage1_video_suite_10vid_artifacts \
+scripts/company/15_benchmark_raw_sav_shard_suite.sh artifacts
+```
+
+The MP4s are written to:
+
+```text
+<OUT_ROOT>/vos/<model>/<prompt>/artifacts/*_overlay.mp4
+```
+
+`VOS_OVERLAY_FRAMES=0` means write the full video timeline. `VOS_OVERLAY_VIDEOS=3` means save overlay MP4s for the first three videos in `sav_train_benchmark.txt`. Increase this if you want MP4s for more videos.
+
 ## Summary Table
 
 All per-model results are collected into:
