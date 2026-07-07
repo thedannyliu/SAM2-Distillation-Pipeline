@@ -16,7 +16,6 @@ EDGETAM_CHECKPOINT="${EDGETAM_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/edgetam/edge
 SAM2_ROOT="${SAM2_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 
 TV21_MSE_COS="${TV21_MSE_COS:-${SAM2D_ROOT}/runs/stage1_online_teacher_sav000_018_vbal32_tv21m_4gpu_b4_mse_cos_5ep_v1/checkpoints/best.pt}"
-TINYVIT21_CKPT="${TINYVIT21_CKPT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 
 MAX_VIDEOS="${MAX_VIDEOS:-10}"
 MAX_OBJECTS_PER_VIDEO="${MAX_OBJECTS_PER_VIDEO:-2}"
@@ -41,7 +40,8 @@ Usage:
 Runs two EdgeTAM-side benchmark entries into OUT_ROOT:
   - official_edgetam: official open-source EdgeTAM checkpoint.
   - tv21m_mse_cos_edgetam: Stage1 TV21M MSE+cos encoder patched into
-    official EdgeTAM prompt/mask/memory modules.
+    official EdgeTAM prompt/mask/memory modules. The encoder is loaded
+    directly from the Stage1 checkpoint, without a separate TinyViT init file.
 EOF
 }
 
@@ -101,7 +101,6 @@ run_image_tv21m_mse_cos_edgetam() {
     --checkpoint "${TV21_MSE_COS}" \
     --config "${EDGETAM_CFG}" \
     --sam2-checkpoint "${EDGETAM_CHECKPOINT}" \
-    --tinyvit-checkpoint "${TINYVIT21_CKPT}" \
     --tinyvit-model-name tiny_vit_21m_512.dist_in22k_ft_in1k \
     --sam2-root "${EDGETAM_ROOT}" \
     --edgetam-root "${EDGETAM_ROOT}" \
@@ -116,7 +115,6 @@ image() {
   require_file "EdgeTAM root" "${EDGETAM_ROOT}"
   require_file "official EdgeTAM checkpoint" "${EDGETAM_CHECKPOINT}"
   require_file "TV21M MSE+cos Stage1 checkpoint" "${TV21_MSE_COS}"
-  require_file "TinyViT-21M init checkpoint" "${TINYVIT21_CKPT}"
   for prompt in box point; do
     run_image_official_edgetam "${prompt}"
     run_image_tv21m_mse_cos_edgetam "${prompt}"
@@ -168,7 +166,6 @@ run_vos_tv21m_mse_cos_edgetam() {
     --sam2-cfg "${EDGETAM_CFG}" \
     --checkpoint "${TV21_MSE_COS}" \
     --sam2-checkpoint "${EDGETAM_CHECKPOINT}" \
-    --tinyvit-checkpoint "${TINYVIT21_CKPT}" \
     --tinyvit-model-name tiny_vit_21m_512.dist_in22k_ft_in1k \
     --image-root "${PREP_ROOT}/JPEGImages_24fps" \
     --ann-root "${PREP_ROOT}/Annotations_6fps" \
@@ -188,7 +185,6 @@ vos() {
   require_file "EdgeTAM root" "${EDGETAM_ROOT}"
   require_file "official EdgeTAM checkpoint" "${EDGETAM_CHECKPOINT}"
   require_file "TV21M MSE+cos Stage1 checkpoint" "${TV21_MSE_COS}"
-  require_file "TinyViT-21M init checkpoint" "${TINYVIT21_CKPT}"
   require_file "SAM2 evaluator root" "${SAM2_ROOT}"
   for prompt in box point; do
     run_vos_official_edgetam "${prompt}"
