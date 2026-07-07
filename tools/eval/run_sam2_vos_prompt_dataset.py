@@ -8,6 +8,7 @@ import json
 import sys
 import time
 import types
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,12 @@ def parse_args() -> argparse.Namespace:
 def add_import_roots(sam2_root: Path) -> None:
     sys.path.insert(0, str(REPO_ROOT))
     sys.path.insert(0, str(sam2_root))
+
+
+def autocast_context(device: torch.device):
+    if device.type == "cuda":
+        return torch.autocast("cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 def strip_module_prefix(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -254,7 +261,8 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     selected_videos = video_names(args.image_root, args.video_list_file, args.max_videos)
     start = time.perf_counter()
-    video_summaries = [run_video(predictor, args, video) for video in selected_videos]
+    with torch.inference_mode(), autocast_context(device):
+        video_summaries = [run_video(predictor, args, video) for video in selected_videos]
     elapsed = time.perf_counter() - start
     passed = [summary for summary in video_summaries if summary.get("status") == "pass"]
     summary = {
