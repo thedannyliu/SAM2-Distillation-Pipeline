@@ -74,6 +74,14 @@ def make_overlay(image_bgr: np.ndarray, gt: np.ndarray, pred: np.ndarray) -> np.
     return overlay
 
 
+def make_prediction_overlay(image_bgr: np.ndarray, pred: np.ndarray) -> np.ndarray:
+    overlay = image_bgr.copy()
+    color = np.zeros_like(overlay)
+    color[pred] = [255, 0, 0]
+    overlay[pred] = cv2.addWeighted(overlay, 0.45, color, 0.55, 0)[pred]
+    return overlay
+
+
 def main() -> None:
     args = parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +118,8 @@ def main() -> None:
             frame_stem = image_path.stem
             gt_union = np.zeros(image_bgr.shape[:2], dtype=bool)
             pred_union = np.zeros(image_bgr.shape[:2], dtype=bool)
-            for gt_path in gt_by_frame.get(frame_stem, []):
+            gt_paths = gt_by_frame.get(frame_stem, [])
+            for gt_path in gt_paths:
                 gt = read_binary_mask(gt_path)
                 if gt.shape != image_bgr.shape[:2]:
                     gt = cv2.resize(gt.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
@@ -126,7 +135,10 @@ def main() -> None:
                 rel = pred_path.relative_to(pred_video)
                 (mask_copy_root / "pred" / rel.parent).mkdir(parents=True, exist_ok=True)
                 shutil.copy2(pred_path, mask_copy_root / "pred" / rel)
-            writer.write(make_overlay(image_bgr, gt_union, pred_union))
+            if gt_paths:
+                writer.write(make_overlay(image_bgr, gt_union, pred_union))
+            else:
+                writer.write(make_prediction_overlay(image_bgr, pred_union))
             frames_written += 1
         writer.release()
         summaries.append({"video": video, "overlay_video": str(video_out), "frames": frames_written})

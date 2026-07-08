@@ -150,9 +150,12 @@ Video tracking overlays are generated from saved VOS prediction PNGs:
 
 Overlay colors:
 
-- yellow: GT and prediction overlap
-- green: GT only, missed by prediction
-- red: prediction only, false positive area
+- on frames with GT annotations:
+  - yellow: GT and prediction overlap
+  - green: GT only, missed by prediction
+  - red: prediction only, false positive area
+- on frames without GT annotations:
+  - blue: prediction-only visualization; this is not treated as a false positive
 
 To generate or regenerate overlay MP4s for every completed VOS prediction root in an existing run:
 
