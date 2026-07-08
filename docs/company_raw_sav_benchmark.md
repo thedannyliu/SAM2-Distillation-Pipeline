@@ -51,6 +51,24 @@ TinyViT architecture is inferred from checkpoint tensor shapes, so mislabeled ru
 - model inference from `projections.image_embed.weight`: `sam2_distill/models/stage1_checkpoint.py:38`
 - checkpoint filename resolution: `sam2_distill/models/stage1_checkpoint.py:47`
 
+## Weight Name Reference
+
+Use these short names when collecting weights for Thor-side testing:
+
+| name | meaning |
+| --- | --- |
+| `sam2p1_l` | official SAM 2.1 Hiera Large baseline |
+| `sam2p1_bplus` | official SAM 2.1 Hiera Base Plus baseline |
+| `official_edgetam` | official open-source EdgeTAM checkpoint |
+| `tv21m_mse` | TinyViT-21M Stage1 image encoder distillation, MSE only |
+| `tv21m_mse_cos` | TinyViT-21M Stage1 image encoder distillation, MSE + cosine |
+| `tv21m_highres` | TinyViT-21M Stage1 image encoder distillation, high-res feature only |
+| `tv11m_mse` | TinyViT-11M Stage1 image encoder distillation, MSE only |
+| `tv11m_mse_cos` | TinyViT-11M Stage1 image encoder distillation, MSE + cosine |
+| `tv5m_mse` | TinyViT-5M Stage1 image encoder distillation, MSE only |
+| `tv5m_mse_cos` | TinyViT-5M Stage1 image encoder distillation, MSE + cosine |
+| `tv21m_mse_cos_edgetam` | TinyViT-21M MSE + cosine Stage1 encoder directly replacing official EdgeTAM image encoder, with official EdgeTAM prompt/mask/memory kept |
+
 ## Image Segmentation Mode
 
 For image segmentation, each annotated object/frame pair is treated as one promptable segmentation example.
