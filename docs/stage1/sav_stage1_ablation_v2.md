@@ -12,8 +12,10 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 
 DATA_ROOT=/group-volume/danny-dataset \
-TRAIN_ROOT=/group-volume/danny-dataset/SA-V/sav_train \
-VAL_ROOT=/group-volume/danny-dataset/SA-V/sav_val \
+SAV_ROOT=/mnt/data/danny-dataset/SA-V \
+TRAIN_ROOT=/mnt/data/danny-dataset/SA-V/sav_train \
+VAL_ROOT=/mnt/data/danny-dataset/SA-V/sav_val \
+TEST_ROOT=/mnt/data/danny-dataset/SA-V/sav_test \
 CACHE_NAME=stage1_vbal16_6fps \
 TRAIN_FRAMES_PER_VIDEO=16 \
 VAL_FRAMES_PER_VIDEO=8 \
@@ -42,6 +44,29 @@ distillation. Do not expand all SA-V train videos to full 24fps JPEGs.
 Use the preset launcher. It sets model name, checkpoint, adapter mode, loss
 weights, teacher, W&B name, run directory, and converts `EPOCHS` to `MAX_STEPS`
 from the manifest size.
+
+The queue wrappers below run three experiments sequentially per node. They use
+non-overlapping run directories, keep W&B enabled, and save only `last.pt` and
+`best.pt`:
+
+```bash
+# 8 GPU node
+GPUS=0,1,2,3,4,5,6,7 scripts/company/20_queue_sav_stage1_ablation_8gpu.sh
+
+# 4 GPU nodes
+GPUS=0,1,2,3 scripts/company/21_queue_sav_stage1_ablation_4gpu_size.sh
+GPUS=0,1,2,3 scripts/company/22_queue_sav_stage1_ablation_4gpu_loss.sh
+GPUS=0,1,2,3 scripts/company/23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh
+```
+
+Queue contents:
+
+| script | experiments |
+| --- | --- |
+| `20_queue_sav_stage1_ablation_8gpu.sh` | `tv21_proj_sam21l_msehr`, `tv21_proj_sam21l_msehr_cos025`, `tv21_adapter_sam21l_msehr` |
+| `21_queue_sav_stage1_ablation_4gpu_size.sh` | `tv11_proj_sam21l_msehr`, `tv5_proj_sam21l_msehr`, `tv11_proj_sam21l_msehr_cos025` |
+| `22_queue_sav_stage1_ablation_4gpu_loss.sh` | `tv5_proj_sam21l_msehr_cos025`, `tv21_proj_sam21l_image_only`, `tv21_proj_sam21l_hr025` |
+| `23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh` | `tv21_proj_sam21l_msehr_l1_025`, `tv21_adapter_sam21l_msehr_cos025`, `tv21_proj_sam21bplus_msehr` |
 
 Example 8-GPU run:
 

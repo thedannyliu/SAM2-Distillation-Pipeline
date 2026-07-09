@@ -286,6 +286,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--eval-every", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=5000)
+    parser.add_argument("--no-step-checkpoints", action="store_true")
     parser.add_argument("--val-max-batches", type=int, default=25)
     parser.add_argument("--resume", help="Checkpoint to resume.")
     parser.add_argument("--wandb-project", default=os.environ.get("WANDB_PROJECT", "sam2-distill-stage1-online"))
@@ -524,7 +525,16 @@ def main() -> None:
                 )
 
             if is_main(rank) and step > 0 and step % args.save_every == 0:
-                save_checkpoint(ckpt_dir / f"step_{step:07d}.pt", model, optimizer, step + 1, wandb_run_id, args, best_val_loss)
+                if not args.no_step_checkpoints:
+                    save_checkpoint(
+                        ckpt_dir / f"step_{step:07d}.pt",
+                        model,
+                        optimizer,
+                        step + 1,
+                        wandb_run_id,
+                        args,
+                        best_val_loss,
+                    )
                 save_checkpoint(ckpt_dir / "last.pt", model, optimizer, step + 1, wandb_run_id, args, best_val_loss)
             if step > 0 and step % args.eval_every == 0:
                 val_metrics = evaluate(model, teacher, val_loader, device, world_size, args.val_max_batches, args)

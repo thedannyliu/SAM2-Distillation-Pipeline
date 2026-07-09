@@ -40,6 +40,7 @@ MAX_GRAD_NORM="${MAX_GRAD_NORM:-1.0}"
 SEED="${SEED:-250107256}"
 LOG_EVERY="${LOG_EVERY:-10}"
 SAVE_EVERY="${SAVE_EVERY:-1000}"
+SAVE_STEP_CHECKPOINTS="${SAVE_STEP_CHECKPOINTS:-1}"
 EVAL_EVERY="${EVAL_EVERY:-1000}"
 VAL_MAX_BATCHES="${VAL_MAX_BATCHES:-25}"
 AMP_DTYPE="${AMP_DTYPE:-bf16}"
@@ -174,6 +175,9 @@ train() {
   fi
   if [[ "${NO_WANDB}" -eq 1 ]]; then
     args+=(--no-wandb)
+  fi
+  if [[ "${SAVE_STEP_CHECKPOINTS}" -eq 0 ]]; then
+    args+=(--no-step-checkpoints)
   fi
   PYTHONPATH="${SAM2_UPSTREAM}:${PYTHONPATH:-}" \
   CUDA_VISIBLE_DEVICES="${GPUS}" torchrun \

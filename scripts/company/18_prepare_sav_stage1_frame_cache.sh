@@ -5,7 +5,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 DATA_ROOT="${DATA_ROOT:-/group-volume/danny-dataset}"
-SAV_ROOT="${SAV_ROOT:-${DATA_ROOT}/SA-V}"
+DEFAULT_SAV_ROOT="${DATA_ROOT}/SA-V"
+if [[ -d "/mnt/data/danny-dataset/SA-V" ]]; then
+  DEFAULT_SAV_ROOT="/mnt/data/danny-dataset/SA-V"
+fi
+SAV_ROOT="${SAV_ROOT:-${DEFAULT_SAV_ROOT}}"
 TRAIN_ROOT="${TRAIN_ROOT:-${SAV_ROOT}/sav_train}"
 VAL_ROOT="${VAL_ROOT:-${SAV_ROOT}/sav_val}"
 TEST_ROOT="${TEST_ROOT:-${SAV_ROOT}/sav_test}"
@@ -36,8 +40,9 @@ frames from raw MP4 videos instead of expanding full 24fps train data.
 
 Key env vars:
   DATA_ROOT=/group-volume/danny-dataset
-  TRAIN_ROOT=$DATA_ROOT/SA-V/sav_train
-  VAL_ROOT=$DATA_ROOT/SA-V/sav_val
+  SAV_ROOT=/mnt/data/danny-dataset/SA-V
+  TRAIN_ROOT=$SAV_ROOT/sav_train
+  VAL_ROOT=$SAV_ROOT/sav_val
   OUT_ROOT=$DATA_ROOT/sam2_distill/data/sav_v2/frame_cache/stage1_vbal16_6fps
   MANIFEST=$DATA_ROOT/sam2_distill/manifests/stage1_vbal16_6fps.parquet
   TRAIN_FRAMES_PER_VIDEO=16
