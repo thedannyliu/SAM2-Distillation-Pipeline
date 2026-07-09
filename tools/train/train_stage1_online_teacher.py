@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 import time
 from contextlib import nullcontext
@@ -45,6 +46,15 @@ def init_distributed() -> tuple[int, int, int, torch.device]:
 
 def is_main(rank: int) -> bool:
     return rank == 0
+
+
+def set_seed(seed: int, rank: int) -> None:
+    seed_value = int(seed) + int(rank)
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed_value)
 
 
 def unwrap_model(model: nn.Module) -> nn.Module:
@@ -229,6 +239,22 @@ def save_checkpoint(
     )
 
 
+def validate_model_shape(model: nn.Module, model_name: str) -> None:
+    expected = {
+        "tiny_vit_21m_512.dist_in22k_ft_in1k": 384,
+        "tiny_vit_11m_224.dist_in22k_ft_in1k": 256,
+        "tiny_vit_5m_224.dist_in22k_ft_in1k": 160,
+    }.get(model_name)
+    if expected is None:
+        return
+    actual = int(model.projections["image_embed"].weight.shape[1])
+    if actual != expected:
+        raise SystemExit(
+            f"Model shape guard failed for {model_name}: "
+            f"image_embed projection input channels={actual}, expected={expected}."
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True)
@@ -237,6 +263,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tinyvit-checkpoint", required=True)
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
+    parser.add_argument("--adapter-mode", choices=("projection", "residual_dwconv"), default="projection")
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--max-steps", type=int, default=1000)
@@ -255,6 +282,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda-hr", type=float, default=1.0)
     parser.add_argument("--amp-dtype", choices=("none", "bf16", "fp16"), default="bf16")
     parser.add_argument("--teacher-amp-dtype", choices=("none", "bf16", "fp16"), default="bf16")
+    parser.add_argument("--seed", type=int, default=250107256)
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--eval-every", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=5000)
@@ -285,6 +313,7 @@ def main() -> None:
     args = parse_args()
     validate_input_paths(args)
     rank, world_size, _, device = init_distributed()
+    set_seed(args.seed, rank)
     out_dir = Path(args.out_dir).expanduser().resolve()
     tb_dir = out_dir / "tensorboard"
     ckpt_dir = out_dir / "checkpoints"
@@ -298,8 +327,16 @@ def main() -> None:
     train_dataset = ImagePathDataset(train_df)
     val_dataset = ImagePathDataset(val_df)
 
-    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True) if world_size > 1 else None
-    val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=False) if world_size > 1 else None
+    train_sampler = (
+        DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=args.seed)
+        if world_size > 1
+        else None
+    )
+    val_sampler = (
+        DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=False, seed=args.seed)
+        if world_size > 1
+        else None
+    )
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -326,7 +363,9 @@ def main() -> None:
     model = TinyViTSAM2Adapter(
         model_name=args.model_name,
         checkpoint_path=args.tinyvit_checkpoint,
+        adapter_mode=args.adapter_mode,
     ).to(device)
+    validate_model_shape(model, args.model_name)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     start_step = 0
     wandb_run_id = args.wandb_run_id
@@ -394,6 +433,8 @@ def main() -> None:
                     f"  teacher_config: {args.teacher_config}",
                     f"  teacher_checkpoint: {Path(args.teacher_checkpoint).expanduser().resolve()}",
                     f"  tinyvit_checkpoint: {Path(args.tinyvit_checkpoint).expanduser().resolve()}",
+                    f"  tinyvit_model_name: {args.model_name}",
+                    f"  adapter_mode: {args.adapter_mode}",
                     f"  out_dir: {out_dir}",
                     f"  train_images: {len(train_dataset):,}",
                     f"  val_images: {len(val_dataset):,}",
@@ -401,6 +442,7 @@ def main() -> None:
                     f"  batch_size_per_gpu: {args.batch_size}",
                     f"  global_batch_size: {global_batch_size}",
                     f"  max_steps: {args.max_steps:,}",
+                    f"  seed: {args.seed}",
                     "  teacher_feature_storage: none",
                 ]
             ),

@@ -86,6 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", default="train")
     parser.add_argument("--model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
     parser.add_argument("--tinyvit-checkpoint", default=None)
+    parser.add_argument("--adapter-mode", choices=("projection", "residual_dwconv"), default="projection")
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--max-items", type=int, default=16)
     parser.add_argument("--steps", type=int, default=2)
@@ -112,6 +113,7 @@ def main() -> None:
         model_name=args.model_name,
         checkpoint_path=args.tinyvit_checkpoint,
         input_size=args.image_size,
+        adapter_mode=args.adapter_mode,
     ).to(device)
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)

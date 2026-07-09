@@ -1,0 +1,119 @@
+# SA-V Stage 1 Ablation V2
+
+This runbook is for the corrected TinyViT Stage 1 ablation matrix on raw SA-V.
+It avoids full 24fps extraction and stores only selected 6fps-aligned frames.
+
+## Prepare SA-V Frames
+
+Default output is under `/group-volume/danny-dataset` and uses 64 CPU workers:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+git pull origin edgetam-tinyvit-pipeline
+
+DATA_ROOT=/group-volume/danny-dataset \
+TRAIN_ROOT=/group-volume/danny-dataset/SA-V/sav_train \
+VAL_ROOT=/group-volume/danny-dataset/SA-V/sav_val \
+CACHE_NAME=stage1_vbal16_6fps \
+TRAIN_FRAMES_PER_VIDEO=16 \
+VAL_FRAMES_PER_VIDEO=8 \
+NUM_WORKERS=64 \
+scripts/company/18_prepare_sav_stage1_frame_cache.sh
+```
+
+Outputs:
+
+```text
+/group-volume/danny-dataset/sam2_distill/data/sav_v2/frame_cache/stage1_vbal16_6fps/
+/group-volume/danny-dataset/sam2_distill/manifests/stage1_vbal16_6fps.parquet
+```
+
+The selected frame index is always annotation-aligned:
+
+```text
+frame_idx_24fps = frame_idx_6fps * 4
+```
+
+This is intended for image encoder distillation and future video-memory
+distillation. Do not expand all SA-V train videos to full 24fps JPEGs.
+
+## Run Ablations
+
+Use the preset launcher. It sets model name, checkpoint, adapter mode, loss
+weights, teacher, W&B name, run directory, and converts `EPOCHS` to `MAX_STEPS`
+from the manifest size.
+
+Example 8-GPU run:
+
+```bash
+EXPERIMENT=tv21_proj_sam21l_msehr \
+GPUS=0,1,2,3,4,5,6,7 \
+EPOCHS=5 \
+NUM_WORKERS=16 \
+scripts/company/19_run_sav_stage1_ablation.sh
+```
+
+Example 4-GPU run:
+
+```bash
+EXPERIMENT=tv11_proj_sam21l_msehr \
+GPUS=0,1,2,3 \
+EPOCHS=5 \
+NUM_WORKERS=16 \
+scripts/company/19_run_sav_stage1_ablation.sh
+```
+
+Priority presets:
+
+```text
+tv21_proj_sam21l_msehr
+tv21_proj_sam21l_msehr_cos025
+tv21_adapter_sam21l_msehr
+tv21_proj_sam21bplus_msehr
+tv11_proj_sam21l_msehr
+tv5_proj_sam21l_msehr
+tv11_proj_sam21l_msehr_cos025
+tv5_proj_sam21l_msehr_cos025
+tv21_proj_sam21l_image_only
+tv21_proj_sam21l_hr025
+tv21_proj_sam21l_msehr_l1_025
+tv21_proj_sam21l_msehr_cos1
+tv21_adapter_sam21l_msehr_cos025
+tv11_adapter_sam21l_msehr
+tv5_adapter_sam21l_msehr
+tv11_proj_sam21bplus_msehr
+tv5_proj_sam21bplus_msehr
+tv21_proj_sam21l_msehr_seed2
+tv21_proj_sam21l_msehr_vbal64
+```
+
+## Reliability Checks
+
+Before full runs:
+
+```bash
+python - <<'PY'
+import pandas as pd
+p="/group-volume/danny-dataset/sam2_distill/manifests/stage1_vbal16_6fps.parquet"
+df=pd.read_parquet(p)
+print(df["split"].value_counts())
+print("all aligned:", bool((df["frame_idx_24fps"] % 4 == 0).all()))
+print(df.head())
+PY
+```
+
+The trainer now fails early if a TV5M/TV11M/TV21M run instantiates the wrong
+TinyViT architecture. Expected `projections.image_embed.weight.shape[1]`:
+
+```text
+TV21M: 384
+TV11M: 256
+TV5M: 160
+```
+
+## Notes
+
+- `projection` is the original 1x1 projection head.
+- `residual_dwconv` adds a BN-free residual adapter after projection.
+- SAM3/SAM3.1 is not included in this formal matrix until model code and
+  feature mapping are integrated.
