@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-root", type=Path)
     parser.add_argument("--out-root", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--reuse-train-manifest", type=Path)
     parser.add_argument("--train-frames-per-video", type=int, default=16)
     parser.add_argument("--val-frames-per-video", type=int, default=8)
     parser.add_argument("--test-frames-per-video", type=int, default=0)
@@ -41,25 +42,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def first_parent_dir_with_file(roots: list[Path], pattern: str) -> Path | None:
-    for root in roots:
-        if not root or not root.is_dir():
-            continue
-        for path in sorted(root.rglob(pattern)):
-            if path.is_file():
-                return path.parent
-    return None
-
-
 def detect_video_root(root: Path) -> Path:
     candidates = [root / "videos", root / "train" / "videos", root]
     for candidate in candidates:
         if candidate.is_dir() and any(candidate.rglob("*.mp4")):
             return candidate
-    found = first_parent_dir_with_file([root, root.parent], "*.mp4")
-    if found is None:
-        raise FileNotFoundError(f"No mp4 files under {root}")
-    return found
+    raise FileNotFoundError(f"No mp4 files under {root}")
 
 
 def detect_ann_root(root: Path) -> Path | None:
@@ -67,9 +55,7 @@ def detect_ann_root(root: Path) -> Path | None:
     for candidate in candidates:
         if candidate.is_dir() and (any(candidate.glob("*_manual.json")) or any(candidate.glob("*_auto.json"))):
             return candidate
-    return first_parent_dir_with_file([root, root.parent], "*_manual.json") or first_parent_dir_with_file(
-        [root, root.parent], "*_auto.json"
-    )
+    return None
 
 
 def choose_annotation(ann_root: Path | None, video_id: str, use_auto: bool) -> Path | None:
@@ -124,6 +110,62 @@ def select_6fps_indices(total_6fps: int, count: int, seed: str, video_id: str) -
     return sorted(set(selected))
 
 
+def listed_video_ids(root: Path) -> set[str] | None:
+    list_files = sorted(root.glob("*.txt"))
+    if not list_files:
+        return None
+    ids = set()
+    for line in list_files[0].read_text(encoding="utf-8").splitlines():
+        value = line.strip()
+        if value:
+            ids.add(Path(value).stem)
+    return ids
+
+
+def discover_prepared_split(
+    split_name: str,
+    root: Path,
+    frames_per_video: int,
+    max_videos: int,
+    seed: str,
+    ann_every: int,
+) -> list[dict[str, Any]]:
+    image_root = root / "JPEGImages_24fps"
+    if not image_root.is_dir():
+        return []
+    annotation_root = root / "Annotations_6fps"
+    allowed_ids = listed_video_ids(root)
+    tasks = []
+    for video_dir in sorted(path for path in image_root.iterdir() if path.is_dir()):
+        video_id = video_dir.name
+        if allowed_ids is not None and video_id not in allowed_ids:
+            continue
+        frames = sorted(
+            path
+            for path in video_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png"} and path.stem.isdigit()
+        )
+        aligned = [path for path in frames if int(path.stem) % ann_every == 0]
+        if not aligned:
+            continue
+        selected_positions = select_6fps_indices(len(aligned), frames_per_video, seed, video_id)
+        selected_frames = [str(aligned[position]) for position in selected_positions]
+        if selected_frames:
+            tasks.append(
+                {
+                    "kind": "prepared",
+                    "split": split_name,
+                    "video_id": video_id,
+                    "video_path": str(video_dir),
+                    "annotation_path": str(annotation_root / video_id),
+                    "frame_paths": selected_frames,
+                }
+            )
+        if max_videos > 0 and len(tasks) >= max_videos:
+            break
+    return tasks
+
+
 def discover_split(
     split_name: str,
     root: Path,
@@ -131,9 +173,13 @@ def discover_split(
     max_videos: int,
     seed: str,
     use_auto: bool,
+    ann_every: int,
 ) -> list[dict[str, Any]]:
     if frames_per_video <= 0:
         return []
+    prepared_tasks = discover_prepared_split(split_name, root, frames_per_video, max_videos, seed, ann_every)
+    if prepared_tasks:
+        return prepared_tasks
     video_root = detect_video_root(root)
     ann_root = detect_ann_root(root)
     tasks = []
@@ -147,6 +193,7 @@ def discover_split(
         if indices_6fps:
             tasks.append(
                 {
+                    "kind": "raw",
                     "split": split_name,
                     "video_id": video.stem,
                     "video_path": str(video),
@@ -157,6 +204,39 @@ def discover_split(
         if max_videos > 0 and len(tasks) >= max_videos:
             break
     return tasks
+
+
+def prepared_frame_task(task: dict[str, Any], ann_every: int) -> list[dict]:
+    rows = []
+    for frame_path in task["frame_paths"]:
+        path = Path(frame_path)
+        idx_24fps = int(path.stem)
+        with Image.open(path) as image:
+            width, height = image.size
+        rows.append(
+            {
+                "sample_id": f"sav_{task['split']}_{task['video_id']}_{idx_24fps:05d}",
+                "source": "sa_v",
+                "video_id": task["video_id"],
+                "frame_idx_24fps": idx_24fps,
+                "frame_idx_6fps": idx_24fps // ann_every,
+                "image_path": str(path),
+                "height": int(height),
+                "width": int(width),
+                "split": task["split"],
+                "video_path": task["video_path"],
+                "annotation_path": task["annotation_path"],
+            }
+        )
+    return rows
+
+
+def process_task(
+    task: dict[str, Any], out_root: str, ann_every: int, jpeg_quality: int, skip_existing: bool
+) -> list[dict]:
+    if task["kind"] == "prepared":
+        return prepared_frame_task(task, ann_every)
+    return extract_video_task(task, out_root, ann_every, jpeg_quality, skip_existing)
 
 
 def extract_video_task(task: dict[str, Any], out_root: str, ann_every: int, jpeg_quality: int, skip_existing: bool) -> list[dict]:
@@ -207,21 +287,44 @@ def write_manifest(rows: list[dict], manifest: Path) -> None:
     manifest.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows).sort_values(["split", "video_id", "frame_idx_24fps"]).reset_index(drop=True)
     if manifest.suffix == ".parquet":
-        df.to_parquet(manifest, index=False)
+        temporary = manifest.with_suffix(".tmp.parquet")
+        df.to_parquet(temporary, index=False)
     elif manifest.suffix == ".csv":
-        df.to_csv(manifest, index=False)
+        temporary = manifest.with_suffix(".tmp.csv")
+        df.to_csv(temporary, index=False)
     else:
         raise SystemExit("--manifest must end in .parquet or .csv")
+    temporary.replace(manifest)
+
+
+def read_reused_train_rows(path: Path) -> list[dict]:
+    df = pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
+    train = df[df["split"] == "train"].copy()
+    if train.empty:
+        raise RuntimeError(f"No train rows in reusable manifest: {path}")
+    return train.to_dict(orient="records")
 
 
 def main() -> None:
     args = parse_args()
     args.out_root.mkdir(parents=True, exist_ok=True)
 
+    reused_train_rows = []
     tasks = []
-    tasks.extend(
-        discover_split("train", args.train_root, args.train_frames_per_video, args.max_train_videos, args.seed, args.use_auto)
-    )
+    if args.reuse_train_manifest:
+        reused_train_rows = read_reused_train_rows(args.reuse_train_manifest)
+    else:
+        tasks.extend(
+            discover_split(
+                "train",
+                args.train_root,
+                args.train_frames_per_video,
+                args.max_train_videos,
+                args.seed,
+                args.use_auto,
+                args.ann_every,
+            )
+        )
     if args.val_root:
         tasks.extend(
             discover_split(
@@ -231,6 +334,7 @@ def main() -> None:
                 args.max_val_videos,
                 args.seed,
                 args.use_auto,
+                args.ann_every,
             )
         )
     if args.test_root:
@@ -242,17 +346,18 @@ def main() -> None:
                 args.max_test_videos,
                 args.seed,
                 args.use_auto,
+                args.ann_every,
             )
         )
-    if not tasks:
-        raise RuntimeError("No videos selected for frame extraction.")
+    if not tasks and not reused_train_rows:
+        raise RuntimeError("No videos selected for frame extraction or reuse.")
 
     rows = []
     worker_count = max(1, args.num_workers)
     with ProcessPoolExecutor(max_workers=worker_count) as executor:
         futures = [
             executor.submit(
-                extract_video_task,
+                process_task,
                 task,
                 str(args.out_root),
                 args.ann_every,
@@ -264,20 +369,28 @@ def main() -> None:
         for future in tqdm(as_completed(futures), total=len(futures), desc="extract videos"):
             rows.extend(future.result())
 
+    rows.extend(reused_train_rows)
     if not rows:
         raise RuntimeError("No frames were extracted.")
+    held_out_ids = {
+        row["video_id"] for row in rows if row["split"] in {"val_sav", "test_sav"}
+    }
+    rows = [
+        row for row in rows if row["split"] != "train" or row["video_id"] not in held_out_ids
+    ]
     write_manifest(rows, args.manifest)
     counts = pd.DataFrame(rows)["split"].value_counts().to_dict()
     summary = {
         "status": "pass",
         "out_root": str(args.out_root),
         "manifest": str(args.manifest),
-        "videos": len(tasks),
+        "videos": len({(row["split"], row["video_id"]) for row in rows}),
         "frames": len(rows),
         "split_counts": counts,
         "train_root": str(args.train_root),
         "val_root": str(args.val_root) if args.val_root else None,
         "test_root": str(args.test_root) if args.test_root else None,
+        "reuse_train_manifest": str(args.reuse_train_manifest) if args.reuse_train_manifest else None,
         "train_frames_per_video": args.train_frames_per_video,
         "val_frames_per_video": args.val_frames_per_video,
         "test_frames_per_video": args.test_frames_per_video,

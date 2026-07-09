@@ -39,6 +39,23 @@ frame_idx_24fps = frame_idx_6fps * 4
 This is intended for image encoder distillation and future video-memory
 distillation. Do not expand all SA-V train videos to full 24fps JPEGs.
 
+Raw train data is read from MP4 plus JSON annotations. Official validation
+data is read directly from `sav_val/JPEGImages_24fps`; it is not copied into
+the frame cache. Validation video IDs are removed from the train split to
+prevent video-level leakage.
+
+To repair a manifest produced before official prepared validation data was
+supported, reuse the existing train rows and rebuild only validation:
+
+```bash
+MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
+REUSE_TRAIN_MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
+DATA_ROOT=/group-volume/danny-dataset \
+SAV_ROOT=/mnt/data/danny-dataset/SA-V \
+NUM_WORKERS=64 \
+scripts/company/18_prepare_sav_stage1_frame_cache.sh
+```
+
 ## Run Ablations
 
 Use the preset launcher. It sets model name, checkpoint, adapter mode, loss

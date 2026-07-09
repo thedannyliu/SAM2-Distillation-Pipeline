@@ -18,6 +18,7 @@ SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 CACHE_NAME="${CACHE_NAME:-stage1_vbal16_6fps}"
 OUT_ROOT="${OUT_ROOT:-${SAM2D_ROOT}/data/sav_v2/frame_cache/${CACHE_NAME}}"
 MANIFEST="${MANIFEST:-${SAM2D_ROOT}/manifests/${CACHE_NAME}.parquet}"
+REUSE_TRAIN_MANIFEST="${REUSE_TRAIN_MANIFEST:-}"
 
 TRAIN_FRAMES_PER_VIDEO="${TRAIN_FRAMES_PER_VIDEO:-16}"
 VAL_FRAMES_PER_VIDEO="${VAL_FRAMES_PER_VIDEO:-8}"
@@ -79,6 +80,9 @@ if [[ -d "${TEST_ROOT}" && "${TEST_FRAMES_PER_VIDEO}" -gt 0 ]]; then
 fi
 if [[ "${USE_AUTO}" -eq 1 ]]; then
   args+=(--use-auto)
+fi
+if [[ -n "${REUSE_TRAIN_MANIFEST}" ]]; then
+  args+=(--reuse-train-manifest "${REUSE_TRAIN_MANIFEST}")
 fi
 
 python tools/data/prepare_sav_stage1_frame_cache.py "${args[@]}"
