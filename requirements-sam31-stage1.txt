@@ -1,0 +1,9 @@
+-r requirements-stage1.txt
+
+# Official facebookresearch/sam3 runtime dependencies. Keep container PyTorch intact.
+numpy>=1.26,<2
+timm>=1.0.17
+ftfy==6.1.1
+regex
+iopath>=0.1.10
+typing_extensions
