@@ -73,6 +73,17 @@ def read_manifest(
     return frame
 
 
+def validate_manifest_images(manifest: pd.DataFrame, split: str) -> None:
+    missing = [str(path) for path in manifest["image_path"] if not Path(path).is_file()]
+    if missing:
+        examples = "\n  ".join(missing[:10])
+        raise SystemExit(
+            f"Manifest split {split!r} has {len(missing):,} unavailable images. "
+            "The mounted dataset version may have changed. First examples:\n  "
+            f"{examples}"
+        )
+
+
 class SAM3ImageDataset(Dataset):
     """Official SAM3 square-resize and [-1, 1] image preprocessing."""
 
@@ -298,6 +309,7 @@ def main() -> None:
             f"Empty split: train={len(train_frame)}, val={len(val_frame)} "
             f"for {args.train_split!r}/{args.val_split!r}"
         )
+    validate_manifest_images(val_frame, args.val_split)
 
     train_dataset = SAM3ImageDataset(train_frame)
     val_dataset = SAM3ImageDataset(val_frame)
@@ -505,7 +517,19 @@ def main() -> None:
                     flush=True,
                 )
 
-            if completed_step % args.eval_every == 0:
+            should_evaluate = completed_step % args.eval_every == 0
+            should_save = completed_step % args.save_every == 0
+            if rank == 0 and (should_evaluate or should_save):
+                save_checkpoint(
+                    checkpoint_dir / "last.pt",
+                    model,
+                    optimizer,
+                    completed_step,
+                    best_val_loss,
+                    wandb_run_id,
+                    args,
+                )
+            if should_evaluate:
                 val_metrics = evaluate(model, teacher, val_loader, device, world_size, args)
                 if rank == 0:
                     for key, value in val_metrics.items():
@@ -530,16 +554,15 @@ def main() -> None:
                             wandb_run_id,
                             args,
                         )
-            if rank == 0 and completed_step % args.save_every == 0:
-                save_checkpoint(
-                    checkpoint_dir / "last.pt",
-                    model,
-                    optimizer,
-                    completed_step,
-                    best_val_loss,
-                    wandb_run_id,
-                    args,
-                )
+                        save_checkpoint(
+                            checkpoint_dir / "last.pt",
+                            model,
+                            optimizer,
+                            completed_step,
+                            best_val_loss,
+                            wandb_run_id,
+                            args,
+                        )
             step = completed_step
         data_epoch += 1
         resume_batch_offset = 0
