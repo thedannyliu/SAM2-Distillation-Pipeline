@@ -191,6 +191,8 @@ def evaluate(
                 target,
                 lambda_mse=args.lambda_mse,
                 lambda_cos=args.lambda_cos,
+                lambda_relation=args.lambda_relation,
+                relation_grid_size=args.relation_grid_size,
             )
         for key, value in metrics.items():
             weighted = value.detach().double() * batch_size
@@ -253,6 +255,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--lambda-mse", type=float, default=1.0)
     parser.add_argument("--lambda-cos", type=float, default=0.25)
+    parser.add_argument("--lambda-relation", type=float, default=0.0)
+    parser.add_argument("--relation-grid-size", type=int, default=18)
     parser.add_argument("--amp-dtype", choices=("none", "bf16", "fp16"), default="bf16")
     parser.add_argument("--teacher-amp-dtype", choices=("none", "bf16", "fp16"), default="bf16")
     parser.add_argument("--seed", type=int, default=310107256)
@@ -401,7 +405,8 @@ def main() -> None:
                     f"  world_size: {world_size}",
                     f"  global_batch_size: {args.batch_size * world_size}",
                     f"  max_steps: {args.max_steps:,}",
-                    f"  loss: {args.lambda_mse} * MSE + {args.lambda_cos} * cosine",
+                    f"  loss: {args.lambda_mse} * MSE + {args.lambda_cos} * cosine + "
+                    f"{args.lambda_relation} * spatial_relation",
                     f"  out_dir: {out_dir}",
                 ]
             ),
@@ -445,6 +450,8 @@ def main() -> None:
                     target,
                     lambda_mse=args.lambda_mse,
                     lambda_cos=args.lambda_cos,
+                    lambda_relation=args.lambda_relation,
+                    relation_grid_size=args.relation_grid_size,
                 )
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"Non-finite loss at step {step}: {loss.detach()}")
@@ -493,6 +500,7 @@ def main() -> None:
                             f"loss {reduced['loss_stage1_total']:.6f}",
                             f"mse {reduced['loss_feature_mse']:.6f}",
                             f"cos {reduced['loss_feature_cos']:.6f}",
+                            f"relation {reduced['loss_spatial_relation']:.6f}",
                             f"teacher {teacher_seconds:.3f}s",
                             f"wall {reduced['train/sec_per_step']:.3f}s",
                             f"eta {reduced['train/eta_hours']:.2f}h",

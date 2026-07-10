@@ -27,6 +27,8 @@ PROJECTION_WARMUP_STEPS="${PROJECTION_WARMUP_STEPS:-2000}"
 LR_WARMUP_STEPS="${LR_WARMUP_STEPS:-2000}"
 LAMBDA_MSE="${LAMBDA_MSE:-1.0}"
 LAMBDA_COS="${LAMBDA_COS:-0.25}"
+LAMBDA_RELATION="${LAMBDA_RELATION:-0.0}"
+RELATION_GRID_SIZE="${RELATION_GRID_SIZE:-18}"
 ADAPTER_MODE="${ADAPTER_MODE:-residual_dwconv}"
 AMP_DTYPE="${AMP_DTYPE:-bf16}"
 TEACHER_AMP_DTYPE="${TEACHER_AMP_DTYPE:-bf16}"
@@ -156,6 +158,8 @@ train() {
       --lr-warmup-steps "${LR_WARMUP_STEPS}" \
       --lambda-mse "${LAMBDA_MSE}" \
       --lambda-cos "${LAMBDA_COS}" \
+      --lambda-relation "${LAMBDA_RELATION}" \
+      --relation-grid-size "${RELATION_GRID_SIZE}" \
       --amp-dtype "${AMP_DTYPE}" \
       --teacher-amp-dtype "${TEACHER_AMP_DTYPE}" \
       --log-every "${LOG_EVERY}" \
@@ -174,7 +178,7 @@ smoke() {
   GPUS="${GPUS%%,*}" \
   MAX_TRAIN_ITEMS=64 \
   MAX_VAL_ITEMS=32 \
-  BATCH_SIZE=1 \
+  BATCH_SIZE="${SMOKE_BATCH_SIZE:-1}" \
   MAX_STEPS=20 \
   PROJECTION_WARMUP_STEPS=5 \
   LR_WARMUP_STEPS=5 \
