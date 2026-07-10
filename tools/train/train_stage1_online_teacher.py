@@ -74,6 +74,17 @@ def read_manifest(path: Path, split: str, max_items: int | None = None) -> pd.Da
     return df
 
 
+def validate_manifest_images(manifest: pd.DataFrame, split: str) -> None:
+    missing = [str(path) for path in manifest["image_path"] if not Path(path).is_file()]
+    if missing:
+        examples = "\n  ".join(missing[:10])
+        raise SystemExit(
+            f"Manifest split {split!r} has {len(missing):,} unavailable images. "
+            "The mounted dataset version may have changed. First examples:\n  "
+            f"{examples}"
+        )
+
+
 class ImagePathDataset(Dataset):
     def __init__(self, manifest: pd.DataFrame) -> None:
         from sam2.utils.transforms import SAM2Transforms
@@ -340,6 +351,7 @@ def main() -> None:
         raise SystemExit(f"No rows found for train split {args.train_split!r}")
     if val_df.empty:
         raise SystemExit(f"No rows found for val split {args.val_split!r}")
+    validate_manifest_images(val_df, args.val_split)
     train_dataset = ImagePathDataset(train_df)
     val_dataset = ImagePathDataset(val_df)
 

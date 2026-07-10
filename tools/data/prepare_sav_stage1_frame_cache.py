@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -206,12 +207,24 @@ def discover_split(
     return tasks
 
 
-def prepared_frame_task(task: dict[str, Any], ann_every: int) -> list[dict]:
+def prepared_frame_task(
+    task: dict[str, Any],
+    out_root: str,
+    ann_every: int,
+    skip_existing: bool,
+) -> list[dict]:
     rows = []
+    image_cache_name = "JPEGImages" if task["split"] == "train" else f"JPEGImages_{task['split']}"
     for frame_path in task["frame_paths"]:
-        path = Path(frame_path)
-        idx_24fps = int(path.stem)
-        with Image.open(path) as image:
+        source_path = Path(frame_path)
+        idx_24fps = int(source_path.stem)
+        cached_path = Path(out_root) / image_cache_name / task["video_id"] / source_path.name
+        cached_path.parent.mkdir(parents=True, exist_ok=True)
+        if source_path.resolve() != cached_path.resolve() and not (
+            skip_existing and cached_path.is_file()
+        ):
+            shutil.copy2(source_path, cached_path)
+        with Image.open(cached_path) as image:
             width, height = image.size
         rows.append(
             {
@@ -220,7 +233,7 @@ def prepared_frame_task(task: dict[str, Any], ann_every: int) -> list[dict]:
                 "video_id": task["video_id"],
                 "frame_idx_24fps": idx_24fps,
                 "frame_idx_6fps": idx_24fps // ann_every,
-                "image_path": str(path),
+                "image_path": str(cached_path),
                 "height": int(height),
                 "width": int(width),
                 "split": task["split"],
@@ -235,7 +248,7 @@ def process_task(
     task: dict[str, Any], out_root: str, ann_every: int, jpeg_quality: int, skip_existing: bool
 ) -> list[dict]:
     if task["kind"] == "prepared":
-        return prepared_frame_task(task, ann_every)
+        return prepared_frame_task(task, out_root, ann_every, skip_existing)
     return extract_video_task(task, out_root, ann_every, jpeg_quality, skip_existing)
 
 
@@ -245,7 +258,8 @@ def extract_video_task(task: dict[str, Any], out_root: str, ann_every: int, jpeg
     except ImportError as exc:
         raise SystemExit("Frame extraction requires cv2/opencv-python.") from exc
 
-    out_dir = Path(out_root) / "JPEGImages" / task["video_id"]
+    image_cache_name = "JPEGImages" if task["split"] == "train" else f"JPEGImages_{task['split']}"
+    out_dir = Path(out_root) / image_cache_name / task["video_id"]
     out_dir.mkdir(parents=True, exist_ok=True)
     cap = cv2.VideoCapture(task["video_path"])
     if not cap.isOpened():
