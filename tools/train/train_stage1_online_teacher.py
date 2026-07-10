@@ -84,22 +84,19 @@ class ImagePathDataset(Dataset):
     def __len__(self) -> int:
         return len(self.manifest)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, str, str]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, np.ndarray, str, str]:
         row = self.manifest.iloc[idx]
         path = str(row["image_path"])
         with Image.open(path) as image:
-            image_tensor = self.transforms(image.convert("RGB"))
-        return image_tensor, path, str(row["sample_id"])
+            image_rgb = image.convert("RGB")
+            image_np = np.asarray(image_rgb).copy()
+            image_tensor = self.transforms(image_rgb)
+        return image_tensor, image_np, path, str(row["sample_id"])
 
 
 def collate_image_paths(batch):
-    images, paths, sample_ids = zip(*batch)
-    return torch.stack(list(images), dim=0), list(paths), list(sample_ids)
-
-
-def read_rgb(path: str) -> np.ndarray:
-    with Image.open(path) as image:
-        return np.asarray(image.convert("RGB"))
+    images, image_arrays, paths, sample_ids = zip(*batch)
+    return torch.stack(list(images), dim=0), list(image_arrays), list(paths), list(sample_ids)
 
 
 def load_teacher(config: str, checkpoint: Path, device: torch.device):
@@ -113,8 +110,9 @@ def load_teacher(config: str, checkpoint: Path, device: torch.device):
     return SAM2ImagePredictor(model)
 
 
-def teacher_features_from_paths(predictor, paths: list[str], device: torch.device, amp_dtype: str) -> dict[str, torch.Tensor]:
-    images = [read_rgb(path) for path in paths]
+def teacher_features_from_images(
+    predictor, images: list[np.ndarray], device: torch.device, amp_dtype: str
+) -> dict[str, torch.Tensor]:
     with torch.inference_mode(), autocast_context(device, amp_dtype):
         predictor.set_image_batch(images)
         features = predictor._features
@@ -128,20 +126,28 @@ def teacher_features_from_paths(predictor, paths: list[str], device: torch.devic
 
 
 def reduce_metrics(metrics: dict[str, torch.Tensor], world_size: int) -> dict[str, float]:
-    reduced = {}
-    for key, value in metrics.items():
-        tensor = value.detach().float()
-        if world_size > 1:
-            torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.SUM)
-            tensor /= world_size
-        reduced[key] = float(tensor.cpu())
-    return reduced
+    keys = list(metrics)
+    values = torch.stack([metrics[key].detach().float() for key in keys])
+    if world_size > 1:
+        torch.distributed.all_reduce(values, op=torch.distributed.ReduceOp.SUM)
+        values /= world_size
+    return {key: float(value) for key, value in zip(keys, values.cpu())}
 
 
 def set_backbone_trainable(model: nn.Module, trainable: bool) -> None:
     module = unwrap_model(model)
     for param in module.backbone.parameters():
         param.requires_grad_(trainable)
+
+
+def wrap_ddp(model: nn.Module, device: torch.device) -> DistributedDataParallel:
+    return DistributedDataParallel(
+        model,
+        device_ids=[device.index] if device.type == "cuda" else None,
+        find_unused_parameters=False,
+        gradient_as_bucket_view=True,
+        static_graph=True,
+    )
 
 
 def trainable_parameters(model: nn.Module) -> Iterable[nn.Parameter]:
@@ -199,12 +205,12 @@ def evaluate(
     model.eval()
     totals: dict[str, torch.Tensor] = {}
     image_count = torch.zeros((), device=device, dtype=torch.float64)
-    for batch_idx, (images, paths, _sample_ids) in enumerate(loader):
+    for batch_idx, (images, image_arrays, _paths, _sample_ids) in enumerate(loader):
         if max_batches and batch_idx >= max_batches:
             break
         images = images.to(device, non_blocking=True)
         batch_size = images.shape[0]
-        teacher_targets = teacher_features_from_paths(teacher, paths, device, args.teacher_amp_dtype)
+        teacher_targets = teacher_features_from_images(teacher, image_arrays, device, args.teacher_amp_dtype)
         with torch.no_grad(), autocast_context(device, args.amp_dtype):
             student = model(images)
             _, metrics = compute_loss(student, teacher_targets, args)
@@ -391,11 +397,7 @@ def main() -> None:
     initial_backbone_trainable = start_step >= args.projection_warmup_steps
     set_backbone_trainable(model, initial_backbone_trainable)
     if world_size > 1:
-        model = DistributedDataParallel(
-            model,
-            device_ids=[device.index] if device.type == "cuda" else None,
-            find_unused_parameters=args.projection_warmup_steps > start_step,
-        )
+        model = wrap_ddp(model, device)
 
     if is_main(rank):
         from torch.utils.tensorboard import SummaryWriter
@@ -466,19 +468,25 @@ def main() -> None:
     while step < args.max_steps:
         if train_sampler is not None:
             train_sampler.set_epoch(step)
-        for images, paths, _sample_ids in train_loader:
+        for images, image_arrays, _paths, _sample_ids in train_loader:
             if step >= args.max_steps:
                 break
             should_train_backbone = step >= args.projection_warmup_steps
             if should_train_backbone != backbone_is_trainable:
-                set_backbone_trainable(model, should_train_backbone)
+                if world_size > 1:
+                    torch.distributed.barrier()
+                    raw_model = unwrap_model(model)
+                    set_backbone_trainable(raw_model, should_train_backbone)
+                    model = wrap_ddp(raw_model, device)
+                else:
+                    set_backbone_trainable(model, should_train_backbone)
                 backbone_is_trainable = should_train_backbone
             current_lr = lr_for_step(step, args.lr, args.lr_warmup_steps)
             set_lr(optimizer, current_lr)
             start_time = time.time()
             images = images.to(device, non_blocking=True)
             teacher_start = time.time()
-            teacher_targets = teacher_features_from_paths(teacher, paths, device, args.teacher_amp_dtype)
+            teacher_targets = teacher_features_from_images(teacher, image_arrays, device, args.teacher_amp_dtype)
             teacher_sec = time.time() - teacher_start
             with autocast_context(device, args.amp_dtype):
                 student = model(images)
