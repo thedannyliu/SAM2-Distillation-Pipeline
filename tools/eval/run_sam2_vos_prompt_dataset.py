@@ -68,12 +68,17 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     if args.sam2_checkpoint is None:
         raise SystemExit("--sam2-checkpoint is required for --model-kind stage1-student")
 
-    from sam2_distill.models.stage1_checkpoint import infer_tinyvit_model_name, resolve_tinyvit_checkpoint
+    from sam2_distill.models.stage1_checkpoint import (
+        infer_adapter_mode,
+        infer_tinyvit_model_name,
+        resolve_tinyvit_checkpoint,
+    )
     from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
     tinyvit_model_name = infer_tinyvit_model_name(state_dict, args.tinyvit_model_name)
+    adapter_mode = infer_adapter_mode(checkpoint, state_dict)
     tinyvit_checkpoint = (
         resolve_tinyvit_checkpoint(tinyvit_model_name, args.tinyvit_checkpoint)
         if args.tinyvit_checkpoint is not None
@@ -82,6 +87,7 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     student = TinyViTSAM2Adapter(
         model_name=tinyvit_model_name,
         checkpoint_path=str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
+        adapter_mode=adapter_mode,
     ).to(device)
     incompatible = student.load_state_dict(state_dict, strict=False)
     student.eval()
@@ -113,6 +119,7 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
         "tinyvit_checkpoint": str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
         "requested_tinyvit_checkpoint": str(args.tinyvit_checkpoint) if args.tinyvit_checkpoint is not None else None,
         "tinyvit_model_name": tinyvit_model_name,
+        "adapter_mode": adapter_mode,
         "requested_tinyvit_model_name": args.tinyvit_model_name,
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),

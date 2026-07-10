@@ -44,6 +44,15 @@ def infer_tinyvit_model_name(state_dict: dict[str, torch.Tensor], fallback: str)
     return fallback
 
 
+def infer_adapter_mode(checkpoint: dict[str, Any], state_dict: dict[str, torch.Tensor]) -> str:
+    args = checkpoint.get("args")
+    if isinstance(args, dict) and args.get("adapter_mode") in {"projection", "residual_dwconv"}:
+        return str(args["adapter_mode"])
+    if any(key.startswith("adapters.") for key in state_dict):
+        return "residual_dwconv"
+    return "projection"
+
+
 def resolve_tinyvit_checkpoint(model_name: str, requested_checkpoint: Path) -> Path:
     expected_name = CKPT_BY_MODEL.get(model_name)
     if expected_name is None:

@@ -76,6 +76,17 @@ GPUS=0,1,2,3 scripts/company/22_queue_sav_stage1_ablation_4gpu_loss.sh
 GPUS=0,1,2,3 scripts/company/23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh
 ```
 
+After each experiment, the launcher evaluates `best.pt` on the official SA-V
+test split with box prompts. Image mode records prompted mIoU, AP, and encoder/
+prompt latency. Video mode initializes objects with boxes, runs SAM2 memory
+tracking, and records J&F, J, F, and whole-video latency. Per-run results are
+stored under `sav_test_box_benchmark/metrics.csv`; all nodes safely upsert into
+`runs/sav_stage1_ablation_v2/sav_test_metrics.csv`. VOS prediction PNGs are
+deleted after official evaluation to limit storage use.
+
+Training metrics remain logged every 10 steps to W&B and TensorBoard, while
+terminal loss output is reduced to every 300 steps.
+
 Queue contents:
 
 | script | experiments |

@@ -292,6 +292,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--teacher-amp-dtype", choices=("none", "bf16", "fp16"), default="bf16")
     parser.add_argument("--seed", type=int, default=250107256)
     parser.add_argument("--log-every", type=int, default=10)
+    parser.add_argument("--print-every", type=int, default=10)
     parser.add_argument("--eval-every", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=5000)
     parser.add_argument("--no-step-checkpoints", action="store_true")
@@ -515,6 +516,7 @@ def main() -> None:
                         writer.add_scalar(key, value, step)
                 if wandb_run:
                     wandb_run.log(reduced, step=step)
+            if is_main(rank) and step % args.print_every == 0:
                 print(
                     " | ".join(
                         [

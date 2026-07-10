@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--out-json", required=True, type=Path)
     parser.add_argument("--out-csv", required=True, type=Path)
+    parser.add_argument("--aggregate-csv", type=Path)
     return parser.parse_args()
 
 
@@ -66,7 +69,9 @@ def vos_rows(root: Path) -> list[dict[str, Any]]:
     for eval_path in sorted(vos_root.glob("*/*/eval_summary.json")):
         model = eval_path.parents[1].name
         prompt = eval_path.parent.name
-        run_summary_path = eval_path.parent / "pred" / "summary.json"
+        run_summary_path = eval_path.parent / "run_summary.json"
+        if not run_summary_path.exists():
+            run_summary_path = eval_path.parent / "pred" / "summary.json"
         if not run_summary_path.exists():
             continue
         eval_summary = read_json(eval_path)
@@ -125,11 +130,41 @@ def main() -> None:
         "sec_per_video",
         "summary_path",
     ]
-    with args.out_csv.open("w", encoding="utf-8", newline="") as f:
+    write_csv(args.out_csv, rows, fieldnames)
+    if args.aggregate_csv:
+        upsert_aggregate_csv(args.aggregate_csv, rows, fieldnames)
+    print(json.dumps({"rows": rows}, indent=2))
+
+
+def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-    print(json.dumps({"rows": rows}, indent=2))
+    temporary.replace(path)
+
+
+def upsert_aggregate_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with lock_path.open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        existing = []
+        if path.exists():
+            with path.open("r", encoding="utf-8", newline="") as f:
+                existing = list(csv.DictReader(f))
+        keys = {(str(row["model"]), str(row["mode"]), str(row["prompt"])) for row in rows}
+        merged = [
+            row
+            for row in existing
+            if (row.get("model", ""), row.get("mode", ""), row.get("prompt", "")) not in keys
+        ]
+        merged.extend(rows)
+        merged.sort(key=lambda row: (str(row.get("model", "")), str(row.get("mode", ""))))
+        write_csv(path, merged, fieldnames)
+        fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":

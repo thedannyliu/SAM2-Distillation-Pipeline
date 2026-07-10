@@ -9,6 +9,7 @@ import json
 import sys
 import time
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,12 @@ def add_import_roots(args: argparse.Namespace) -> None:
 def sync(device: torch.device) -> None:
     if device.type == "cuda":
         torch.cuda.synchronize()
+
+
+def autocast_context(device: torch.device):
+    if device.type == "cuda":
+        return torch.autocast("cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 def strip_module_prefix(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -133,7 +140,11 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
 
     from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
-    from sam2_distill.models.stage1_checkpoint import infer_tinyvit_model_name, resolve_tinyvit_checkpoint
+    from sam2_distill.models.stage1_checkpoint import (
+        infer_adapter_mode,
+        infer_tinyvit_model_name,
+        resolve_tinyvit_checkpoint,
+    )
     from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
 
     model = build_sam2(args.config, str(args.sam2_checkpoint), device=str(device), mode="eval")
@@ -144,6 +155,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
     tinyvit_model_name = infer_tinyvit_model_name(state_dict, args.tinyvit_model_name)
+    adapter_mode = infer_adapter_mode(checkpoint, state_dict)
     tinyvit_checkpoint = (
         resolve_tinyvit_checkpoint(tinyvit_model_name, args.tinyvit_checkpoint)
         if args.tinyvit_checkpoint is not None
@@ -152,6 +164,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
     student = TinyViTSAM2Adapter(
         model_name=tinyvit_model_name,
         checkpoint_path=str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
+        adapter_mode=adapter_mode,
     ).to(device)
     incompatible = student.load_state_dict(state_dict, strict=False)
     student.eval()
@@ -166,6 +179,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
         "tinyvit_checkpoint": str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
         "requested_tinyvit_checkpoint": str(args.tinyvit_checkpoint) if args.tinyvit_checkpoint is not None else None,
         "tinyvit_model_name": tinyvit_model_name,
+        "adapter_mode": adapter_mode,
         "requested_tinyvit_model_name": args.tinyvit_model_name,
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),
@@ -181,7 +195,7 @@ def set_image_with_stage1_student(predictor, image_np: np.ndarray, device: torch
     predictor._orig_hw = [(image.height, image.width)]
     input_image = predictor._transforms(image)
     input_image = input_image[None, ...].to(device)
-    with torch.inference_mode():
+    with torch.inference_mode(), autocast_context(device):
         features = predictor._stage1_student(input_image)
     predictor._features = {
         "image_embed": features["image_embed"],
