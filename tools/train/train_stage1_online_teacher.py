@@ -197,22 +197,30 @@ def evaluate(
     args: argparse.Namespace,
 ) -> dict[str, float]:
     model.eval()
-    totals: dict[str, float] = {}
-    count = 0
+    totals: dict[str, torch.Tensor] = {}
+    image_count = torch.zeros((), device=device, dtype=torch.float64)
     for batch_idx, (images, paths, _sample_ids) in enumerate(loader):
         if max_batches and batch_idx >= max_batches:
             break
         images = images.to(device, non_blocking=True)
+        batch_size = images.shape[0]
         teacher_targets = teacher_features_from_paths(teacher, paths, device, args.teacher_amp_dtype)
         with torch.no_grad(), autocast_context(device, args.amp_dtype):
             student = model(images)
             _, metrics = compute_loss(student, teacher_targets, args)
-        metrics = reduce_metrics(metrics, world_size)
         for key, value in metrics.items():
-            totals[key] = totals.get(key, 0.0) + value
-        count += 1
+            weighted = value.detach().to(dtype=torch.float64) * batch_size
+            totals[key] = totals.get(key, torch.zeros_like(weighted)) + weighted
+        image_count += batch_size
+    if world_size > 1:
+        torch.distributed.all_reduce(image_count, op=torch.distributed.ReduceOp.SUM)
+        for value in totals.values():
+            torch.distributed.all_reduce(value, op=torch.distributed.ReduceOp.SUM)
     model.train()
-    return {f"val/{key}": value / max(count, 1) for key, value in totals.items()}
+    denominator = max(float(image_count.cpu()), 1.0)
+    result = {f"val/{key}": float(value.cpu()) / denominator for key, value in totals.items()}
+    result["val/num_images"] = float(image_count.cpu())
+    return result
 
 
 def save_checkpoint(
