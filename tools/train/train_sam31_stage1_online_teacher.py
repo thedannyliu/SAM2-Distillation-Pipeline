@@ -338,10 +338,6 @@ def main() -> None:
         adapter_mode=args.adapter_mode,
         freeze_backbone_bn=True,
     ).to(device)
-    if model.projection.in_channels != 384:
-        raise SystemExit(
-            f"TinyViT-21M shape guard failed: projection input is {model.projection.in_channels}, expected 384"
-        )
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     step = 0

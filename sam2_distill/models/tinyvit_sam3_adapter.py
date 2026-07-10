@@ -9,6 +9,24 @@ from torch.nn import functional as F
 from sam2_distill.models.tinyvit_adapter import ResidualDepthwiseAdapter
 
 
+TINYVIT_FINAL_FEATURE_CHANNELS = {
+    "tiny_vit_21m_512.dist_in22k_ft_in1k": 576,
+    "tiny_vit_11m_224.dist_in22k_ft_in1k": 448,
+    "tiny_vit_5m_224.dist_in22k_ft_in1k": 320,
+}
+
+
+def validate_sam3_tinyvit_channels(model_name: str, actual_channels: int) -> None:
+    """Guard the final-stage TinyViT feature used by the SAM3 projection."""
+    expected = TINYVIT_FINAL_FEATURE_CHANNELS.get(model_name)
+    if expected is None:
+        raise ValueError(f"Unsupported TinyViT model for SAM3 Stage 1: {model_name}")
+    if actual_channels != expected:
+        raise ValueError(
+            f"{model_name} final feature has {actual_channels} channels; expected {expected}"
+        )
+
+
 class TinyViTSAM3Adapter(nn.Module):
     """TinyViT final feature plus projection and an optional residual adapter."""
 
@@ -35,6 +53,7 @@ class TinyViTSAM3Adapter(nn.Module):
             checkpoint_path=checkpoint_path,
         )
         in_channels = int(self.backbone.body.feature_info.channels()[-1])
+        validate_sam3_tinyvit_channels(model_name, in_channels)
         self.projection = nn.Conv2d(in_channels, 1024, kernel_size=1)
         self.adapter = (
             ResidualDepthwiseAdapter(1024)
