@@ -69,6 +69,7 @@ def audit_train(root: Path, args: argparse.Namespace) -> tuple[dict[str, object]
     manual_ids = {
         path.name.removesuffix("_manual.json") for path in manual_files
     }
+    auto_ids = {path.name.removesuffix("_auto.json") for path in auto_files}
     zero_size = [str(path) for path in mp4_files + manual_files + auto_files if path.stat().st_size == 0]
     json_checked, json_errors = validate_paths(
         manual_files + auto_files,
@@ -91,8 +92,14 @@ def audit_train(root: Path, args: argparse.Namespace) -> tuple[dict[str, object]
         )
     if len(mp4_ids) != len(mp4_files):
         checks.append("duplicate train video IDs found")
+    if len(manual_ids) != len(manual_files):
+        checks.append("duplicate manual annotation IDs found")
+    if len(auto_ids) != len(auto_files):
+        checks.append("duplicate auto annotation IDs found")
     if manual_ids - mp4_ids:
         checks.append(f"{len(manual_ids - mp4_ids)} manual annotations have no MP4")
+    if auto_ids - mp4_ids:
+        checks.append(f"{len(auto_ids - mp4_ids)} auto annotations have no MP4")
     if zero_size:
         checks.append(f"{len(zero_size)} zero-byte train files found")
     if json_errors:
@@ -101,10 +108,15 @@ def audit_train(root: Path, args: argparse.Namespace) -> tuple[dict[str, object]
         "mp4_files": len(mp4_files),
         "unique_video_ids": len(mp4_ids),
         "manual_annotations": len(manual_files),
+        "unique_manual_annotation_ids": len(manual_ids),
         "auto_annotations": len(auto_files),
+        "unique_auto_annotation_ids": len(auto_ids),
         "mp4_without_manual_count": len(mp4_ids - manual_ids),
         "mp4_without_manual_examples": sorted(mp4_ids - manual_ids)[:20],
         "manual_without_mp4_count": len(manual_ids - mp4_ids),
+        "manual_without_mp4_examples": sorted(manual_ids - mp4_ids)[:20],
+        "auto_without_mp4_count": len(auto_ids - mp4_ids),
+        "auto_without_mp4_examples": sorted(auto_ids - mp4_ids)[:20],
         "zero_size_count": len(zero_size),
         "zero_size_examples": zero_size[:20],
         "json_files_checked": json_checked,
@@ -117,14 +129,15 @@ def audit_train(root: Path, args: argparse.Namespace) -> tuple[dict[str, object]
 
 def audit_sampled_frames(
     root: Path, train_video_ids: set[str], args: argparse.Namespace
-) -> tuple[dict[str, object], list[str]]:
+) -> tuple[dict[str, object], list[str], list[str]]:
     video_dirs = sorted(path for path in root.iterdir() if path.is_dir())
     image_files = sorted(
         path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
     )
     counts = Counter(path.parent.name for path in image_files)
     frame_video_ids = set(counts)
-    bad_per_video = {video: count for video, count in counts.items() if count != args.expected_frames_per_video}
+    underfilled = {video: count for video, count in counts.items() if count < args.expected_frames_per_video}
+    overfilled = {video: count for video, count in counts.items() if count > args.expected_frames_per_video}
     zero_size = [str(path) for path in image_files if path.stat().st_size == 0]
     images_checked, decode_errors = validate_paths(
         image_files,
@@ -135,12 +148,28 @@ def audit_sampled_frames(
         args.seed + 1,
     )
     checks = []
+    warnings = []
     if len(video_dirs) != args.expected_train_videos:
         checks.append(f"JPEGImages video directory count is {len(video_dirs)}, expected {args.expected_train_videos}")
-    if len(image_files) != args.expected_train_frames:
-        checks.append(f"JPEGImages frame count is {len(image_files)}, expected {args.expected_train_frames}")
-    if bad_per_video:
-        checks.append(f"{len(bad_per_video)} JPEGImages videos do not have {args.expected_frames_per_video} frames")
+    if len(image_files) < args.expected_train_frames:
+        checks.append(
+            f"JPEGImages frame count is {len(image_files)}, below required {args.expected_train_frames}"
+        )
+    elif len(image_files) > args.expected_train_frames:
+        warnings.append(
+            f"JPEGImages contains {len(image_files) - args.expected_train_frames} extra frames; "
+            "training must use an explicit 807,248-row manifest"
+        )
+    if underfilled:
+        checks.append(
+            f"{len(underfilled)} JPEGImages videos have fewer than "
+            f"{args.expected_frames_per_video} frames"
+        )
+    if overfilled:
+        warnings.append(
+            f"{len(overfilled)} JPEGImages videos have more than "
+            f"{args.expected_frames_per_video} frames"
+        )
     if frame_video_ids != train_video_ids:
         checks.append(
             f"JPEGImages/train video ID mismatch: {len(train_video_ids - frame_video_ids)} missing and "
@@ -155,8 +184,10 @@ def audit_sampled_frames(
         "image_files": len(image_files),
         "frames_per_video_min": min(counts.values(), default=0),
         "frames_per_video_max": max(counts.values(), default=0),
-        "bad_frames_per_video_count": len(bad_per_video),
-        "bad_frames_per_video_examples": dict(sorted(bad_per_video.items())[:20]),
+        "underfilled_video_count": len(underfilled),
+        "underfilled_video_examples": dict(sorted(underfilled.items())[:20]),
+        "overfilled_video_count": len(overfilled),
+        "overfilled_video_examples": dict(sorted(overfilled.items())[:20]),
         "train_video_ids_missing_count": len(train_video_ids - frame_video_ids),
         "train_video_ids_extra_count": len(frame_video_ids - train_video_ids),
         "zero_size_count": len(zero_size),
@@ -165,7 +196,7 @@ def audit_sampled_frames(
         "decode_error_count": len(decode_errors),
         "decode_error_examples": decode_errors[:20],
     }
-    return result, checks
+    return result, checks, warnings
 
 
 def audit_prepared_split(
@@ -269,7 +300,7 @@ def main() -> None:
     parser.add_argument("--expected-train-frames", type=int, default=807248)
     parser.add_argument("--expected-frames-per-video", type=int, default=16)
     parser.add_argument("--expected-val-videos", type=int, default=155)
-    parser.add_argument("--expected-test-videos", type=int, default=155)
+    parser.add_argument("--expected-test-videos", type=int, default=150)
     args = parser.parse_args()
 
     required = [
@@ -288,7 +319,7 @@ def main() -> None:
 
     train, failures = audit_train(args.sav_root / "sav_train", args)
     train_ids = train.pop("video_ids")
-    sampled_frames, frame_failures = audit_sampled_frames(
+    sampled_frames, frame_failures, warnings = audit_sampled_frames(
         args.sav_root / "JPEGImages", train_ids, args
     )
     val, val_failures = audit_prepared_split(
@@ -298,11 +329,13 @@ def main() -> None:
         args.sav_root / "sav_test", "sav_test", args.expected_test_videos, args
     )
     failures.extend(frame_failures + val_failures + test_failures)
+    status = "fail" if failures else "pass_with_warnings" if warnings else "pass"
     report = {
-        "status": "pass" if not failures else "fail",
+        "status": status,
         "sav_root": str(args.sav_root),
         "decode_mode": "all" if args.decode_all else f"sample_{args.decode_samples}",
         "failures": failures,
+        "warnings": warnings,
         "sav_train": train,
         "JPEGImages": sampled_frames,
         "sav_val": val,

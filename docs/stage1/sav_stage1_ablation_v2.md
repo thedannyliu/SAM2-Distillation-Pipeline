@@ -32,6 +32,12 @@ their `image_path`, `video_path`, and `annotation_path` columns point under the
 actual `SAV_ROOT`. Paths under `/group-volume` and paths from an older temporary
 `/mnt/data` mount are not valid inputs for new runs.
 
+The current release contains 812,972 files under `JPEGImages`: the required
+807,248 training frames plus 5,724 retained frames from an older split attempt.
+These extras are harmless only when training uses the corrected 807,248-row
+manifest. Do not construct the training set by recursively scanning every JPEG.
+The official prepared release has 155 validation videos and 150 test videos.
+
 Audit a newly mounted release before generating manifests or starting jobs:
 
 ```bash

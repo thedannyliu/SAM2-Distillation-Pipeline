@@ -9,7 +9,7 @@ REPORT="${REPORT:-/user-volume/sav_release_audit_${HOSTNAME}.json}"
 NUM_WORKERS="${NUM_WORKERS:-64}"
 DECODE_SAMPLES="${DECODE_SAMPLES:-200}"
 FULL_DECODE="${FULL_DECODE:-0}"
-EXPECTED_TEST_VIDEOS="${EXPECTED_TEST_VIDEOS:-155}"
+EXPECTED_TEST_VIDEOS="${EXPECTED_TEST_VIDEOS:-150}"
 
 [[ -d "${SAV_ROOT}" ]] || { echo "missing SA-V mount: ${SAV_ROOT}" >&2; exit 1; }
 
@@ -36,5 +36,5 @@ if [[ "${FULL_DECODE}" == "1" ]]; then
 fi
 
 python tools/data/audit_mounted_sav_release.py "${args[@]}"
-echo "SA-V release audit: PASS"
+echo "SA-V release audit completed; inspect status and warnings above"
 echo "report: ${REPORT}"
