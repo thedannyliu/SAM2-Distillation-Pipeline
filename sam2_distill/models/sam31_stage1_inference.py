@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -67,4 +68,19 @@ def patch_multiplex_predictor_trunk(
         raise TypeError("Official SAM3.1 detector does not expose vision_backbone.trunk")
     vision_backbone.trunk = trunk
     predictor.model._stage1_student_trunk = trunk
+    patch_multiplex_session_compatibility(predictor)
     return summary
+
+
+def patch_multiplex_session_compatibility(predictor) -> None:
+    """Filter session kwargs unsupported by the installed official SAM3 model."""
+    original_init_state = predictor.model.init_state
+    accepted = set(inspect.signature(original_init_state).parameters)
+    if {"offload_video_to_cpu", "offload_state_to_cpu"} <= accepted:
+        return
+
+    def compatible_init_state(*args, **kwargs):
+        filtered = {key: value for key, value in kwargs.items() if key in accepted}
+        return original_init_state(*args, **filtered)
+
+    predictor.model.init_state = compatible_init_state
