@@ -177,21 +177,20 @@ def main() -> None:
     if device.type != "cuda" or not torch.cuda.is_available():
         raise SystemExit("Official SAM3.1 multiplex evaluation requires CUDA")
 
-    from sam3.model_builder import build_sam3_multiplex_video_predictor
     from sam2_distill.models.sam31_stage1_inference import (
+        build_sam31_multiplex_predictor,
         patch_multiplex_predictor_trunk,
     )
 
-    predictor = build_sam3_multiplex_video_predictor(
-        checkpoint_path=str(args.sam31_checkpoint),
-        use_fa3=False,
-        compile=False,
-        warm_up=False,
+    predictor, builder_summary = build_sam31_multiplex_predictor(
+        args.sam3_root,
+        args.sam31_checkpoint,
         async_loading_frames=False,
     )
     load_summary = patch_multiplex_predictor_trunk(
         predictor, args.checkpoint, device
     )
+    load_summary.update(builder_summary)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     selected_videos = video_names(args)
     started = time.perf_counter()

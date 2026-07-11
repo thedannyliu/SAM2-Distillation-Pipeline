@@ -236,22 +236,22 @@ def load_sam31_stage1_predictor(args: argparse.Namespace, device: torch.device):
     if args.prompt_kind != "box":
         raise SystemExit("SAM3.1 Stage 1 image evaluation currently requires box prompts")
 
-    from sam3.model.sam3_image_processor import Sam3Processor
-    from sam3.model_builder import build_sam3_multiplex_video_predictor
     from sam2_distill.models.sam31_stage1_inference import (
+        build_sam31_multiplex_predictor,
         patch_multiplex_predictor_trunk,
     )
 
-    multiplex = build_sam3_multiplex_video_predictor(
-        checkpoint_path=str(args.sam31_checkpoint),
-        use_fa3=False,
-        compile=False,
-        warm_up=False,
+    multiplex, builder_summary = build_sam31_multiplex_predictor(
+        args.sam3_root,
+        args.sam31_checkpoint,
         async_loading_frames=False,
     )
+    from sam3.model.sam3_image_processor import Sam3Processor
+
     load_summary = patch_multiplex_predictor_trunk(
         multiplex, args.checkpoint, device
     )
+    load_summary.update(builder_summary)
     processor = Sam3Processor(
         multiplex.model.detector,
         resolution=1008,
