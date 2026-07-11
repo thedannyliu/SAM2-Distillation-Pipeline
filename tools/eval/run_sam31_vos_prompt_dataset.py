@@ -76,6 +76,21 @@ def best_prompt_object(outputs: dict[str, Any]) -> int:
     return int(ids[int(np.argmax(scores))])
 
 
+def select_output_mask(
+    outputs: dict[str, Any], preferred_id: int
+) -> np.ndarray | None:
+    ids = np.asarray(outputs["out_obj_ids"]).reshape(-1)
+    if not len(ids):
+        return None
+    matches = np.where(ids == preferred_id)[0]
+    if len(matches):
+        index = int(matches[0])
+    else:
+        scores = np.asarray(outputs.get("out_probs", np.ones(len(ids)))).reshape(-1)
+        index = int(np.argmax(scores))
+    return np.asarray(outputs["out_binary_masks"][index])
+
+
 def save_mask(mask: np.ndarray, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(np.asarray(mask).squeeze().astype(np.uint8) * 255).save(path)
@@ -97,9 +112,11 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
     stem_to_index = {path.stem: index for index, path in enumerate(images)}
     objects = first_masks(ann_video_dir)
     started = time.perf_counter()
-    prediction_pngs = 0
+    predicted_paths: set[Path] = set()
+    missing_objects: list[str] = []
 
     for gt_object_id, prompt_path in objects:
+        object_predicted_paths: set[Path] = set()
         if prompt_path.stem not in stem_to_index:
             raise FileNotFoundError(
                 f"No image frame for prompt mask {prompt_path}"
@@ -126,6 +143,11 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
                 }
             )
             tracked_id = best_prompt_object(response["outputs"])
+            prompt_mask = select_output_mask(response["outputs"], tracked_id)
+            if prompt_mask is not None:
+                prompt_out_path = object_out_dir / prompt_path.name
+                save_mask(prompt_mask, prompt_out_path)
+                object_predicted_paths.add(prompt_out_path)
             for output in predictor.handle_stream_request(
                 {
                     "type": "propagate_in_video",
@@ -138,24 +160,27 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
                 frame_index = int(output["frame_index"])
                 if frame_index < 0 or frame_index >= len(images):
                     continue
-                ids = np.asarray(output["outputs"]["out_obj_ids"]).reshape(-1)
-                matches = np.where(ids == tracked_id)[0]
-                if not len(matches):
+                mask = select_output_mask(output["outputs"], tracked_id)
+                if mask is None:
                     continue
-                mask = output["outputs"]["out_binary_masks"][int(matches[0])]
                 out_path = object_out_dir / f"{images[frame_index].stem}.png"
                 if out_path.exists():
                     save_mask(mask, out_path)
-                    prediction_pngs += 1
+                    object_predicted_paths.add(out_path)
         finally:
             predictor.handle_request(
                 {"type": "close_session", "session_id": session_id}
             )
+        if not object_predicted_paths:
+            missing_objects.append(gt_object_id)
+        predicted_paths.update(object_predicted_paths)
 
     return {
         "video": video,
+        "status": "pass" if not missing_objects else "failed",
         "objects": len(objects),
-        "prediction_pngs": prediction_pngs,
+        "objects_without_predictions": missing_objects,
+        "prediction_pngs": len(predicted_paths),
         "elapsed_sec": time.perf_counter() - started,
     }
 
@@ -196,8 +221,9 @@ def main() -> None:
     started = time.perf_counter()
     rows = [run_video(predictor, args, video) for video in selected_videos]
     elapsed = time.perf_counter() - started
+    failed = [row for row in rows if row["status"] != "pass"]
     summary = {
-        "status": "pass",
+        "status": "failed" if failed else "pass",
         "model_kind": "sam31-stage1-student",
         "prompt_kind": "box",
         "checkpoint": str(args.checkpoint),
@@ -217,6 +243,11 @@ def main() -> None:
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
     print(json.dumps(summary, indent=2))
+    if failed:
+        raise SystemExit(
+            "SAM3.1 VOS produced no non-fallback predictions for: "
+            + ", ".join(row["video"] for row in failed)
+        )
 
 
 if __name__ == "__main__":
