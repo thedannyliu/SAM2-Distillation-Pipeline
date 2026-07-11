@@ -33,7 +33,11 @@ class ObjectRecord:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-kind", choices=("edgetam-trainer", "sam2", "stage1-student"), required=True)
+    parser.add_argument(
+        "--model-kind",
+        choices=("edgetam-trainer", "sam2", "stage1-student", "sam31-stage1-student"),
+        required=True,
+    )
     parser.add_argument("--prompt-kind", choices=("box", "point"), required=True)
     parser.add_argument("--image-root", required=True, type=Path)
     parser.add_argument("--ann-root", required=True, type=Path)
@@ -45,6 +49,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tinyvit-model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
     parser.add_argument("--sam2-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam2"))
     parser.add_argument("--edgetam-root", type=Path, default=Path("/user-volume/repo/EdgeTAM"))
+    parser.add_argument("--sam3-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam3"))
+    parser.add_argument("--sam31-checkpoint", type=Path)
     parser.add_argument("--max-videos", type=int, default=0, help="0 means all.")
     parser.add_argument("--max-objects", type=int, default=2000, help="0 means all.")
     parser.add_argument("--warmup-images", type=int, default=5)
@@ -61,7 +67,7 @@ def parse_args() -> argparse.Namespace:
 
 def add_import_roots(args: argparse.Namespace) -> None:
     sys.path.insert(0, str(REPO_ROOT))
-    for root in (args.sam2_root, args.edgetam_root):
+    for root in (args.sam2_root, args.edgetam_root, args.sam3_root):
         if root.exists():
             sys.path.insert(0, str(root))
 
@@ -187,6 +193,74 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
         "missing_keys": list(incompatible.missing_keys),
         "unexpected_keys": list(incompatible.unexpected_keys),
     }
+
+
+class SAM31GeometryPredictor:
+    """Expose the existing image benchmark predictor interface for SAM3.1."""
+
+    def __init__(self, processor) -> None:
+        self.processor = processor
+        self.state = None
+
+    def set_image(self, image_np: np.ndarray) -> None:
+        self.state = self.processor.set_image(image_np)
+
+    def predict(self, *, box, multimask_output=False):
+        del multimask_output
+        if self.state is None:
+            raise RuntimeError("set_image must be called before predict")
+        self.processor.reset_all_prompts(self.state)
+        height = float(self.state["original_height"])
+        width = float(self.state["original_width"])
+        x0, y0, x1, y1 = np.asarray(box, dtype=np.float32).reshape(-1)[:4]
+        geometric_box = [
+            float((x0 + x1) * 0.5 / width),
+            float((y0 + y1) * 0.5 / height),
+            float((x1 - x0 + 1.0) / width),
+            float((y1 - y0 + 1.0) / height),
+        ]
+        self.processor.add_geometric_prompt(geometric_box, True, self.state)
+        masks = self.state["masks"].detach().cpu().numpy()
+        scores = self.state["scores"].detach().float().cpu().numpy()
+        logits = self.state["masks_logits"].detach().float().cpu().numpy()
+        if masks.ndim == 4 and masks.shape[1] == 1:
+            masks = masks[:, 0]
+            logits = logits[:, 0]
+        return masks, scores, logits
+
+
+def load_sam31_stage1_predictor(args: argparse.Namespace, device: torch.device):
+    if args.sam31_checkpoint is None:
+        raise SystemExit("--sam31-checkpoint is required for sam31-stage1-student")
+    if args.prompt_kind != "box":
+        raise SystemExit("SAM3.1 Stage 1 image evaluation currently requires box prompts")
+
+    from sam3.model.sam3_image_processor import Sam3Processor
+    from sam3.model_builder import build_sam3_multiplex_video_predictor
+    from sam2_distill.models.sam31_stage1_inference import (
+        patch_multiplex_predictor_trunk,
+    )
+
+    multiplex = build_sam3_multiplex_video_predictor(
+        checkpoint_path=str(args.sam31_checkpoint),
+        use_fa3=False,
+        compile=False,
+        warm_up=False,
+        async_loading_frames=False,
+    )
+    load_summary = patch_multiplex_predictor_trunk(
+        multiplex, args.checkpoint, device
+    )
+    processor = Sam3Processor(
+        multiplex.model.detector,
+        resolution=1008,
+        device=str(device),
+        confidence_threshold=0.0,
+    )
+    predictor = SAM31GeometryPredictor(processor)
+    predictor._multiplex_predictor = multiplex
+    load_summary["sam31_checkpoint"] = str(args.sam31_checkpoint)
+    return predictor, load_summary
 
 
 def set_image_with_stage1_student(predictor, image_np: np.ndarray, device: torch.device) -> None:
@@ -418,8 +492,10 @@ def main() -> None:
         predictor, load_summary = load_edgetam_predictor(args, device)
     elif args.model_kind == "sam2":
         predictor, load_summary = load_sam2_predictor(args, device)
-    else:
+    elif args.model_kind == "stage1-student":
         predictor, load_summary = load_stage1_student_predictor(args, device)
+    else:
+        predictor, load_summary = load_sam31_stage1_predictor(args, device)
 
     by_image: dict[Path, list[ObjectRecord]] = defaultdict(list)
     for record in records:

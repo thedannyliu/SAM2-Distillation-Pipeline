@@ -53,3 +53,54 @@ Do not relaunch queues until the CSV has been used to assign each incomplete
 run to exactly one node. Resume must reuse the same run directory and
 `checkpoints/last.pt`; the trainer then reads `wandb_run_id` from the checkpoint
 and resumes the same W&B run.
+
+## Recovery execution contract
+
+Prepare the mounted manifest once before starting the recovery lanes:
+
+```bash
+SAV_ROOT=/mnt/data/danny-dataset/SA-V \
+scripts/company/33_prepare_mounted_sav_stage1_manifest.sh
+```
+
+`scripts/company/34_run_stage1_recovery_lane.sh` is intentionally strict. For
+every registered experiment assigned to the lane it performs these steps in
+order:
+
+1. Resume `checkpoints/last.pt` in the original run and W&B run, or start the
+   missing experiment.
+2. Require the target step and validation-selected `checkpoints/best.pt`.
+3. Evaluate that exact `best.pt` on all 155 `sav_val` videos.
+4. Evaluate that exact `best.pt` on all 150 `sav_test` videos.
+
+Both downstream evaluations use GT box prompts. Image mode runs frame by frame
+and records mIoU, AP50:95, encoder/prompt latency, and total per-object latency.
+Video mode includes the model's memory tracker and records J&F, J, F, whole
+elapsed time, and seconds per video. Results are stored under:
+
+```text
+<run>/sav_val_box_benchmark/metrics.csv
+<run>/sav_test_box_benchmark/metrics.csv
+```
+
+SAM2.1 students use the existing SAM2 prompt decoder and memory pipeline.
+SAM3.1 students replace the official Object Multiplex detector vision trunk.
+Because the official SAM3.1 semantic box API resets state for every box prompt,
+the VOS evaluator uses one memory-tracking session per GT object and maps the
+selected output back to the GT object ID. This preserves box-prompt semantics
+and supports objects that first appear after frame zero, at the cost of higher
+latency than a shared multi-object session.
+
+Before a formal SAM3.1 lane, the company SAM3 checkout must expose the current
+multiplex API:
+
+```bash
+PYTHONPATH=/user-volume/repo/facebookresearch-sam3 python - <<'PY'
+from sam3.model_builder import build_sam3_multiplex_video_predictor
+print("SAM3.1 multiplex API: PASS")
+PY
+```
+
+Set `DRY_RUN=1` to inspect assignments without training or evaluation. Set
+`FULL_EVAL=0` only for debugging; such a run will remain incomplete in the
+progress audit.
