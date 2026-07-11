@@ -220,6 +220,7 @@ RESUME="${RESUME}" \
 NO_WANDB="${NO_WANDB:-0}" \
 WANDB_PROJECT="${WANDB_PROJECT}" \
 WANDB_NAME="${WANDB_NAME}" \
+WANDB_RUN_ID="${WANDB_RUN_ID:-}" \
 scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh train
 
 if [[ "${RUN_TEST_AFTER_TRAIN}" == "1" ]]; then

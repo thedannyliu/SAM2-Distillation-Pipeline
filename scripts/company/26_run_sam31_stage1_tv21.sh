@@ -134,6 +134,8 @@ train() {
   fi
   if [[ "${NO_WANDB}" == "1" ]]; then
     wandb_args=(--no-wandb)
+  elif [[ -n "${WANDB_RUN_ID:-}" ]]; then
+    wandb_args=(--wandb-run-id "${WANDB_RUN_ID}")
   fi
   PYTHONPATH="${SAM3_UPSTREAM}:${PYTHONPATH:-}" \
   CUDA_VISIBLE_DEVICES="${GPUS}" \
