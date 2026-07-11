@@ -203,7 +203,8 @@ class SAM31GeometryPredictor:
         self.state = None
 
     def set_image(self, image_np: np.ndarray) -> None:
-        self.state = self.processor.set_image(image_np)
+        image = Image.fromarray(np.asarray(image_np, dtype=np.uint8).copy(), mode="RGB")
+        self.state = self.processor.set_image(image)
 
     def predict(self, *, box, multimask_output=False):
         del multimask_output
