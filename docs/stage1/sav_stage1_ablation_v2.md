@@ -3,6 +3,47 @@
 This runbook is for the corrected TinyViT Stage 1 ablation matrix on raw SA-V.
 It avoids full 24fps extraction and stores only selected 6fps-aligned frames.
 
+## Canonical Company Dataset Release
+
+The current company Data Lake release is rooted at `danny-dataset/SA-V` and
+contains the complete inputs needed by subsequent runs:
+
+```text
+SA-V/
+  sav_train/   # raw training MP4 and JSON files
+  sav_val/     # official prepared validation images, masks, and list
+  sav_test/    # official prepared test images, masks, and list
+  JPEGImages/  # selected SA-V train frames for Stage 1 distillation
+```
+
+Release the entire `SA-V` directory as one dataset and mount that dataset into
+each company run. Treat the runtime mount root as `SAV_ROOT`; do not encode the
+platform-specific mount prefix in the released dataset. The current company
+run mount is:
+
+```bash
+export SAV_ROOT=/mnt/data/danny-dataset/SA-V
+```
+
+Training reads selected frames from `$SAV_ROOT/JPEGImages`. Validation reads
+from `$SAV_ROOT/sav_val`, and final image/VOS testing reads from
+`$SAV_ROOT/sav_test`. Manifests must be generated or rebased after mounting so
+their `image_path`, `video_path`, and `annotation_path` columns point under the
+actual `SAV_ROOT`. Paths under `/group-volume` and paths from an older temporary
+`/mnt/data` mount are not valid inputs for new runs.
+
+Audit a newly mounted release before generating manifests or starting jobs:
+
+```bash
+SAV_ROOT=/mnt/data/danny-dataset/SA-V \
+NUM_WORKERS=64 \
+scripts/company/31_audit_mounted_sav_release.sh
+```
+
+The default audit inventories every file and decodes deterministic samples.
+Set `FULL_DECODE=1` to decode every train/validation/test JPEG and PNG and parse
+every train JSON file. The JSON report is written under `/user-volume`.
+
 ## Prepare SA-V Frames
 
 Default output is under `/group-volume/danny-dataset` and uses 64 CPU workers:
