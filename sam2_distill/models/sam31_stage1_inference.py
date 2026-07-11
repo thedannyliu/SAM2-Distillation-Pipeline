@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,62 @@ import torch
 from torch import nn
 
 from sam2_distill.models.tinyvit_sam3_adapter import TinyViTSAM3Adapter
+
+
+def patch_sam31_torch24_sort(sam3_root: str | Path) -> bool:
+    """Patch the one CUDA bool sort unsupported by the company PyTorch 2.4."""
+    version = tuple(int(part) for part in torch.__version__.split("+")[0].split(".")[:2])
+    if version >= (2, 5):
+        return False
+    source = Path(sam3_root) / "sam3/model/sam3_multiplex_base.py"
+    text = source.read_text(encoding="utf-8")
+    old = "pos_pred_mask_idx = pos_pred_mask.argsort(descending=True)"
+    new = (
+        "pos_pred_mask_idx = "
+        "pos_pred_mask.to(torch.uint8).argsort(descending=True)"
+    )
+    if new in text:
+        return False
+    if text.count(old) != 1:
+        raise RuntimeError(
+            f"Cannot apply the PyTorch 2.4 SAM3.1 bool-sort patch to {source}; "
+            f"expected exactly one target line, found {text.count(old)}"
+        )
+    source.write_text(text.replace(old, new), encoding="utf-8")
+    return True
+
+
+def build_sam31_multiplex_predictor(
+    sam3_root: str | Path,
+    checkpoint_path: str | Path,
+    *,
+    async_loading_frames: bool,
+):
+    patched = patch_sam31_torch24_sort(sam3_root)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        from sam3.model_builder import build_sam3_multiplex_video_predictor
+
+        predictor = build_sam3_multiplex_video_predictor(
+            checkpoint_path=str(checkpoint_path),
+            use_fa3=False,
+            compile=False,
+            warm_up=False,
+            async_loading_frames=async_loading_frames,
+        )
+    diagnostics = output.getvalue()
+    summary = {
+        "torch24_bool_sort_patch_applied": patched,
+        "builder_diagnostic_lines": len(diagnostics.splitlines()),
+        "builder_missing_key_reports": diagnostics.count("Missing keys"),
+    }
+    print(
+        "SAM3.1 builder: "
+        f"missing-key reports={summary['builder_missing_key_reports']}, "
+        f"torch24-sort-patch={'applied' if patched else 'ready'}",
+        flush=True,
+    )
+    return predictor, summary
 
 
 class SAM31StudentTrunk(nn.Module):
