@@ -9,7 +9,7 @@ TV11_CHECKPOINT="${TV11_CHECKPOINT:?Set TV11_CHECKPOINT to its best.pt}"
 TV5_CHECKPOINT="${TV5_CHECKPOINT:?Set TV5_CHECKPOINT to its best.pt}"
 SAM2_CHECKPOINT="${SAM2_CHECKPOINT:-/group-volume/danny-dataset/sam2_distill/checkpoints/sam2.1/sam2.1_hiera_large.pt}"
 REPORT_DIR="${REPORT_DIR:-/user-volume/sam2_hybrid_sizes_${HOSTNAME}}"
-EXPORT_DTYPES="${EXPORT_DTYPES:-fp32,fp16}"
+EXPORT_DTYPES="${EXPORT_DTYPES-fp32,fp16}"
 
 export_args=()
 IFS=, read -r -a dtype_values <<< "${EXPORT_DTYPES}"
