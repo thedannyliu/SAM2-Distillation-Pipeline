@@ -49,6 +49,32 @@ Reports are written to:
 /user-volume/stage1_run_progress_${HOSTNAME}/stage1_run_progress.json
 ```
 
+To audit progress and produce one comparison table for all SAM2.1, SAM3.1,
+and discovered legacy runs, use:
+
+```bash
+SAV_ROOT=/mnt/data/danny-dataset/SA-V \
+RUNS_ROOTS=/group-volume/danny-dataset/sam2_distill/runs:/mnt/data/danny-dataset/sam2_distill/runs \
+scripts/company/35_report_stage1_experiment_metrics.sh
+```
+
+This command is read-only and does not require a GPU. It writes:
+
+```text
+/user-volume/stage1_experiment_report_${HOSTNAME}/experiment_key_metrics.csv
+/user-volume/stage1_experiment_report_${HOSTNAME}/incomplete_runs.csv
+/user-volume/stage1_experiment_report_${HOSTNAME}/experiment_report.md
+/user-volume/stage1_experiment_report_${HOSTNAME}/experiment_report.json
+```
+
+`experiment_key_metrics.csv` has one row per run and split. Image columns
+include mIoU, AP, set-image latency, prompt latency, and total latency per
+object. Video columns include J&F, J, F, elapsed time, and seconds per video.
+`evaluation_complete=true` means the metrics use the current `best.pt` and
+cover every video in that split. Partial or stale metrics remain visible but
+are not marked complete. `incomplete_runs.csv` records training/checkpoint,
+full-validation, and full-test gaps plus the next recovery action.
+
 Do not relaunch queues until the CSV has been used to assign each incomplete
 run to exactly one node. Resume must reuse the same run directory and
 `checkpoints/last.pt`; the trainer then reads `wandb_run_id` from the checkpoint
