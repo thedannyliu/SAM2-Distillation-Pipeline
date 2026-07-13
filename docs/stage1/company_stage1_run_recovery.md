@@ -75,6 +75,25 @@ cover every video in that split. Partial or stale metrics remain visible but
 are not marked complete. `incomplete_runs.csv` records training/checkpoint,
 full-validation, and full-test gaps plus the next recovery action.
 
+To measure deployable SAM2.1 hybrid weight sizes without counting optimizer
+state from `best.pt`, provide one checkpoint for each TinyViT variant:
+
+```bash
+TV21_CHECKPOINT=/path/to/tv21m/checkpoints/best.pt \
+TV11_CHECKPOINT=/path/to/tv11m/checkpoints/best.pt \
+TV5_CHECKPOINT=/path/to/tv5m/checkpoints/best.pt \
+scripts/company/36_measure_sam2_hybrid_sizes.sh
+```
+
+The report separates the TinyViT image encoder from the shared SAM2.1
+non-image modules and records theoretical FP32/FP16 tensor storage plus actual
+serialized inference bundle sizes. By default, pure FP32 and FP16 bundles are
+written under `/user-volume/sam2_hybrid_sizes_${HOSTNAME}`. Set
+`EXPORT_DTYPES=fp16` to export only FP16, or `EXPORT_DTYPES=` to produce the
+CSV/JSON estimates without writing bundles. Architecture is inferred from the
+projection shape; a checkpoint labelled TV11M or TV5M but containing TV21M
+weights causes the command to fail after writing the diagnostic report.
+
 Do not relaunch queues until the CSV has been used to assign each incomplete
 run to exactly one node. Resume must reuse the same run directory and
 `checkpoints/last.pt`; the trainer then reads `wandb_run_id` from the checkpoint
