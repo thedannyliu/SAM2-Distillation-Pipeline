@@ -405,6 +405,10 @@ def main() -> None:
         start_step = int(ckpt["step"])
         wandb_run_id = wandb_run_id or ckpt.get("wandb_run_id")
         best_val_loss = float(ckpt.get("best_val_loss", float("inf")))
+    if args.resume and not args.no_wandb and not wandb_run_id:
+        raise RuntimeError(
+            f"Cannot resume {args.resume} with W&B enabled: checkpoint has no wandb_run_id"
+        )
 
     initial_backbone_trainable = start_step >= args.projection_warmup_steps
     set_backbone_trainable(model, initial_backbone_trainable)
@@ -427,7 +431,7 @@ def main() -> None:
             project=args.wandb_project,
             name=args.wandb_name,
             id=wandb_run_id,
-            resume="allow" if wandb_run_id else None,
+            resume="must" if wandb_run_id else None,
             dir=str(out_dir / "wandb"),
             config=vars(args),
         )

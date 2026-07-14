@@ -97,7 +97,9 @@ weights causes the command to fail after writing the diagnostic report.
 Do not relaunch queues until the CSV has been used to assign each incomplete
 run to exactly one node. Resume must reuse the same run directory and
 `checkpoints/last.pt`; the trainer then reads `wandb_run_id` from the checkpoint
-and resumes the same W&B run.
+and resumes the same W&B run with `resume="must"`. Recovery fails instead of
+silently creating a new W&B run if a resume checkpoint has no run ID or W&B
+cannot resolve that ID in the configured project.
 
 ## Recovery execution contract
 
