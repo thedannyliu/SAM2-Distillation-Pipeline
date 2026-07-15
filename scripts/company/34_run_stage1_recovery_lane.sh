@@ -58,7 +58,8 @@ sam2_queue() {
 }
 
 run_full_eval() {
-  local family="$1" name="$2" run_dir="$3" split sam2_config sam2_checkpoint
+  local family="$1" name="$2" run_dir="$3" skip_done="$4"
+  local split sam2_config sam2_checkpoint
   [[ "${FULL_EVAL}" == "1" ]] || return
   sam2_config="configs/sam2.1/sam2.1_hiera_l.yaml"
   sam2_checkpoint="${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt"
@@ -81,7 +82,7 @@ run_full_eval() {
     SAM2L_CONFIG="${sam2_config}" \
     SAM2L_CHECKPOINT="${sam2_checkpoint}" \
     SAM31_CHECKPOINT="${DATA_ROOT}/sam3/checkpoints/sam3.1/sam3.1_multiplex.pt" \
-    SKIP_DONE=0 \
+    SKIP_DONE="${skip_done}" \
     MAX_VIDEOS=0 \
     MAX_IMAGE_OBJECTS=0 \
     DEVICE=cuda \
@@ -91,7 +92,7 @@ run_full_eval() {
 }
 
 run_sam2() {
-  local name="$1" target="$2" queue run_dir
+  local name="$1" target="$2" queue run_dir eval_skip_done=1
   queue="$(sam2_queue "${name}")"
   run_dir="${RUN_ROOT}/sav_stage1_ablation_v2/${queue}/${name}"
   if checkpoint_complete "${run_dir}" "${target}"; then
@@ -118,13 +119,14 @@ run_sam2() {
       SAVE_EVERY= \
       EVAL_EVERY= \
         scripts/company/19_run_sav_stage1_ablation.sh
+      eval_skip_done=0
       checkpoint_complete "${run_dir}" "${target}" || {
         echo "training did not reach target or best.pt is missing: ${run_dir}" >&2
         exit 1
       }
     fi
   fi
-  run_full_eval sam2 "${name}" "${run_dir}"
+  run_full_eval sam2 "${name}" "${run_dir}" "${eval_skip_done}"
 }
 
 sam31_config() {
@@ -144,6 +146,7 @@ sam31_config() {
 
 run_sam31() {
   local name="$1" queue adapter warmup cosine relation run_id run_dir
+  local eval_skip_done=1
   read -r queue adapter warmup cosine relation run_id < <(sam31_config "${name}")
   run_dir="${RUN_ROOT}/sam31_stage1_ablation_v1/${queue}/${name}"
   if checkpoint_complete "${run_dir}" 252265; then
@@ -181,13 +184,14 @@ run_sam31() {
       NO_WANDB=0 \
       PRINT_EVERY=300 \
         scripts/company/26_run_sam31_stage1_tv21.sh train
+      eval_skip_done=0
       checkpoint_complete "${run_dir}" 252265 || {
         echo "training did not reach target or best.pt is missing: ${run_dir}" >&2
         exit 1
       }
     fi
   fi
-  run_full_eval sam31 "${name}" "${run_dir}"
+  run_full_eval sam31 "${name}" "${run_dir}" "${eval_skip_done}"
 }
 
 gpu_count="$(python - "${GPUS}" <<'PY'

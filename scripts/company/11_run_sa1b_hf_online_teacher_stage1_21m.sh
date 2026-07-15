@@ -131,6 +131,9 @@ EOF
 train() {
   local nproc args
   check_train_inputs
+  if [[ -z "${WANDB_RUN_ID:-}" ]]; then
+    unset WANDB_RUN_ID
+  fi
   if [[ ! "${TRAIN_SEED}" =~ ^[0-9]+$ ]]; then
     echo "TRAIN_SEED must be an integer; got ${TRAIN_SEED}" >&2
     return 2

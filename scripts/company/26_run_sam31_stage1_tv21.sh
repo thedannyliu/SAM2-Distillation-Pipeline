@@ -123,6 +123,9 @@ PY
 train() {
   local nproc computed_steps steps_per_epoch resume_args=() wandb_args=()
   check_paths
+  if [[ -z "${WANDB_RUN_ID:-}" ]]; then
+    unset WANDB_RUN_ID
+  fi
   nproc="$(nproc_from_gpus)"
   read -r computed_steps steps_per_epoch < <(compute_schedule)
   MAX_STEPS="${MAX_STEPS:-${computed_steps}}"
