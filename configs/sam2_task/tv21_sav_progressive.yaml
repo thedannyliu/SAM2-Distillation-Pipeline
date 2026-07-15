@@ -1,0 +1,260 @@
+# Progressive task-loss fine-tuning for a Stage 1 TinyViT-21M SAM2.1-L hybrid.
+
+scratch:
+  resolution: 1024
+  train_batch_size: 1
+  num_train_workers: ${oc.decode:${oc.env:TASK_NUM_WORKERS,8}}
+  num_frames: ${oc.decode:${oc.env:TASK_NUM_FRAMES,2}}
+  max_num_objects: 2
+  num_epochs: ${oc.decode:${oc.env:TASK_EPOCHS,2}}
+  encoder_lr: ${oc.decode:${oc.env:TASK_ENCODER_LR,1.0e-6}}
+  encoder_lr_end: ${oc.decode:${oc.env:TASK_ENCODER_LR_END,1.0e-7}}
+  head_lr: ${oc.decode:${oc.env:TASK_HEAD_LR,1.0e-6}}
+  head_lr_end: ${oc.decode:${oc.env:TASK_HEAD_LR_END,1.0e-7}}
+
+vos:
+  train_transforms:
+    - _target_: training.dataset.transforms.ComposeAPI
+      transforms:
+        - _target_: training.dataset.transforms.RandomHorizontalFlip
+          consistent_transform: true
+        - _target_: training.dataset.transforms.RandomResizeAPI
+          sizes: ${scratch.resolution}
+          square: true
+          consistent_transform: true
+        - _target_: training.dataset.transforms.ColorJitter
+          consistent_transform: true
+          brightness: 0.05
+          contrast: 0.03
+          saturation: 0.03
+          hue: null
+        - _target_: training.dataset.transforms.ToTensorAPI
+        - _target_: training.dataset.transforms.NormalizeAPI
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+
+trainer:
+  _target_: training.trainer.Trainer
+  mode: train_only
+  max_epochs: ${scratch.num_epochs}
+  accelerator: cuda
+  seed_value: 250107256
+
+  model:
+    _target_: sam2_distill.edgetam.train_model.EdgeTAMTrain
+    trainable_module_mode: ${oc.env:TASK_TRAINABLE_MODE}
+    freeze_batchnorm: true
+    image_encoder_forward_batch_size: 1
+    image_encoder_activation_checkpoint: true
+    image_encoder:
+      _target_: sam2_distill.models.task_finetune.Stage1StudentImageEncoder
+      student_family: tinyvit
+      model_name: tiny_vit_21m_512.dist_in22k_ft_in1k
+      checkpoint_path: ${oc.env:TINYVIT_CHECKPOINT}
+      adapter_mode: projection
+      position_encoding:
+        _target_: sam2.modeling.position_encoding.PositionEmbeddingSine
+        num_pos_feats: 256
+        normalize: true
+        scale: null
+        temperature: 10000
+
+    memory_attention:
+      _target_: sam2.modeling.memory_attention.MemoryAttention
+      d_model: 256
+      pos_enc_at_input: true
+      layer:
+        _target_: sam2.modeling.memory_attention.MemoryAttentionLayer
+        activation: relu
+        dim_feedforward: 2048
+        dropout: 0.1
+        pos_enc_at_attn: false
+        self_attention:
+          _target_: sam2.modeling.sam.transformer.RoPEAttention
+          rope_theta: 10000.0
+          feat_sizes: [64, 64]
+          embedding_dim: 256
+          num_heads: 1
+          downsample_rate: 1
+          dropout: 0.1
+        d_model: 256
+        pos_enc_at_cross_attn_keys: true
+        pos_enc_at_cross_attn_queries: false
+        cross_attention:
+          _target_: sam2.modeling.sam.transformer.RoPEAttention
+          rope_theta: 10000.0
+          feat_sizes: [64, 64]
+          rope_k_repeat: true
+          embedding_dim: 256
+          num_heads: 1
+          downsample_rate: 1
+          dropout: 0.1
+          kv_in_dim: 64
+      num_layers: 4
+
+    memory_encoder:
+      _target_: sam2.modeling.memory_encoder.MemoryEncoder
+      out_dim: 64
+      position_encoding:
+        _target_: sam2.modeling.position_encoding.PositionEmbeddingSine
+        num_pos_feats: 64
+        normalize: true
+        scale: null
+        temperature: 10000
+      mask_downsampler:
+        _target_: sam2.modeling.memory_encoder.MaskDownSampler
+        kernel_size: 3
+        stride: 2
+        padding: 1
+      fuser:
+        _target_: sam2.modeling.memory_encoder.Fuser
+        layer:
+          _target_: sam2.modeling.memory_encoder.CXBlock
+          dim: 256
+          kernel_size: 7
+          padding: 3
+          layer_scale_init_value: 1e-6
+          use_dwconv: true
+        num_layers: 2
+
+    num_maskmem: 7
+    image_size: 1024
+    sigmoid_scale_for_mem_enc: 20.0
+    sigmoid_bias_for_mem_enc: -10.0
+    use_mask_input_as_output_without_sam: true
+    directly_add_no_mem_embed: true
+    no_obj_embed_spatial: true
+    use_high_res_features_in_sam: true
+    multimask_output_in_sam: true
+    iou_prediction_use_sigmoid: true
+    use_obj_ptrs_in_encoder: true
+    add_tpos_enc_to_obj_ptrs: true
+    proj_tpos_enc_in_obj_ptrs: true
+    use_signed_tpos_enc_to_obj_ptrs: true
+    only_obj_ptrs_in_the_past_for_eval: true
+    pred_obj_scores: true
+    pred_obj_scores_mlp: true
+    fixed_no_obj_ptr: true
+    multimask_output_for_tracking: true
+    use_multimask_token_for_obj_ptr: true
+    multimask_min_pt_num: 0
+    multimask_max_pt_num: 1
+    use_mlp_for_obj_ptr_proj: true
+    compile_image_encoder: false
+
+    prob_to_use_pt_input_for_train: 1.0
+    prob_to_use_box_input_for_train: 1.0
+    prob_to_sample_from_gt_for_train: 0.0
+    num_frames_to_correct_for_train: 1
+    rand_frames_to_correct_for_train: false
+    add_all_frames_to_correct_as_cond: true
+    num_init_cond_frames_for_train: 1
+    rand_init_cond_frames_for_train: false
+    num_correction_pt_per_frame: 1
+    use_act_ckpt_iterative_pt_sampling: true
+    prob_to_use_pt_input_for_eval: 1.0
+    prob_to_use_box_input_for_eval: 1.0
+    num_frames_to_correct_for_eval: 1
+    num_init_cond_frames_for_eval: 1
+    forward_backbone_per_frame_for_eval: true
+
+  data:
+    train:
+      _target_: training.dataset.sam2_datasets.TorchTrainMixedDataset
+      phases_per_epoch: 1
+      batch_sizes:
+        - ${scratch.train_batch_size}
+      datasets:
+        - _target_: training.dataset.vos_dataset.VOSDataset
+          transforms: ${vos.train_transforms}
+          training: true
+          video_dataset:
+            _target_: sam2_distill.data.sav_task_dataset.SAVManifestJSONRawDataset
+            manifest: ${oc.env:TASK_MANIFEST}
+            split: train
+            verify_paths: false
+            max_videos: ${oc.decode:${oc.env:TASK_MAX_VIDEOS,0}}
+          sampler:
+            _target_: training.dataset.vos_sampler.RandomUniformSampler
+            num_frames: ${scratch.num_frames}
+            max_num_objects: ${scratch.max_num_objects}
+            reverse_time_prob: 0.5
+          multiplier: 1
+      shuffle: true
+      num_workers: ${scratch.num_train_workers}
+      pin_memory: true
+      drop_last: true
+      collate_fn:
+        _target_: training.utils.data_utils.collate_fn
+        _partial_: true
+        dict_key: all
+
+  loss:
+    all:
+      _target_: training.loss_fns.MultiStepMultiMasksAndIous
+      weight_dict:
+        loss_mask: 20
+        loss_dice: 1
+        loss_iou: 1
+        loss_class: 1
+      supervise_all_iou: true
+      iou_use_l1_loss: true
+      pred_obj_scores: true
+      focal_gamma_obj_score: 0.0
+      focal_alpha_obj_score: -1.0
+
+  optim:
+    amp:
+      enabled: true
+      amp_dtype: bfloat16
+    optimizer:
+      _target_: torch.optim.AdamW
+    gradient_clip:
+      _target_: training.optimizer.GradientClipper
+      max_norm: 0.1
+      norm_type: 2
+    options:
+      lr:
+        - scheduler:
+            _target_: fvcore.common.param_scheduler.CosineParamScheduler
+            start_value: ${scratch.head_lr}
+            end_value: ${scratch.head_lr_end}
+        - scheduler:
+            _target_: fvcore.common.param_scheduler.CosineParamScheduler
+            start_value: ${scratch.encoder_lr}
+            end_value: ${scratch.encoder_lr_end}
+          param_names: [image_encoder.*]
+      weight_decay:
+        - scheduler:
+            _target_: fvcore.common.param_scheduler.ConstantParamScheduler
+            value: 0.05
+        - scheduler:
+            _target_: fvcore.common.param_scheduler.ConstantParamScheduler
+            value: 0.0
+          param_names: ["*bias*"]
+
+  distributed:
+    backend: nccl
+    find_unused_parameters: true
+    timeout_mins: 60
+
+  logging:
+    tensorboard_writer:
+      _target_: training.utils.logger.make_tensorboard_logger
+      log_dir: ${oc.env:TASK_RUN_DIR}/tensorboard
+      flush_secs: 120
+      should_log: true
+    log_dir: ${oc.env:TASK_RUN_DIR}/logs
+    log_freq: 300
+    log_scalar_frequency: 30
+    log_visual_frequency: 10000
+
+  checkpoint:
+    save_dir: ${oc.env:TASK_RUN_DIR}/checkpoints
+    save_freq: 0
+    model_weight_initializer:
+      _target_: sam2_distill.models.task_finetune.initialize_task_model
+      _partial_: true
+      base_sam2_checkpoint: ${oc.env:SAM2_CHECKPOINT}
+      stage1_checkpoint: ${oc.env:SOURCE_STAGE1_CHECKPOINT}
+      previous_task_checkpoint: ${oc.env:PREVIOUS_TASK_CHECKPOINT,}

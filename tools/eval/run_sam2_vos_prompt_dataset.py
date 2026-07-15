@@ -85,11 +85,13 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
         infer_adapter_mode,
         infer_stage1_model_name,
         infer_student_family,
+        load_task_non_image_state,
         resolve_student_checkpoint,
     )
     from sam2_distill.models.stage1_student import build_stage1_student
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    task_load_summary = load_task_non_image_state(predictor, checkpoint)
     state_dict = extract_state_dict(checkpoint)
     student_model_name = infer_stage1_model_name(
         checkpoint, state_dict, args.student_model_name
@@ -150,6 +152,7 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
         "checkpoint_epoch": checkpoint.get("epoch"),
         "missing_keys": list(incompatible.missing_keys),
         "unexpected_keys": list(incompatible.unexpected_keys),
+        "task_model_load": task_load_summary,
     }
 
 
