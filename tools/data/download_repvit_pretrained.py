@@ -128,16 +128,18 @@ def smoke_timm_model(path: Path, spec: dict[str, Any]) -> dict[str, Any]:
 
     model_name = str(spec["name"])
     try:
-        model = timm.create_model(
+        base_model = timm.create_model(
             model_name,
             pretrained=False,
-            features_only=True,
             checkpoint_path=str(path),
         ).eval()
+        from timm.models._features import FeatureListNet
+
+        model = FeatureListNet(base_model, out_indices=(0, 1, 2, 3)).eval()
     except RuntimeError as error:
         raise RuntimeError(
-            f"timm {timm.__version__} does not expose {model_name}; update timm "
-            "without upgrading the container PyTorch package."
+            f"timm {timm.__version__} could not instantiate or load {model_name}; "
+            "verify the pinned checkpoint and the container timm package."
         ) from error
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
     with torch.inference_mode():
