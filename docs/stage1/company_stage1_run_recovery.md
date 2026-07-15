@@ -143,7 +143,9 @@ is comparable with previous single-GPU model latency. `parallel_wall_seconds`
 and `parallel_throughput_videos_per_second` in `run_summary.json` report actual
 multi-GPU completion time and throughput. A constrained image smoke test with
 `MAX_IMAGE_OBJECTS>0` intentionally uses one GPU to preserve the exact object
-limit; formal full-split recovery uses all assigned GPUs.
+limit; formal full-split recovery uses all assigned GPUs. Set
+`FULL_EVAL_GPUS=0,1,2,3,4,5,6,7` to use all eight GPUs for evaluation while a
+recovered experiment retains its original four-GPU training world size.
 
 SAM2.1 students use the existing SAM2 prompt decoder and memory pipeline.
 SAM3.1 students replace the official Object Multiplex detector vision trunk.

@@ -6,6 +6,7 @@ cd "${REPO_ROOT}"
 
 LANE="${1:-}"
 GPUS="${GPUS:-0,1,2,3}"
+FULL_EVAL_GPUS="${FULL_EVAL_GPUS:-${GPUS}}"
 DATA_ROOT="${DATA_ROOT:-/group-volume/danny-dataset}"
 SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 MANIFEST="${MANIFEST:-${SAM2D_ROOT}/manifests/sav_stage1_vbal16_6fps_mounted_v1401.parquet}"
@@ -66,7 +67,7 @@ run_full_eval() {
     sam2_checkpoint="${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_base_plus.pt"
   fi
   for split in sav_val sav_test; do
-    echo "===== full ${split} ${family} ${name} on GPUs ${GPUS} ====="
+    echo "===== full ${split} ${family} ${name} on GPUs ${FULL_EVAL_GPUS} ====="
     if [[ "${DRY_RUN}" == "1" ]]; then
       echo "MODEL_FAMILY=${family} SAV_SPLIT=${split} RUN_DIR=${run_dir}"
       continue
@@ -84,7 +85,7 @@ run_full_eval() {
     MAX_VIDEOS=0 \
     MAX_IMAGE_OBJECTS=0 \
     DEVICE=cuda \
-    EVAL_GPUS="${GPUS}" \
+    EVAL_GPUS="${FULL_EVAL_GPUS}" \
       scripts/company/25_benchmark_stage1_sav_test.sh
   done
 }
