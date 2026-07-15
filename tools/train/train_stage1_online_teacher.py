@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train TinyViT Stage 1 with online SAM2 teacher feature distillation."""
+"""Train a Stage 1 image encoder with online SAM2 teacher features."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from torch.utils.data.distributed import DistributedSampler
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
+from sam2_distill.models.stage1_student import build_stage1_student
 from sam2_distill.training.stage1_losses import stage1_feature_distillation_loss
 
 
@@ -269,6 +269,8 @@ def validate_model_shape(model: nn.Module, model_name: str) -> None:
         "tiny_vit_21m_512.dist_in22k_ft_in1k": 384,
         "tiny_vit_11m_224.dist_in22k_ft_in1k": 256,
         "tiny_vit_5m_224.dist_in22k_ft_in1k": 160,
+        "repvit_m0_9.dist_450e_in1k": 384,
+        "repvit_m2_3.dist_450e_in1k": 640,
     }.get(model_name)
     if expected is None:
         return
@@ -285,8 +287,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--teacher-config", required=True)
     parser.add_argument("--teacher-checkpoint", required=True)
-    parser.add_argument("--tinyvit-checkpoint", required=True)
+    parser.add_argument(
+        "--student-checkpoint",
+        "--tinyvit-checkpoint",
+        dest="student_checkpoint",
+        required=True,
+    )
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--student-family", choices=("tinyvit", "repvit"), default="tinyvit")
     parser.add_argument("--model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
     parser.add_argument("--adapter-mode", choices=("projection", "residual_dwconv"), default="projection")
     parser.add_argument("--batch-size", type=int, default=1)
@@ -328,7 +336,7 @@ def validate_input_paths(args: argparse.Namespace) -> None:
         for path in (
             Path(args.manifest),
             Path(args.teacher_checkpoint),
-            Path(args.tinyvit_checkpoint),
+            Path(args.student_checkpoint),
         )
         if not path.exists()
     ]
@@ -388,9 +396,10 @@ def main() -> None:
     )
 
     teacher = load_teacher(args.teacher_config, Path(args.teacher_checkpoint), device)
-    model = TinyViTSAM2Adapter(
+    model = build_stage1_student(
+        student_family=args.student_family,
         model_name=args.model_name,
-        checkpoint_path=args.tinyvit_checkpoint,
+        checkpoint_path=args.student_checkpoint,
         adapter_mode=args.adapter_mode,
     ).to(device)
     validate_model_shape(model, args.model_name)
@@ -460,8 +469,9 @@ def main() -> None:
                     f"  manifest: {Path(args.manifest).expanduser().resolve()}",
                     f"  teacher_config: {args.teacher_config}",
                     f"  teacher_checkpoint: {Path(args.teacher_checkpoint).expanduser().resolve()}",
-                    f"  tinyvit_checkpoint: {Path(args.tinyvit_checkpoint).expanduser().resolve()}",
-                    f"  tinyvit_model_name: {args.model_name}",
+                    f"  student_family: {args.student_family}",
+                    f"  student_checkpoint: {Path(args.student_checkpoint).expanduser().resolve()}",
+                    f"  student_model_name: {args.model_name}",
                     f"  adapter_mode: {args.adapter_mode}",
                     f"  out_dir: {out_dir}",
                     f"  train_images: {len(train_dataset):,}",

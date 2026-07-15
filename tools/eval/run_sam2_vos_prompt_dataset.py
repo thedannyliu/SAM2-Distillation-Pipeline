@@ -28,8 +28,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sam2-cfg", required=True)
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--sam2-checkpoint", type=Path, help="Full SAM2 checkpoint for stage1-student.")
-    parser.add_argument("--tinyvit-checkpoint", type=Path)
-    parser.add_argument("--tinyvit-model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
+    parser.add_argument(
+        "--student-checkpoint",
+        "--tinyvit-checkpoint",
+        dest="student_checkpoint",
+        type=Path,
+    )
+    parser.add_argument(
+        "--student-model-name",
+        "--tinyvit-model-name",
+        dest="student_model_name",
+        default="tiny_vit_21m_512.dist_in22k_ft_in1k",
+    )
+    parser.add_argument("--student-family", choices=("tinyvit", "repvit"), default="tinyvit")
     parser.add_argument("--image-root", required=True, type=Path)
     parser.add_argument("--ann-root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
@@ -72,23 +83,30 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
 
     from sam2_distill.models.stage1_checkpoint import (
         infer_adapter_mode,
-        infer_tinyvit_model_name,
-        resolve_tinyvit_checkpoint,
+        infer_stage1_model_name,
+        infer_student_family,
+        resolve_student_checkpoint,
     )
-    from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
+    from sam2_distill.models.stage1_student import build_stage1_student
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
-    tinyvit_model_name = infer_tinyvit_model_name(state_dict, args.tinyvit_model_name)
+    student_model_name = infer_stage1_model_name(
+        checkpoint, state_dict, args.student_model_name
+    )
+    student_family = infer_student_family(
+        checkpoint, student_model_name, args.student_family
+    )
     adapter_mode = infer_adapter_mode(checkpoint, state_dict)
-    tinyvit_checkpoint = (
-        resolve_tinyvit_checkpoint(tinyvit_model_name, args.tinyvit_checkpoint)
-        if args.tinyvit_checkpoint is not None
+    student_checkpoint = (
+        resolve_student_checkpoint(student_model_name, args.student_checkpoint)
+        if args.student_checkpoint is not None
         else None
     )
-    student = TinyViTSAM2Adapter(
-        model_name=tinyvit_model_name,
-        checkpoint_path=str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
+    student = build_stage1_student(
+        student_family=student_family,
+        model_name=student_model_name,
+        checkpoint_path=str(student_checkpoint) if student_checkpoint is not None else None,
         adapter_mode=adapter_mode,
     ).to(device)
     incompatible = student.load_state_dict(state_dict, strict=False)
@@ -118,11 +136,16 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     return {
         "student_checkpoint": str(args.checkpoint),
         "sam2_checkpoint": str(args.sam2_checkpoint),
-        "tinyvit_checkpoint": str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
-        "requested_tinyvit_checkpoint": str(args.tinyvit_checkpoint) if args.tinyvit_checkpoint is not None else None,
-        "tinyvit_model_name": tinyvit_model_name,
+        "student_family": student_family,
+        "student_pretrained_checkpoint": str(student_checkpoint)
+        if student_checkpoint is not None
+        else None,
+        "requested_student_checkpoint": str(args.student_checkpoint)
+        if args.student_checkpoint is not None
+        else None,
+        "student_model_name": student_model_name,
         "adapter_mode": adapter_mode,
-        "requested_tinyvit_model_name": args.tinyvit_model_name,
+        "requested_student_model_name": args.student_model_name,
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),
         "missing_keys": list(incompatible.missing_keys),

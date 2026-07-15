@@ -45,8 +45,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--config", required=True, help="Trainer/model config for edgetam-trainer, SAM2 config name for sam2.")
     parser.add_argument("--sam2-checkpoint", type=Path, help="SAM2 checkpoint for prompt encoder/mask decoder with stage1-student.")
-    parser.add_argument("--tinyvit-checkpoint", type=Path, help="TinyViT pretrained checkpoint used to instantiate stage1-student.")
-    parser.add_argument("--tinyvit-model-name", default="tiny_vit_21m_512.dist_in22k_ft_in1k")
+    parser.add_argument(
+        "--student-checkpoint",
+        "--tinyvit-checkpoint",
+        dest="student_checkpoint",
+        type=Path,
+    )
+    parser.add_argument(
+        "--student-model-name",
+        "--tinyvit-model-name",
+        dest="student_model_name",
+        default="tiny_vit_21m_512.dist_in22k_ft_in1k",
+    )
+    parser.add_argument("--student-family", choices=("tinyvit", "repvit"), default="tinyvit")
     parser.add_argument("--sam2-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam2"))
     parser.add_argument("--edgetam-root", type=Path, default=Path("/user-volume/repo/EdgeTAM"))
     parser.add_argument("--sam3-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam3"))
@@ -166,10 +177,11 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
     from sam2.sam2_image_predictor import SAM2ImagePredictor
     from sam2_distill.models.stage1_checkpoint import (
         infer_adapter_mode,
-        infer_tinyvit_model_name,
-        resolve_tinyvit_checkpoint,
+        infer_stage1_model_name,
+        infer_student_family,
+        resolve_student_checkpoint,
     )
-    from sam2_distill.models.tinyvit_adapter import TinyViTSAM2Adapter
+    from sam2_distill.models.stage1_student import build_stage1_student
 
     model = build_sam2(args.config, str(args.sam2_checkpoint), device=str(device), mode="eval")
     model.eval()
@@ -178,16 +190,22 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
-    tinyvit_model_name = infer_tinyvit_model_name(state_dict, args.tinyvit_model_name)
+    student_model_name = infer_stage1_model_name(
+        checkpoint, state_dict, args.student_model_name
+    )
+    student_family = infer_student_family(
+        checkpoint, student_model_name, args.student_family
+    )
     adapter_mode = infer_adapter_mode(checkpoint, state_dict)
-    tinyvit_checkpoint = (
-        resolve_tinyvit_checkpoint(tinyvit_model_name, args.tinyvit_checkpoint)
-        if args.tinyvit_checkpoint is not None
+    student_checkpoint = (
+        resolve_student_checkpoint(student_model_name, args.student_checkpoint)
+        if args.student_checkpoint is not None
         else None
     )
-    student = TinyViTSAM2Adapter(
-        model_name=tinyvit_model_name,
-        checkpoint_path=str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
+    student = build_stage1_student(
+        student_family=student_family,
+        model_name=student_model_name,
+        checkpoint_path=str(student_checkpoint) if student_checkpoint is not None else None,
         adapter_mode=adapter_mode,
     ).to(device)
     incompatible = student.load_state_dict(state_dict, strict=False)
@@ -198,13 +216,16 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
     predictor = SAM2ImagePredictor(model)
     predictor._stage1_student = student
     return predictor, {
-        "student_checkpoint": str(args.checkpoint),
+        "stage1_checkpoint": str(args.checkpoint),
         "sam2_checkpoint": str(args.sam2_checkpoint),
-        "tinyvit_checkpoint": str(tinyvit_checkpoint) if tinyvit_checkpoint is not None else None,
-        "requested_tinyvit_checkpoint": str(args.tinyvit_checkpoint) if args.tinyvit_checkpoint is not None else None,
-        "tinyvit_model_name": tinyvit_model_name,
+        "student_family": student_family,
+        "student_pretrained_checkpoint": str(student_checkpoint)
+        if student_checkpoint is not None
+        else None,
+        "requested_student_checkpoint": str(args.student_checkpoint) if args.student_checkpoint is not None else None,
+        "student_model_name": student_model_name,
         "adapter_mode": adapter_mode,
-        "requested_tinyvit_model_name": args.tinyvit_model_name,
+        "requested_student_model_name": args.student_model_name,
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),
         "num_tensors": len(state_dict),

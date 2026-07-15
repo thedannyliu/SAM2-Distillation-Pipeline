@@ -206,3 +206,16 @@ TinyViT student defaults:
 - Add projection/adapters so TinyViT feature dims and spatial sizes match the three teacher targets above.
 - Stage 1 trainable modules: TinyViT encoder plus projection/adapters.
 - Frozen modules: teacher all modules, SAM2 prompt encoder, SAM2 mask decoder, and memory modules.
+ ## 8. Goal Implementation Tips
+
+ Can submit several jobs in parallel, every GPU can be used to run smoke run. Don't waste time and token on keep checking the samme job.
+ Keep the codebase concise, always make sure that each srcipt is neccesary.
+ Can use documentation to track each experiment. Keep documenting.
+
+## 9. Company Terminal Commands
+
+- Company commands must run in the foreground and keep live output visible in the current terminal.
+- Use `tee` when a persistent log is needed so output remains visible while it is recorded.
+- Do not use `nohup`, `disown`, background `&`, detached `bash -lc`, or similar commands that detach work from the current terminal.
+- Do not include `set -Eeuo pipefail` in commands pasted into the company terminal.
+- Do not include `exit` in pasted command blocks. Report command status explicitly and return control to the same terminal prompt after completion or failure.
