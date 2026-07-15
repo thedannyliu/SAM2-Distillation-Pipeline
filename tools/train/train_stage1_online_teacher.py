@@ -346,6 +346,10 @@ def validate_input_paths(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    if isinstance(args.wandb_run_id, str):
+        args.wandb_run_id = args.wandb_run_id.strip() or None
+    if not args.wandb_run_id:
+        os.environ.pop("WANDB_RUN_ID", None)
     validate_input_paths(args)
     rank, world_size, _, device = init_distributed()
     set_seed(args.seed, rank)

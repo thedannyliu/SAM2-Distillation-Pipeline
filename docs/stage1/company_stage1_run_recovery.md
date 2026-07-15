@@ -120,6 +120,13 @@ order:
 3. Evaluate that exact `best.pt` on all 155 `sav_val` videos.
 4. Evaluate that exact `best.pt` on all 150 `sav_test` videos.
 
+Recovery is incremental. A completed image `summary.json` or VOS
+`eval_summary.json` is reused, so restarting a lane only fills missing
+training or evaluation work. If the lane resumes training and updates the
+checkpoint, it invalidates that shortcut and evaluates the new `best.pt`.
+Empty `WANDB_RUN_ID` environment values are treated as unset; valid explicit
+IDs and IDs stored in `last.pt` continue the same W&B run.
+
 Both downstream evaluations use GT box prompts. Image mode runs frame by frame
 and records mIoU, AP50:95, encoder/prompt latency, and total per-object latency.
 Video mode includes the model's memory tracker and records J&F, J, F, whole
@@ -129,6 +136,10 @@ elapsed time, and seconds per video. Results are stored under:
 <run>/sav_val_box_benchmark/metrics.csv
 <run>/sav_test_box_benchmark/metrics.csv
 ```
+
+The image-only `mean_set_image_seconds`, `mean_prompt_seconds`, and
+`mean_total_object_seconds` columns are intentionally empty on video rows.
+Use `sec_per_video` as the comparable VOS latency value.
 
 Full downstream evaluation uses every GPU assigned to the recovery lane. The
 split video list is partitioned round-robin into non-overlapping GPU shards;
