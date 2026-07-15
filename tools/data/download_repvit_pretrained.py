@@ -135,7 +135,11 @@ def smoke_timm_model(path: Path, spec: dict[str, Any]) -> dict[str, Any]:
         ).eval()
         from timm.models._features import FeatureListNet
 
-        model = FeatureListNet(base_model, out_indices=(0, 1, 2, 3)).eval()
+        model = FeatureListNet(
+            base_model,
+            out_indices=(0, 1, 2, 3),
+            flatten_sequential=True,
+        ).eval()
     except RuntimeError as error:
         raise RuntimeError(
             f"timm {timm.__version__} could not instantiate or load {model_name}; "
