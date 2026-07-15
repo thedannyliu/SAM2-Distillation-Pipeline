@@ -48,6 +48,7 @@ def main() -> None:
     parser.add_argument("--sav-root", required=True, type=Path)
     parser.add_argument("--sample-videos", type=int, default=100)
     parser.add_argument("--max-missing-annotation-videos", type=int, default=200)
+    parser.add_argument("--compact", action="store_true")
     args = parser.parse_args()
 
     frame = pd.read_parquet(
@@ -140,7 +141,21 @@ def main() -> None:
         "split_files": split_files,
         "failures": failures,
     }
-    print(json.dumps(summary, indent=2))
+    if args.compact and not failures:
+        print(
+            " | ".join(
+                [
+                    "SA-V task audit: PASS",
+                    f"candidates {summary['train_videos']:,}",
+                    f"usable {summary['train_videos_with_manual_annotations']:,}",
+                    f"excluded {summary['train_videos_without_manual_annotations']:,}",
+                    f"sampled {summary['sampled_videos_checked']:,}",
+                    "val/test lists PASS",
+                ]
+            )
+        )
+    else:
+        print(json.dumps(summary, indent=2))
     if failures:
         raise SystemExit(1)
 

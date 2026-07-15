@@ -258,4 +258,4 @@ trainer:
       _partial_: true
       base_sam2_checkpoint: ${oc.env:SAM2_CHECKPOINT}
       stage1_checkpoint: ${oc.env:SOURCE_STAGE1_CHECKPOINT}
-      previous_task_checkpoint: ${oc.env:PREVIOUS_TASK_CHECKPOINT,}
+      previous_task_checkpoint: ${oc.env:PREVIOUS_TASK_CHECKPOINT,''}

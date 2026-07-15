@@ -41,7 +41,8 @@ audit_inputs() {
     --manifest "${MANIFEST}" \
     --stage1-checkpoint "${SOURCE_STAGE1_CHECKPOINT}" \
     --sav-root "${SAV_ROOT}" \
-    --sample-videos "${AUDIT_SAMPLE_VIDEOS:-500}" || return 1
+    --sample-videos "${AUDIT_SAMPLE_VIDEOS:-500}" \
+    --compact || return 1
 }
 
 checkpoint_reached_epoch() {
@@ -113,6 +114,7 @@ train_stage() {
     SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT}" \
     PREVIOUS_TASK_CHECKPOINT="${previous_checkpoint}" \
     WANDB_MODE="${WANDB_MODE}" \
+    OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}" \
     torchrun --standalone --nproc-per-node "${NPROC}" \
       tools/train/run_sam2_task_training.py \
       --config "${CONFIG}" \

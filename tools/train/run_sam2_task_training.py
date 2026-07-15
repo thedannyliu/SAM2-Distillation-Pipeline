@@ -34,18 +34,28 @@ def init_wandb(args: argparse.Namespace):
 
     args.wandb_dir.mkdir(parents=True, exist_ok=True)
     run_file = args.wandb_dir / "wandb_run.json"
-    run_id = None
+    run_id = os.environ.get("WANDB_RUN_ID", "").strip() or None
+    if run_id is None:
+        os.environ.pop("WANDB_RUN_ID", None)
     if run_file.is_file():
-        run_id = json.loads(run_file.read_text())["run_id"]
-    tensorboard_dir = Path(os.environ["TASK_RUN_DIR"]) / "tensorboard"
-    wandb.tensorboard.patch(root_logdir=str(tensorboard_dir))
+        saved_run_id = json.loads(run_file.read_text())["run_id"]
+        if run_id is not None and run_id != saved_run_id:
+            raise RuntimeError(
+                f"W&B run ID mismatch: environment={run_id}, saved={saved_run_id}"
+            )
+        run_id = saved_run_id
+    checkpoint_path = Path(os.environ["TASK_RUN_DIR"]) / "checkpoints/checkpoint.pt"
+    if run_id is None and checkpoint_path.is_file():
+        import torch
+
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        run_id = checkpoint.get("wandb_run_id")
     run = wandb.init(
         project=args.wandb_project,
         name=args.wandb_name,
         id=run_id,
         resume="must" if run_id else None,
         dir=str(args.wandb_dir),
-        sync_tensorboard=True,
         config={
             "task_stage": os.environ.get("TASK_STAGE_NAME"),
             "trainable_mode": os.environ.get("TASK_TRAINABLE_MODE"),
@@ -62,10 +72,17 @@ def init_wandb(args: argparse.Namespace):
     return run
 
 
-def patch_sam2_training_console_output() -> None:
-    """Keep useful trainer summaries without dumping the full model/param sets."""
+def _scalar(value):
+    if hasattr(value, "item"):
+        value = value.item()
+    return float(value)
+
+
+def patch_sam2_training_runtime(wandb_run=None) -> None:
+    """Use compact console output and direct W&B metric logging."""
     import training.optimizer as optimizer_module
     import training.trainer as trainer_module
+    import training.dataset.vos_dataset as vos_dataset_module
 
     def compact_model_summary(model, log_dir=""):
         del log_dir
@@ -95,8 +112,70 @@ def patch_sam2_training_console_output() -> None:
             matches.append(matched)
         return set().union(*matches)
 
+    def compact_model_initializer(self):
+        initializer = trainer_module.instantiate(
+            self.checkpoint_conf.model_weight_initializer
+        )
+        if initializer is not None:
+            logging.info("Loading task model checkpoint initializer")
+            self.model = initializer(model=self.model)
+
+    original_run_step = trainer_module.Trainer._run_step
+    original_save_checkpoint = trainer_module.Trainer._save_checkpoint
+
+    def run_step_with_wandb(
+        self,
+        batch,
+        phase,
+        loss_mts,
+        extra_loss_mts,
+        raise_on_error=True,
+    ):
+        result = original_run_step(
+            self,
+            batch,
+            phase,
+            loss_mts,
+            extra_loss_mts,
+            raise_on_error=raise_on_error,
+        )
+        completed_step = int(self.steps[phase])
+        log_frequency = int(self.logging_conf.log_scalar_frequency)
+        should_log = (completed_step - 1) % log_frequency == 0
+        if wandb_run is not None and self.distributed_rank == 0 and should_log:
+            metrics = {
+                f"{name}/current": _scalar(meter.val)
+                for name, meter in loss_mts.items()
+            }
+            metrics.update(
+                {
+                    f"{name}/current": _scalar(meter.val)
+                    for name, meter in extra_loss_mts.items()
+                }
+            )
+            metrics.update(
+                {
+                    "Trainer/epoch": float(self.epoch),
+                    "Trainer/global_step": float(completed_step),
+                }
+            )
+            for index, group in enumerate(self.optim.optimizer.param_groups):
+                metrics[f"Optim/group_{index}_lr"] = float(group["lr"])
+            wandb_run.log(metrics, step=completed_step)
+        return result
+
+    def save_checkpoint_with_wandb(self, checkpoint, checkpoint_path):
+        if wandb_run is not None:
+            checkpoint["wandb_run_id"] = wandb_run.id
+        return original_save_checkpoint(self, checkpoint, checkpoint_path)
+
     trainer_module.print_model_summary = compact_model_summary
+    trainer_module.log_env_variables = lambda: None
+    trainer_module.Trainer._call_model_initializer = compact_model_initializer
+    trainer_module.Trainer._run_step = run_step_with_wandb
+    trainer_module.Trainer._save_checkpoint = save_checkpoint_with_wandb
     optimizer_module.unix_param_pattern_to_parameter_names = quiet_param_pattern_match
+    vos_dataset_module.print = lambda *args, **kwargs: None
 
 
 def main() -> None:
@@ -107,10 +186,10 @@ def main() -> None:
     from omegaconf import OmegaConf
     from training.utils.train_utils import register_omegaconf_resolvers
 
-    patch_sam2_training_console_output()
     register_omegaconf_resolvers()
     config = OmegaConf.load(args.config)
     run = init_wandb(args)
+    patch_sam2_training_runtime(run)
     try:
         trainer = instantiate(config.trainer, _recursive_=False)
         trainer.run()
