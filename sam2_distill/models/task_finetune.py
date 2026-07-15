@@ -22,6 +22,8 @@ class _DirectFeatureNeck(nn.Module):
 class Stage1StudentImageEncoder(nn.Module):
     """Present a Stage 1 student as a SAM2 ImageEncoder-compatible module."""
 
+    outputs_preprojected_sam_features = True
+
     def __init__(
         self,
         position_encoding: nn.Module,
@@ -46,6 +48,13 @@ class Stage1StudentImageEncoder(nn.Module):
             features["high_res_s1"],
             features["image_embed"],
         ]
+        expected_shapes = ((32, 256, 256), (64, 128, 128), (256, 64, 64))
+        actual_shapes = [tuple(feature.shape[1:]) for feature in backbone_fpn]
+        if actual_shapes != list(expected_shapes):
+            raise ValueError(
+                "Stage 1 student emitted incompatible SAM features: "
+                f"actual={actual_shapes}, expected={list(expected_shapes)}"
+            )
         vision_pos_enc = [
             self.neck.position_encoding(feature).to(feature.dtype)
             for feature in backbone_fpn

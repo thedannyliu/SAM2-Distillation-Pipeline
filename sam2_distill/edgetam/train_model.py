@@ -128,7 +128,7 @@ class EdgeTAMTrain(SAM2Train):
             or self.image_encoder_forward_batch_size <= 0
             or img_batch.size(0) <= self.image_encoder_forward_batch_size
         ):
-            return super().forward_image(img_batch)
+            return self._forward_image_impl(img_batch)
 
         chunks = []
         for start in range(0, img_batch.size(0), self.image_encoder_forward_batch_size):
@@ -141,8 +141,17 @@ class EdgeTAMTrain(SAM2Train):
                 )
                 chunks.append(self._tuple_to_backbone_output(chunk_tuple))
             else:
-                chunks.append(super().forward_image(chunk))
+                chunks.append(self._forward_image_impl(chunk))
         return self._concat_backbone_outputs(chunks)
+
+    def _forward_image_impl(self, img_batch: torch.Tensor) -> dict:
+        if getattr(
+            self.image_encoder,
+            "outputs_preprojected_sam_features",
+            False,
+        ):
+            return self.image_encoder(img_batch)
+        return super().forward_image(img_batch)
 
     def track_step(
         self,
@@ -246,7 +255,7 @@ class EdgeTAMTrain(SAM2Train):
         return feature.permute(1, 2, 0).reshape(batch, channels, *feat_size)
 
     def _forward_image_as_tuple(self, img_batch: torch.Tensor) -> tuple[torch.Tensor, ...]:
-        out = super().forward_image(img_batch)
+        out = self._forward_image_impl(img_batch)
         return (
             out["vision_features"],
             *out["vision_pos_enc"],
