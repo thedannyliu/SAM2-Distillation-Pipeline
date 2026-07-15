@@ -51,8 +51,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--edgetam-root", type=Path, default=Path("/user-volume/repo/EdgeTAM"))
     parser.add_argument("--sam3-root", type=Path, default=Path("/user-volume/repo/facebookresearch-sam3"))
     parser.add_argument("--sam31-checkpoint", type=Path)
+    parser.add_argument("--video-list-file", type=Path)
     parser.add_argument("--max-videos", type=int, default=0, help="0 means all.")
     parser.add_argument("--max-objects", type=int, default=2000, help="0 means all.")
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--warmup-images", type=int, default=5)
     parser.add_argument("--save-artifacts", type=int, default=0, help="Save this many predicted masks and overlays.")
     parser.add_argument(
@@ -311,9 +314,20 @@ def collect_records(args: argparse.Namespace) -> list[ObjectRecord]:
         raise FileNotFoundError(args.ann_root)
 
     records: list[ObjectRecord] = []
-    videos = sorted(path.name for path in args.ann_root.iterdir() if path.is_dir())
+    if args.num_shards < 1 or not 0 <= args.shard_index < args.num_shards:
+        raise ValueError("shard-index must be in [0, num-shards)")
+    if args.video_list_file is not None:
+        videos = [
+            line.strip()
+            for line in args.video_list_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        videos = sorted(path.name for path in args.ann_root.iterdir() if path.is_dir())
+    videos = [video for video in videos if (args.ann_root / video).is_dir()]
     if args.max_videos > 0:
         videos = videos[: args.max_videos]
+    videos = videos[args.shard_index :: args.num_shards]
     for video in videos:
         image_video_dir = args.image_root / video
         ann_video_dir = args.ann_root / video

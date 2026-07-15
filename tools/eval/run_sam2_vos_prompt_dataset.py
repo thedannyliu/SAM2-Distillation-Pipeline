@@ -35,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--video-list-file", type=Path)
     parser.add_argument("--max-videos", type=int, default=0)
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -155,13 +157,22 @@ def build_predictor(args: argparse.Namespace, device: torch.device):
     return predictor, load_summary
 
 
-def video_names(image_root: Path, video_list_file: Path | None, max_videos: int) -> list[str]:
+def video_names(
+    image_root: Path,
+    video_list_file: Path | None,
+    max_videos: int,
+    num_shards: int,
+    shard_index: int,
+) -> list[str]:
+    if num_shards < 1 or not 0 <= shard_index < num_shards:
+        raise ValueError("shard-index must be in [0, num-shards)")
     if video_list_file is not None:
         names = [line.strip() for line in video_list_file.read_text(encoding="utf-8").splitlines() if line.strip()]
     else:
         names = sorted(path.name for path in image_root.iterdir() if path.is_dir())
     names = [name for name in names if (image_root / name).is_dir()]
-    return names[:max_videos] if max_videos > 0 else names
+    names = names[:max_videos] if max_videos > 0 else names
+    return names[shard_index::num_shards]
 
 
 def load_mask(path: Path) -> np.ndarray:
@@ -268,7 +279,13 @@ def main() -> None:
 
     predictor, load_summary = build_predictor(args, device)
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    selected_videos = video_names(args.image_root, args.video_list_file, args.max_videos)
+    selected_videos = video_names(
+        args.image_root,
+        args.video_list_file,
+        args.max_videos,
+        args.num_shards,
+        args.shard_index,
+    )
     start = time.perf_counter()
     with torch.inference_mode(), autocast_context(device):
         video_summaries = [run_video(predictor, args, video) for video in selected_videos]

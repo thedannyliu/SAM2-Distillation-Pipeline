@@ -32,8 +32,9 @@ NUM_EVAL_PROCESSES="${NUM_EVAL_PROCESSES:-16}"
 CLEAN_PREDICTIONS="${CLEAN_PREDICTIONS:-1}"
 SKIP_DONE="${SKIP_DONE:-1}"
 DEVICE="${DEVICE:-cuda}"
+EVAL_GPUS="${EVAL_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}"
 
-required_paths=("${STAGE1_CHECKPOINT}" "${IMAGE_ROOT}" "${ANN_ROOT}")
+required_paths=("${STAGE1_CHECKPOINT}" "${IMAGE_ROOT}" "${ANN_ROOT}" "${VIDEO_LIST_FILE}")
 if [[ "${MODEL_FAMILY}" == "sam2" ]]; then
   required_paths+=("${SAM2L_CHECKPOINT}" "${TINYVIT_CHECKPOINT}" "${SAM2_ROOT}")
 elif [[ "${MODEL_FAMILY}" == "sam31" ]]; then
@@ -51,14 +52,48 @@ done
 
 mkdir -p "${BENCH_ROOT}"
 
+IFS=, read -r -a eval_gpus <<< "${EVAL_GPUS}"
+if [[ "${#eval_gpus[@]}" -eq 0 ]]; then
+  echo "EVAL_GPUS is empty" >&2
+  exit 2
+fi
+if [[ "${MAX_IMAGE_OBJECTS}" -gt 0 ]]; then
+  eval_gpus=("${eval_gpus[0]}")
+fi
+video_count="$(awk 'NF { count++ } END { print count + 0 }' "${VIDEO_LIST_FILE}")"
+if [[ "${MAX_VIDEOS}" -gt 0 && "${MAX_VIDEOS}" -lt "${video_count}" ]]; then
+  video_count="${MAX_VIDEOS}"
+fi
+if [[ "${video_count}" -lt 1 ]]; then
+  echo "empty video list: ${VIDEO_LIST_FILE}" >&2
+  exit 1
+fi
+if [[ "${#eval_gpus[@]}" -gt "${video_count}" ]]; then
+  eval_gpus=("${eval_gpus[@]:0:${video_count}}")
+fi
+num_shards="${#eval_gpus[@]}"
+
+wait_for_jobs() {
+  local failed=0 pid
+  for pid in "$@"; do
+    if ! wait "${pid}"; then
+      failed=1
+    fi
+  done
+  [[ "${failed}" -eq 0 ]]
+}
+
 image_out="${BENCH_ROOT}/image/${EXPERIMENT}/box"
 if [[ "${SKIP_DONE}" != "1" || ! -f "${image_out}/summary.json" ]]; then
+  image_shard_root="${image_out}.shards"
+  rm -rf "${image_shard_root}"
+  mkdir -p "${image_shard_root}"
   image_args=(
     --prompt-kind box
     --image-root "${IMAGE_ROOT}"
     --ann-root "${ANN_ROOT}"
     --checkpoint "${STAGE1_CHECKPOINT}"
-    --out-dir "${image_out}"
+    --video-list-file "${VIDEO_LIST_FILE}"
     --max-videos "${MAX_VIDEOS}"
     --max-objects "${MAX_IMAGE_OBJECTS}"
     --save-artifacts 0
@@ -80,7 +115,31 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${image_out}/summary.json" ]]; then
       --sam31-checkpoint "${SAM31_CHECKPOINT}"
     )
   fi
-  python tools/benchmark/benchmark_sav_prompt_masks.py "${image_args[@]}"
+  image_pids=()
+  image_merge_args=()
+  for shard_index in "${!eval_gpus[@]}"; do
+    printf -v shard_name 'shard_%03d' "${shard_index}"
+    shard_out="${image_shard_root}/${shard_name}"
+    image_merge_args+=(--shard-root "${shard_out}")
+    CUDA_VISIBLE_DEVICES="${eval_gpus[shard_index]}" \
+      python tools/benchmark/benchmark_sav_prompt_masks.py \
+        "${image_args[@]}" \
+        --out-dir "${shard_out}" \
+        --num-shards "${num_shards}" \
+        --shard-index "${shard_index}" &
+    image_pids+=("$!")
+  done
+  wait_for_jobs "${image_pids[@]}" || {
+    echo "one or more image benchmark shards failed" >&2
+    exit 1
+  }
+  python tools/benchmark/merge_sav_benchmark_shards.py \
+    --mode image \
+    "${image_merge_args[@]}" \
+    --out-dir "${image_out}" \
+    --video-list-file "${VIDEO_LIST_FILE}" \
+    --max-videos "${MAX_VIDEOS}"
+  rm -rf "${image_shard_root}"
 else
   echo "skip completed SAV test image benchmark: ${EXPERIMENT}" >&2
 fi
@@ -88,7 +147,8 @@ fi
 vos_out="${BENCH_ROOT}/vos/${EXPERIMENT}/box"
 pred_root="${vos_out}/pred"
 if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
-  rm -rf "${pred_root}"
+  vos_shard_root="${vos_out}/shards"
+  rm -rf "${pred_root}" "${vos_shard_root}"
   mkdir -p "${pred_root}"
   if [[ "${MODEL_FAMILY}" == "sam2" ]]; then
     vos_program=tools/eval/run_sam2_vos_prompt_dataset.py
@@ -102,7 +162,6 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
       --tinyvit-checkpoint "${TINYVIT_CHECKPOINT}"
       --image-root "${IMAGE_ROOT}"
       --ann-root "${ANN_ROOT}"
-      --out-dir "${pred_root}"
       --device "${DEVICE}"
     )
   else
@@ -113,18 +172,37 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
       --checkpoint "${STAGE1_CHECKPOINT}"
       --image-root "${IMAGE_ROOT}"
       --ann-root "${ANN_ROOT}"
-      --out-dir "${pred_root}"
       --device "${DEVICE}"
     )
   fi
-  if [[ -f "${VIDEO_LIST_FILE}" ]]; then
-    vos_args+=(--video-list-file "${VIDEO_LIST_FILE}")
-  fi
-  if [[ "${MAX_VIDEOS}" -gt 0 ]]; then
-    vos_args+=(--max-videos "${MAX_VIDEOS}")
-  fi
-  python "${vos_program}" "${vos_args[@]}"
+  vos_args+=(--video-list-file "${VIDEO_LIST_FILE}" --max-videos "${MAX_VIDEOS}")
+  vos_pids=()
+  vos_merge_args=()
+  for shard_index in "${!eval_gpus[@]}"; do
+    printf -v shard_name 'shard_%03d' "${shard_index}"
+    shard_out="${vos_shard_root}/${shard_name}/pred"
+    mkdir -p "${shard_out}"
+    vos_merge_args+=(--shard-root "${shard_out}")
+    CUDA_VISIBLE_DEVICES="${eval_gpus[shard_index]}" \
+      python "${vos_program}" \
+        "${vos_args[@]}" \
+        --out-dir "${shard_out}" \
+        --num-shards "${num_shards}" \
+        --shard-index "${shard_index}" &
+    vos_pids+=("$!")
+  done
+  wait_for_jobs "${vos_pids[@]}" || {
+    echo "one or more VOS benchmark shards failed" >&2
+    exit 1
+  }
+  python tools/benchmark/merge_sav_benchmark_shards.py \
+    --mode vos \
+    "${vos_merge_args[@]}" \
+    --out-dir "${pred_root}" \
+    --video-list-file "${VIDEO_LIST_FILE}" \
+    --max-videos "${MAX_VIDEOS}"
   cp "${pred_root}/summary.json" "${vos_out}/run_summary.json"
+  rm -rf "${vos_shard_root}"
   python tools/eval/run_sav_evaluator.py \
     --evaluator "${SAM2_ROOT}/sav_dataset/sav_evaluator.py" \
     --gt-root "${ANN_ROOT}" \
