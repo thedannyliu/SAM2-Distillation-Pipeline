@@ -1,4 +1,4 @@
-"""Helpers for loading Stage 1 TinyViT checkpoints."""
+"""Helpers for loading Stage 1 student checkpoints."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ CKPT_BY_MODEL = {
     "tiny_vit_21m_512.dist_in22k_ft_in1k": "tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors",
     "tiny_vit_11m_224.dist_in22k_ft_in1k": "tiny_vit_11m_224.dist_in22k_ft_in1k.safetensors",
     "tiny_vit_5m_224.dist_in22k_ft_in1k": "tiny_vit_5m_224.dist_in22k_ft_in1k.safetensors",
+    "repvit_m0_9.dist_450e_in1k": "repvit_m0_9.dist_450e_in1k.safetensors",
+    "repvit_m2_3.dist_450e_in1k": "repvit_m2_3.dist_450e_in1k.safetensors",
 }
 
 
@@ -44,6 +46,28 @@ def infer_tinyvit_model_name(state_dict: dict[str, torch.Tensor], fallback: str)
     return fallback
 
 
+def infer_stage1_model_name(
+    checkpoint: dict[str, Any],
+    state_dict: dict[str, torch.Tensor],
+    fallback: str,
+) -> str:
+    args = checkpoint.get("args")
+    if isinstance(args, dict) and isinstance(args.get("model_name"), str):
+        return str(args["model_name"])
+    return infer_tinyvit_model_name(state_dict, fallback)
+
+
+def infer_student_family(
+    checkpoint: dict[str, Any], model_name: str, fallback: str = "tinyvit"
+) -> str:
+    args = checkpoint.get("args")
+    if isinstance(args, dict) and args.get("student_family") in {"tinyvit", "repvit"}:
+        return str(args["student_family"])
+    if model_name.startswith("repvit_"):
+        return "repvit"
+    return fallback
+
+
 def infer_adapter_mode(checkpoint: dict[str, Any], state_dict: dict[str, torch.Tensor]) -> str:
     args = checkpoint.get("args")
     if isinstance(args, dict) and args.get("adapter_mode") in {"projection", "residual_dwconv"}:
@@ -61,3 +85,7 @@ def resolve_tinyvit_checkpoint(model_name: str, requested_checkpoint: Path) -> P
     if candidate.exists():
         return candidate
     return requested_checkpoint
+
+
+def resolve_student_checkpoint(model_name: str, requested_checkpoint: Path) -> Path:
+    return resolve_tinyvit_checkpoint(model_name, requested_checkpoint)

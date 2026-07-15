@@ -35,3 +35,40 @@ five epochs on the mounted SA-V manifest, full feature-loss validation for
 `best.pt`, then full `sav_val` and `sav_test` box-prompt image and memory-VOS
 evaluation. Image metrics are mIoU, AP50:95, and latency; VOS metrics are J&F
 and latency. RepViT runs use a separate W&B project.
+
+The adapter uses RepViT strides 4 and 8 for SAM2 high-resolution features. It
+uses the final stride-32 RepViT stage for `image_embed`, followed by a 1x1
+projection and bilinear resize to `[256, 64, 64]`. This keeps every RepViT stage
+on the distillation gradient path.
+
+| experiment | batch/GPU | global batch | LR | loss weights |
+| --- | ---: | ---: | ---: | --- |
+| `repvit_m09_proj_sam21l_msehr_cos025_l1010` | 8 | 32 | 1e-4 | MSE 1, HR-MSE 1, cosine .25, Smooth-L1 .10 |
+| `repvit_m23_proj_sam21l_msehr_cos025_l1010` | 4 | 16 | 5e-5 | MSE 1, HR-MSE 1, cosine .25, Smooth-L1 .10 |
+
+Run both experiments sequentially on one 4xH100 company node. The script stays
+in the foreground, resumes from each run's `last.pt`, reuses its W&B run ID,
+keeps only `best.pt` and `last.pt`, and then evaluates `best.pt` on full
+`sav_val` and `sav_test`:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+git pull --ff-only origin edgetam-tinyvit-pipeline
+
+mkdir -p /user-volume/repvit_logs
+LOG="/user-volume/repvit_logs/repvit_stage1_$(date +%Y%m%d_%H%M%S).log"
+
+GPUS=0,1,2,3 \
+FULL_EVAL_GPUS=0,1,2,3 \
+WANDB_MODE=online \
+scripts/company/38_run_repvit_sam21l_stage1.sh all \
+2>&1 | tee "$LOG"
+
+STATUS=${PIPESTATUS[0]}
+echo "RepViT pipeline status: $STATUS"
+echo "Log: $LOG"
+```
+
+Metrics are written below each run in `sav_val_box_benchmark/metrics.csv` and
+`sav_test_box_benchmark/metrics.csv`. Aggregate CSV files are written at the
+RepViT run-root level.

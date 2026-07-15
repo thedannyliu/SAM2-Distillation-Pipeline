@@ -27,6 +27,9 @@ SAM2_CONFIG="${SAM2_CONFIG:-configs/sam2.1/sam2.1_hiera_l.yaml}"
 SAM2_CKPT="${SAM2_CKPT:-${CHECKPOINT_ROOT}/sam2.1/sam2.1_hiera_large.pt}"
 TINYVIT_CKPT="${TINYVIT_CKPT:-${CHECKPOINT_ROOT}/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 TINYVIT_MODEL_NAME="${TINYVIT_MODEL_NAME:-tiny_vit_21m_512.dist_in22k_ft_in1k}"
+STUDENT_FAMILY="${STUDENT_FAMILY:-tinyvit}"
+STUDENT_CKPT="${STUDENT_CKPT:-${TINYVIT_CKPT}}"
+STUDENT_MODEL_NAME="${STUDENT_MODEL_NAME:-${TINYVIT_MODEL_NAME}}"
 ADAPTER_MODE="${ADAPTER_MODE:-projection}"
 
 BATCH_SIZE="${BATCH_SIZE:-1}"
@@ -102,7 +105,7 @@ download() {
 
 check_train_inputs() {
   local missing=0
-  for path in "${MANIFEST}" "${SAM2_CKPT}" "${TINYVIT_CKPT}"; do
+  for path in "${MANIFEST}" "${SAM2_CKPT}" "${STUDENT_CKPT}"; do
     if [[ ! -f "${path}" ]]; then
       echo "missing required training input: ${path}" >&2
       missing=1
@@ -134,8 +137,9 @@ train() {
     --manifest "${MANIFEST}"
     --teacher-config "${SAM2_CONFIG}"
     --teacher-checkpoint "${SAM2_CKPT}"
-    --tinyvit-checkpoint "${TINYVIT_CKPT}"
-    --model-name "${TINYVIT_MODEL_NAME}"
+    --student-family "${STUDENT_FAMILY}"
+    --student-checkpoint "${STUDENT_CKPT}"
+    --model-name "${STUDENT_MODEL_NAME}"
     --adapter-mode "${ADAPTER_MODE}"
     --out-dir "${RUN_DIR}"
     --batch-size "${BATCH_SIZE}"

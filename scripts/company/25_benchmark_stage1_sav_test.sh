@@ -23,6 +23,9 @@ CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-/group-volume/danny-dataset/sam2_distill/che
 SAM2L_CONFIG="${SAM2L_CONFIG:-configs/sam2.1/sam2.1_hiera_l.yaml}"
 SAM2L_CHECKPOINT="${SAM2L_CHECKPOINT:-${CHECKPOINT_ROOT}/sam2.1/sam2.1_hiera_large.pt}"
 TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT:-${CHECKPOINT_ROOT}/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
+STUDENT_FAMILY="${STUDENT_FAMILY:-tinyvit}"
+STUDENT_CHECKPOINT="${STUDENT_CHECKPOINT:-${TINYVIT_CHECKPOINT}}"
+STUDENT_MODEL_NAME="${STUDENT_MODEL_NAME:-tiny_vit_21m_512.dist_in22k_ft_in1k}"
 SAM3_ROOT="${SAM3_ROOT:-/user-volume/repo/facebookresearch-sam3}"
 SAM31_CHECKPOINT="${SAM31_CHECKPOINT:-/group-volume/danny-dataset/sam3/checkpoints/sam3.1/sam3.1_multiplex.pt}"
 
@@ -36,7 +39,7 @@ EVAL_GPUS="${EVAL_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}"
 
 required_paths=("${STAGE1_CHECKPOINT}" "${IMAGE_ROOT}" "${ANN_ROOT}" "${VIDEO_LIST_FILE}")
 if [[ "${MODEL_FAMILY}" == "sam2" ]]; then
-  required_paths+=("${SAM2L_CHECKPOINT}" "${TINYVIT_CHECKPOINT}" "${SAM2_ROOT}")
+  required_paths+=("${SAM2L_CHECKPOINT}" "${STUDENT_CHECKPOINT}" "${SAM2_ROOT}")
 elif [[ "${MODEL_FAMILY}" == "sam31" ]]; then
   required_paths+=("${SAM31_CHECKPOINT}" "${SAM3_ROOT}" "${SAM2_ROOT}/sav_dataset/sav_evaluator.py")
 else
@@ -128,7 +131,9 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${image_out}/summary.json" ]]; then
       --model-kind stage1-student
       --config "${SAM2L_CONFIG}"
       --sam2-checkpoint "${SAM2L_CHECKPOINT}"
-      --tinyvit-checkpoint "${TINYVIT_CHECKPOINT}"
+      --student-family "${STUDENT_FAMILY}"
+      --student-checkpoint "${STUDENT_CHECKPOINT}"
+      --student-model-name "${STUDENT_MODEL_NAME}"
       --sam2-root "${SAM2_ROOT}"
     )
   else
@@ -186,7 +191,9 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
       --sam2-cfg "${SAM2L_CONFIG}"
       --checkpoint "${STAGE1_CHECKPOINT}"
       --sam2-checkpoint "${SAM2L_CHECKPOINT}"
-      --tinyvit-checkpoint "${TINYVIT_CHECKPOINT}"
+      --student-family "${STUDENT_FAMILY}"
+      --student-checkpoint "${STUDENT_CHECKPOINT}"
+      --student-model-name "${STUDENT_MODEL_NAME}"
       --image-root "${IMAGE_ROOT}"
       --ann-root "${ANN_ROOT}"
       --device "${DEVICE}"
