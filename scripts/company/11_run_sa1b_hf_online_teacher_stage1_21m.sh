@@ -16,7 +16,7 @@ HF_MAX_IMAGES="${HF_MAX_IMAGES:-25000}"
 HF_MAX_GB="${HF_MAX_GB:-0}"
 HF_SHUFFLE_BUFFER_SIZE="${HF_SHUFFLE_BUFFER_SIZE:-10000}"
 VAL_FRACTION="${VAL_FRACTION:-0.1}"
-SEED="${SEED:-sam2_stage1_hf_sa1b_online_tinyvit21m_v1}"
+DOWNLOAD_SEED="${DOWNLOAD_SEED:-${SEED:-sam2_stage1_hf_sa1b_online_tinyvit21m_v1}}"
 
 MANIFEST="${MANIFEST:-${SAM2D_ROOT}/manifests/hf_sa1b_online_tinyvit21m_v1.parquet}"
 RUN_DIR="${RUN_DIR:-${SAM2D_ROOT}/runs/stage1_online_teacher_hf_sa1b_tinyvit21m}"
@@ -40,7 +40,7 @@ WEIGHT_DECAY="${WEIGHT_DECAY:-0.05}"
 PROJECTION_WARMUP_STEPS="${PROJECTION_WARMUP_STEPS:-1000}"
 LR_WARMUP_STEPS="${LR_WARMUP_STEPS:-1000}"
 MAX_GRAD_NORM="${MAX_GRAD_NORM:-1.0}"
-SEED="${SEED:-250107256}"
+TRAIN_SEED="${TRAIN_SEED:-${SEED:-250107256}}"
 LOG_EVERY="${LOG_EVERY:-10}"
 PRINT_EVERY="${PRINT_EVERY:-${LOG_EVERY}}"
 SAVE_EVERY="${SAVE_EVERY:-1000}"
@@ -97,7 +97,7 @@ download() {
     --manifest "${MANIFEST}" \
     --max-images "${HF_MAX_IMAGES}" \
     --max-gb "${HF_MAX_GB}" \
-    --seed "${SEED}" \
+    --seed "${DOWNLOAD_SEED}" \
     --val-fraction "${VAL_FRACTION}" \
     --shuffle-buffer-size "${HF_SHUFFLE_BUFFER_SIZE}" \
     --resume
@@ -131,6 +131,10 @@ EOF
 train() {
   local nproc args
   check_train_inputs
+  if [[ ! "${TRAIN_SEED}" =~ ^[0-9]+$ ]]; then
+    echo "TRAIN_SEED must be an integer; got ${TRAIN_SEED}" >&2
+    return 2
+  fi
   nproc="$(nproc_from_gpus)"
   mkdir -p "${RUN_DIR}"
   args=(
@@ -156,7 +160,7 @@ train() {
     --lambda-hr "${LAMBDA_HR}"
     --amp-dtype "${AMP_DTYPE}"
     --teacher-amp-dtype "${TEACHER_AMP_DTYPE}"
-    --seed "${SEED}"
+    --seed "${TRAIN_SEED}"
     --train-split "${TRAIN_SPLIT}"
     --val-split "${VAL_SPLIT}"
     --log-every "${LOG_EVERY}"

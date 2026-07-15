@@ -109,6 +109,7 @@ train_model() {
   LAMBDA_L1=0.10 \
   AMP_DTYPE=bf16 \
   TEACHER_AMP_DTYPE=bf16 \
+  TRAIN_SEED=250107256 \
   LOG_EVERY="${LOG_EVERY}" \
   PRINT_EVERY="${PRINT_EVERY}" \
   EVAL_EVERY="${steps_per_epoch}" \
