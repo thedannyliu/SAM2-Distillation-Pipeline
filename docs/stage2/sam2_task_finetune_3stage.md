@@ -76,4 +76,6 @@ node. `all` first audits paths and runs an actual 8-video distributed smoke
 train before starting the formal stages. Re-running the same command resumes
 the stage checkpoint and W&B run, and skips completed evaluation summaries.
 The runner replaces upstream full-model and optimizer parameter-set dumps with
-a compact parameter-count summary; warnings and tracebacks remain visible.
+a compact parameter-count summary. It also disables upstream environment dumps
+and logs task losses/LR directly to W&B instead of using TensorBoard patching;
+warnings and tracebacks remain visible.
