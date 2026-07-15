@@ -15,6 +15,7 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from sam2_distill.data.sav_task_dataset import resolve_sav_train_annotation_path
 from sam2_distill.models.stage1_checkpoint import extract_state_dict
 
 
@@ -46,6 +47,7 @@ def main() -> None:
     parser.add_argument("--stage1-checkpoint", required=True, type=Path)
     parser.add_argument("--sav-root", required=True, type=Path)
     parser.add_argument("--sample-videos", type=int, default=100)
+    parser.add_argument("--max-missing-annotation-videos", type=int, default=200)
     args = parser.parse_args()
 
     frame = pd.read_parquet(
@@ -53,24 +55,37 @@ def main() -> None:
         columns=["video_id", "frame_idx_24fps", "image_path", "annotation_path", "split"],
     )
     train = frame[frame["split"] == "train"]
-    videos = train["video_id"].drop_duplicates().head(args.sample_videos)
+    annotation_paths = {}
+    missing_annotation_videos = []
+    for video_id, rows in train.groupby("video_id", sort=True):
+        values = [
+            value
+            for value in rows["annotation_path"].tolist()
+            if isinstance(value, str) and value.strip()
+        ]
+        resolved = resolve_sav_train_annotation_path(
+            str(video_id), values[0] if values else None, args.sav_root
+        )
+        if resolved is None:
+            missing_annotation_videos.append(str(video_id))
+        else:
+            annotation_paths[str(video_id)] = resolved
+    videos = pd.Series(annotation_paths.keys(), dtype="object").head(args.sample_videos)
     sample = train[train["video_id"].isin(videos)]
     missing_images = [
         path for path in sample["image_path"].astype(str) if not Path(path).is_file()
     ]
-    missing_annotations = [
-        path
-        for path in sample["annotation_path"].dropna().astype(str).unique()
-        if not Path(path).is_file()
-    ]
     invalid_frame_ids = int((sample["frame_idx_24fps"] % 4 != 0).sum())
     insufficient_videos = []
+    invalid_annotations = []
     for video_id, rows in sample.groupby("video_id"):
-        annotation_path = Path(rows["annotation_path"].dropna().astype(str).iloc[0])
-        if not annotation_path.is_file():
-            continue
+        annotation_path = annotation_paths[str(video_id)]
         sampled_frame_ids = set(rows["frame_idx_24fps"].astype(int))
-        usable = count_usable_frames(annotation_path, sampled_frame_ids)
+        try:
+            usable = count_usable_frames(annotation_path, sampled_frame_ids)
+        except Exception as exc:  # noqa: BLE001 - report malformed release data
+            invalid_annotations.append(f"{annotation_path}: {exc}")
+            continue
         if usable < 4:
             insufficient_videos.append({"video_id": str(video_id), "usable_frames": usable})
     checkpoint = torch.load(args.stage1_checkpoint, map_location="cpu", weights_only=False)
@@ -88,8 +103,14 @@ def main() -> None:
     failures = []
     if missing_images:
         failures.append(f"missing sampled images: {missing_images[:5]}")
-    if missing_annotations:
-        failures.append(f"missing sampled annotations: {missing_annotations[:5]}")
+    if len(missing_annotation_videos) > args.max_missing_annotation_videos:
+        failures.append(
+            f"{len(missing_annotation_videos)} train videos lack mounted manual JSON "
+            f"(allowed {args.max_missing_annotation_videos}); "
+            f"examples: {missing_annotation_videos[:10]}"
+        )
+    if invalid_annotations:
+        failures.append(f"invalid sampled annotations: {invalid_annotations[:5]}")
     if invalid_frame_ids:
         failures.append(
             f"{invalid_frame_ids} sampled train frames are not on "
@@ -109,6 +130,9 @@ def main() -> None:
         "manifest": str(args.manifest),
         "train_rows": len(train),
         "train_videos": int(train["video_id"].nunique()),
+        "train_videos_with_manual_annotations": len(annotation_paths),
+        "train_videos_without_manual_annotations": len(missing_annotation_videos),
+        "missing_manual_annotation_examples": missing_annotation_videos[:10],
         "sampled_videos_checked": len(videos),
         "sampled_rows_checked": len(sample),
         "sampled_videos_with_fewer_than_four_usable_frames": len(insufficient_videos),

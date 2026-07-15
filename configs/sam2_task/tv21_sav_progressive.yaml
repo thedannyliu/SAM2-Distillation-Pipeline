@@ -171,6 +171,7 @@ trainer:
           video_dataset:
             _target_: sam2_distill.data.sav_task_dataset.SAVManifestJSONRawDataset
             manifest: ${oc.env:TASK_MANIFEST}
+            sav_root: ${oc.env:SAV_ROOT}
             split: train
             verify_paths: false
             max_videos: ${oc.decode:${oc.env:TASK_MAX_VIDEOS,0}}

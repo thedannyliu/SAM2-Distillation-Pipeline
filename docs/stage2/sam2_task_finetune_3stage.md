@@ -8,16 +8,25 @@ instability seen when the whole model is optimized from the first step?
 
 ## Data
 
-- Train: all 50,453 SA-V train videos represented by the mounted manifest,
-  using the existing 16 deterministic 6-fps-aligned frames per video.
+- Train candidates: all 50,453 SA-V train videos represented by the mounted
+  manifest, using the existing 16 deterministic 6-fps-aligned frames per
+  video. The input audit resolves mounted manual JSONs and excludes only the
+  release videos that have no readable manual annotation.
 - Validation: complete mounted `sav_val` split.
 - Test: complete mounted `sav_test` split.
 - Prompt: ground-truth box prompt for both image segmentation and video
   tracking evaluation.
 
-"All SA-V" in this run means all train videos. It does not decode every raw
-24-fps MP4 frame; training uses the released sampled frame set so the run is
-reproducible and fits the current storage layout.
+"All SA-V" in this run means every train candidate with a readable manual
+annotation. It does not decode every raw 24-fps MP4 frame; training uses the
+released sampled frame set so the run is reproducible and fits the current
+storage layout.
+
+The mounted Stage 1 manifest may contain blank legacy `annotation_path`
+values. Task training reconstructs them from
+`SAV_ROOT/sav_train/<shard>/<video>_manual.json`; it never treats a blank path
+as the current directory. The audit reports the exact included and excluded
+video counts before any GPU process starts.
 
 ## Experiment Matrix
 
@@ -66,3 +75,5 @@ Run `scripts/company/39_run_sam2_task_finetune_3stage.sh all` on one 4xH100
 node. `all` first audits paths and runs an actual 8-video distributed smoke
 train before starting the formal stages. Re-running the same command resumes
 the stage checkpoint and W&B run, and skips completed evaluation summaries.
+The runner replaces upstream full-model and optimizer parameter-set dumps with
+a compact parameter-count summary; warnings and tracebacks remain visible.

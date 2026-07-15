@@ -99,6 +99,7 @@ train_stage() {
     TASK_STAGE_NAME="${stage_name}" \
     TASK_TRAINABLE_MODE="${mode}" \
     TASK_MANIFEST="${MANIFEST}" \
+    SAV_ROOT="${SAV_ROOT}" \
     TASK_EPOCHS="${epochs}" \
     TASK_NUM_FRAMES="${frames}" \
     TASK_NUM_WORKERS="${TASK_NUM_WORKERS}" \
