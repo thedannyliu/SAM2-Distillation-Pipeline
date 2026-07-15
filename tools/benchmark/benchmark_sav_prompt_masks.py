@@ -179,6 +179,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
         infer_adapter_mode,
         infer_stage1_model_name,
         infer_student_family,
+        load_task_non_image_state,
         resolve_student_checkpoint,
     )
     from sam2_distill.models.stage1_student import build_stage1_student
@@ -189,6 +190,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
         param.requires_grad_(False)
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    task_load_summary = load_task_non_image_state(model, checkpoint)
     state_dict = extract_state_dict(checkpoint)
     student_model_name = infer_stage1_model_name(
         checkpoint, state_dict, args.student_model_name
@@ -232,6 +234,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
         "sam2_package": str(Path(sam2_package.__file__).resolve()),
         "missing_keys": list(incompatible.missing_keys),
         "unexpected_keys": list(incompatible.unexpected_keys),
+        "task_model_load": task_load_summary,
     }
 
 

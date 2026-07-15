@@ -38,18 +38,26 @@ class EdgeTAMTrain(SAM2Train):
         self.image_encoder_activation_checkpoint = image_encoder_activation_checkpoint
         self.trainable_module_mode = trainable_module_mode
         self.freeze_batchnorm = freeze_batchnorm
+        self._frozen_eval_modules: list[torch.nn.Module] = []
         self.trainable_parameter_summary = None
         if trainable_module_mode is not None:
-            self.trainable_parameter_summary = self._apply_trainable_module_mode(
-                trainable_module_mode
-            )
+            self._apply_trainable_module_mode(trainable_module_mode)
         if self.freeze_batchnorm:
             self._freeze_batchnorm_modules()
+        if trainable_module_mode is not None:
+            self.trainable_parameter_summary = self._parameter_summary()
 
     def _apply_trainable_module_mode(self, mode: str) -> dict[str, int]:
-        if mode not in {"image_neck_only", "image_encoder_only"}:
+        if mode not in {
+            "image_neck_only",
+            "image_encoder_only",
+            "image_encoder_mask_decoder",
+            "image_encoder_mask_decoder_memory",
+        }:
             raise ValueError(
-                "trainable_module_mode must be one of: image_neck_only, image_encoder_only"
+                "trainable_module_mode must be one of: image_neck_only, "
+                "image_encoder_only, image_encoder_mask_decoder, "
+                "image_encoder_mask_decoder_memory"
             )
 
         for param in self.parameters():
@@ -57,14 +65,40 @@ class EdgeTAMTrain(SAM2Train):
 
         if mode == "image_neck_only":
             modules = [self.image_encoder.neck]
-        else:
+        elif mode == "image_encoder_only":
             modules = [self.image_encoder]
+        elif mode == "image_encoder_mask_decoder":
+            modules = [self.image_encoder, self.sam_mask_decoder]
+        else:
+            for param in self.parameters():
+                param.requires_grad = True
+            modules = []
+            for param in self.sam_prompt_encoder.parameters():
+                param.requires_grad = False
 
         for module in modules:
             for param in module.parameters():
                 param.requires_grad = True
 
-        trainable = sum(param.numel() for param in self.parameters() if param.requires_grad)
+        frozen_candidates = [
+            self.sam_prompt_encoder,
+            self.sam_mask_decoder,
+            self.memory_attention,
+            self.memory_encoder,
+        ]
+        self._frozen_eval_modules = [
+            module
+            for module in frozen_candidates
+            if module is not None
+            and not any(param.requires_grad for param in module.parameters())
+        ]
+
+        return self._parameter_summary()
+
+    def _parameter_summary(self) -> dict[str, int]:
+        trainable = sum(
+            param.numel() for param in self.parameters() if param.requires_grad
+        )
         total = sum(param.numel() for param in self.parameters())
         return {
             "total_parameters": int(total),
@@ -83,6 +117,9 @@ class EdgeTAMTrain(SAM2Train):
         super().train(mode)
         if mode and self.freeze_batchnorm:
             self._freeze_batchnorm_modules()
+        if mode:
+            for module in self._frozen_eval_modules:
+                module.eval()
         return self
 
     def forward_image(self, img_batch: torch.Tensor):

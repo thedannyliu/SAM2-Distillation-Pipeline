@@ -89,3 +89,45 @@ def resolve_tinyvit_checkpoint(model_name: str, requested_checkpoint: Path) -> P
 
 def resolve_student_checkpoint(model_name: str, requested_checkpoint: Path) -> Path:
     return resolve_tinyvit_checkpoint(model_name, requested_checkpoint)
+
+
+def load_task_non_image_state(
+    model: torch.nn.Module, checkpoint: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Load decoder/memory weights from a progressive task-tuning checkpoint."""
+
+    task_state = checkpoint.get("task_model_state")
+    if not isinstance(task_state, dict):
+        return None
+    non_image_state = {
+        key: value
+        for key, value in strip_module_prefix(task_state).items()
+        if not key.startswith("image_encoder.")
+    }
+    target_non_image = {
+        key for key in model.state_dict() if not key.startswith("image_encoder.")
+    }
+    missing_source = sorted(target_non_image - set(non_image_state))
+    unexpected_source = sorted(set(non_image_state) - target_non_image)
+    if missing_source or unexpected_source:
+        raise RuntimeError(
+            "Task checkpoint non-image state does not match SAM2: "
+            f"missing={missing_source[:10]}, unexpected={unexpected_source[:10]}"
+        )
+    incompatible = model.load_state_dict(non_image_state, strict=False)
+    unexpected = list(incompatible.unexpected_keys)
+    missing_non_image = [
+        key
+        for key in incompatible.missing_keys
+        if not key.startswith("image_encoder.")
+    ]
+    if unexpected or missing_non_image:
+        raise RuntimeError(
+            "Failed to load task checkpoint non-image state: "
+            f"missing={missing_non_image[:10]}, unexpected={unexpected[:10]}"
+        )
+    return {
+        "task_stage": checkpoint.get("args", {}).get("task_stage"),
+        "trainable_mode": checkpoint.get("args", {}).get("trainable_mode"),
+        "non_image_tensors_loaded": len(non_image_state),
+    }
