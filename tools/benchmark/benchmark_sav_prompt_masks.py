@@ -69,10 +69,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def add_import_roots(args: argparse.Namespace) -> None:
-    sys.path.insert(0, str(REPO_ROOT))
-    for root in (args.sam2_root, args.edgetam_root, args.sam3_root):
+    if args.model_kind == "edgetam-trainer":
+        roots = (args.edgetam_root, args.sam2_root, args.sam3_root)
+    elif args.model_kind == "sam31-stage1-student":
+        roots = (args.sam3_root, args.sam2_root, args.edgetam_root)
+    else:
+        roots = (args.sam2_root, args.edgetam_root, args.sam3_root)
+
+    for root in reversed(roots):
         if root.exists():
             sys.path.insert(0, str(root))
+    sys.path.insert(0, str(REPO_ROOT))
 
 
 def sync(device: torch.device) -> None:
@@ -101,6 +108,7 @@ def extract_state_dict(checkpoint: dict[str, Any]) -> dict[str, torch.Tensor]:
 
 
 def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
+    import sam2 as sam2_package
     from hydra.utils import instantiate
     from omegaconf import OmegaConf
     from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -127,12 +135,14 @@ def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
         "checkpoint_epoch": checkpoint.get("epoch"),
         "checkpoint_steps": checkpoint.get("steps"),
         "num_tensors": len(state_dict),
+        "sam2_package": str(Path(sam2_package.__file__).resolve()),
         "missing_keys": list(incompatible.missing_keys),
         "unexpected_keys": list(incompatible.unexpected_keys),
     }
 
 
 def load_sam2_predictor(args: argparse.Namespace, device: torch.device):
+    import sam2 as sam2_package
     from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
 
@@ -140,13 +150,18 @@ def load_sam2_predictor(args: argparse.Namespace, device: torch.device):
     model.eval()
     for param in model.parameters():
         param.requires_grad_(False)
-    return SAM2ImagePredictor(model), {"checkpoint": str(args.checkpoint), "config": args.config}
+    return SAM2ImagePredictor(model), {
+        "checkpoint": str(args.checkpoint),
+        "config": args.config,
+        "sam2_package": str(Path(sam2_package.__file__).resolve()),
+    }
 
 
 def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device):
     if args.sam2_checkpoint is None:
         raise SystemExit("--sam2-checkpoint is required for --model-kind stage1-student")
 
+    import sam2 as sam2_package
     from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
     from sam2_distill.models.stage1_checkpoint import (
@@ -193,6 +208,7 @@ def load_stage1_student_predictor(args: argparse.Namespace, device: torch.device
         "checkpoint_step": checkpoint.get("step"),
         "checkpoint_epoch": checkpoint.get("epoch"),
         "num_tensors": len(state_dict),
+        "sam2_package": str(Path(sam2_package.__file__).resolve()),
         "missing_keys": list(incompatible.missing_keys),
         "unexpected_keys": list(incompatible.unexpected_keys),
     }
@@ -525,7 +541,7 @@ def main() -> None:
     frame_artifact_targets = select_video_frame_artifacts(records, args.save_video_frame_artifacts)
 
     image_items = list(by_image.items())
-    with torch.inference_mode():
+    with torch.inference_mode(), autocast_context(device):
         for warm_image_path, _ in image_items[: max(args.warmup_images, 0)]:
             with Image.open(warm_image_path) as image:
                 set_image_for_model(predictor, args.model_kind, np.asarray(image.convert("RGB")), device)
@@ -603,6 +619,7 @@ def main() -> None:
         "prompt_kind": args.prompt_kind,
         "config": args.config,
         "checkpoint": str(args.checkpoint),
+        "inference_dtype": "bfloat16_autocast" if device.type == "cuda" else "float32",
         "image_root": str(args.image_root),
         "ann_root": str(args.ann_root),
         "out_dir": str(args.out_dir),
