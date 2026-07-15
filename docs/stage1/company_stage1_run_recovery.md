@@ -130,6 +130,21 @@ elapsed time, and seconds per video. Results are stored under:
 <run>/sav_test_box_benchmark/metrics.csv
 ```
 
+Full downstream evaluation uses every GPU assigned to the recovery lane. The
+split video list is partitioned round-robin into non-overlapping GPU shards;
+each GPU loads one model replica and evaluates its videos independently. Image
+per-object rows are concatenated before recomputing global mIoU, AP50:95, and
+latency. VOS prediction directories are merged only after exact video coverage
+is verified, then the official J&F evaluator runs once on the complete merged
+prediction root. Set `EVAL_GPUS=0,1,2,3` when invoking the benchmark directly.
+
+VOS `sec_per_video` remains aggregate GPU-seconds divided by video count, so it
+is comparable with previous single-GPU model latency. `parallel_wall_seconds`
+and `parallel_throughput_videos_per_second` in `run_summary.json` report actual
+multi-GPU completion time and throughput. A constrained image smoke test with
+`MAX_IMAGE_OBJECTS>0` intentionally uses one GPU to preserve the exact object
+limit; formal full-split recovery uses all assigned GPUs.
+
 SAM2.1 students use the existing SAM2 prompt decoder and memory pipeline.
 SAM3.1 students replace the official Object Multiplex detector vision trunk.
 Because the official SAM3.1 semantic box API resets state for every box prompt,

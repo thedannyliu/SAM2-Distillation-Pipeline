@@ -57,9 +57,8 @@ sam2_queue() {
 }
 
 run_full_eval() {
-  local family="$1" name="$2" run_dir="$3" split eval_gpu sam2_config sam2_checkpoint
+  local family="$1" name="$2" run_dir="$3" split sam2_config sam2_checkpoint
   [[ "${FULL_EVAL}" == "1" ]] || return
-  eval_gpu="${GPUS%%,*}"
   sam2_config="configs/sam2.1/sam2.1_hiera_l.yaml"
   sam2_checkpoint="${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt"
   if [[ "${name}" == *sam21bplus* ]]; then
@@ -67,12 +66,11 @@ run_full_eval() {
     sam2_checkpoint="${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_base_plus.pt"
   fi
   for split in sav_val sav_test; do
-    echo "===== full ${split} ${family} ${name} on GPU ${eval_gpu} ====="
+    echo "===== full ${split} ${family} ${name} on GPUs ${GPUS} ====="
     if [[ "${DRY_RUN}" == "1" ]]; then
       echo "MODEL_FAMILY=${family} SAV_SPLIT=${split} RUN_DIR=${run_dir}"
       continue
     fi
-    CUDA_VISIBLE_DEVICES="${eval_gpu}" \
     MODEL_FAMILY="${family}" \
     EXPERIMENT="${name}" \
     RUN_DIR="${run_dir}" \
@@ -86,6 +84,7 @@ run_full_eval() {
     MAX_VIDEOS=0 \
     MAX_IMAGE_OBJECTS=0 \
     DEVICE=cuda \
+    EVAL_GPUS="${GPUS}" \
       scripts/company/25_benchmark_stage1_sav_test.sh
   done
 }

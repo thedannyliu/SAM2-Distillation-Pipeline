@@ -28,11 +28,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--video-list-file", type=Path)
     parser.add_argument("--max-videos", type=int, default=0)
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
 
 
 def video_names(args: argparse.Namespace) -> list[str]:
+    if args.num_shards < 1 or not 0 <= args.shard_index < args.num_shards:
+        raise ValueError("shard-index must be in [0, num-shards)")
     if args.video_list_file and args.video_list_file.is_file():
         names = [
             line.strip()
@@ -42,7 +46,8 @@ def video_names(args: argparse.Namespace) -> list[str]:
     else:
         names = sorted(path.name for path in args.image_root.iterdir() if path.is_dir())
     names = [name for name in names if (args.image_root / name).is_dir()]
-    return names[: args.max_videos] if args.max_videos > 0 else names
+    names = names[: args.max_videos] if args.max_videos > 0 else names
+    return names[args.shard_index :: args.num_shards]
 
 
 def frame_paths(video_dir: Path) -> list[Path]:
