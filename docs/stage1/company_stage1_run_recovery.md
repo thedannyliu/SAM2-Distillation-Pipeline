@@ -147,6 +147,13 @@ limit; formal full-split recovery uses all assigned GPUs. Set
 `FULL_EVAL_GPUS=0,1,2,3,4,5,6,7` to use all eight GPUs for evaluation while a
 recovered experiment retains its original four-GPU training world size.
 
+SAM2 and SAM2.1-student image evaluation resolves `sam2` from the official
+`SAM2_ROOT`, while EdgeTAM evaluation resolves its own vendored package. CUDA
+image inference uses BF16 autocast and records `inference_dtype` plus the
+resolved `sam2_package` in `summary.json`; compare latency only between runs
+with the same backend and dtype. Interrupting the benchmark with `Ctrl+C`
+terminates all active image or VOS shard processes before the script exits.
+
 SAM2.1 students use the existing SAM2 prompt decoder and memory pipeline.
 SAM3.1 students replace the official Object Multiplex detector vision trunk.
 Because the official SAM3.1 semantic box API resets state for every box prompt,

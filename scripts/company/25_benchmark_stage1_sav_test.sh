@@ -72,6 +72,30 @@ if [[ "${#eval_gpus[@]}" -gt "${video_count}" ]]; then
   eval_gpus=("${eval_gpus[@]:0:${video_count}}")
 fi
 num_shards="${#eval_gpus[@]}"
+active_pids=()
+
+terminate_active_jobs() {
+  local pid
+  if [[ "${#active_pids[@]}" -eq 0 ]]; then
+    return
+  fi
+  echo "terminating benchmark shards: ${active_pids[*]}" >&2
+  kill -TERM "${active_pids[@]}" 2>/dev/null || true
+  for pid in "${active_pids[@]}"; do
+    wait "${pid}" 2>/dev/null || true
+  done
+  active_pids=()
+}
+
+cleanup_on_exit() {
+  local status="$?"
+  terminate_active_jobs
+  exit "${status}"
+}
+
+trap 'terminate_active_jobs; exit 130' INT
+trap 'terminate_active_jobs; exit 143' TERM
+trap cleanup_on_exit EXIT
 
 wait_for_jobs() {
   local failed=0 pid
@@ -127,12 +151,15 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${image_out}/summary.json" ]]; then
         --out-dir "${shard_out}" \
         --num-shards "${num_shards}" \
         --shard-index "${shard_index}" &
-    image_pids+=("$!")
+    pid="$!"
+    image_pids+=("${pid}")
+    active_pids+=("${pid}")
   done
   wait_for_jobs "${image_pids[@]}" || {
     echo "one or more image benchmark shards failed" >&2
     exit 1
   }
+  active_pids=()
   python tools/benchmark/merge_sav_benchmark_shards.py \
     --mode image \
     "${image_merge_args[@]}" \
@@ -189,12 +216,15 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
         --out-dir "${shard_out}" \
         --num-shards "${num_shards}" \
         --shard-index "${shard_index}" &
-    vos_pids+=("$!")
+    pid="$!"
+    vos_pids+=("${pid}")
+    active_pids+=("${pid}")
   done
   wait_for_jobs "${vos_pids[@]}" || {
     echo "one or more VOS benchmark shards failed" >&2
     exit 1
   }
+  active_pids=()
   python tools/benchmark/merge_sav_benchmark_shards.py \
     --mode vos \
     "${vos_merge_args[@]}" \
