@@ -6,11 +6,18 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
 from PIL import Image
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from sam2_distill.data.sav_task_dataset import resolve_sav_train_annotation_path
 
 
 def replace_split_path(value: object, sav_root: Path, split: str) -> object:
@@ -42,6 +49,7 @@ def main() -> None:
     parser.add_argument("--expected-val-rows", type=int, default=1240)
     parser.add_argument("--expected-val-videos", type=int, default=155)
     parser.add_argument("--expected-val-frames-per-video", type=int, default=8)
+    parser.add_argument("--max-missing-train-annotations", type=int, default=200)
     args = parser.parse_args()
 
     frame = pd.read_parquet(args.source_manifest)
@@ -98,6 +106,34 @@ def main() -> None:
             lambda value: replace_split_path(value, args.sav_root, "sav_val")
         )
 
+    if "annotation_path" not in rebased.columns:
+        rebased["annotation_path"] = None
+    train_annotation_paths = {}
+    missing_train_annotations = []
+    for video_id, rows in rebased.loc[train_mask].groupby("video_id", sort=True):
+        values = [
+            value
+            for value in rows["annotation_path"].tolist()
+            if isinstance(value, str) and value.strip()
+        ]
+        resolved = resolve_sav_train_annotation_path(
+            str(video_id), values[0] if values else None, args.sav_root
+        )
+        if resolved is None:
+            missing_train_annotations.append(str(video_id))
+            train_annotation_paths[str(video_id)] = None
+        else:
+            train_annotation_paths[str(video_id)] = str(resolved)
+    if len(missing_train_annotations) > args.max_missing_train_annotations:
+        raise SystemExit(
+            f"Mounted release is missing manual JSON for "
+            f"{len(missing_train_annotations)} train videos; "
+            f"examples: {missing_train_annotations[:10]}"
+        )
+    rebased.loc[train_mask, "annotation_path"] = rebased.loc[
+        train_mask, "video_id"
+    ].map(train_annotation_paths)
+
     if rebased["sample_id"].duplicated().any():
         raise SystemExit("Duplicate sample_id values found")
     paths = rebased["image_path"].astype(str).tolist()
@@ -126,6 +162,10 @@ def main() -> None:
         "rows": len(rebased),
         "split_counts": {key: int(value) for key, value in split_counts.items()},
         "train_videos": int(train["video_id"].nunique()),
+        "train_videos_with_manual_annotations": len(train_annotation_paths)
+        - len(missing_train_annotations),
+        "train_videos_without_manual_annotations": len(missing_train_annotations),
+        "missing_manual_annotation_examples": missing_train_annotations[:10],
         "val_videos": int(val["video_id"].nunique()),
         "decoded_samples": len(selected),
     }
