@@ -28,6 +28,15 @@ values. Task training reconstructs them from
 as the current directory. The audit reports the exact included and excluded
 video counts before any GPU process starts.
 
+When `JPEGImages`, `sav_val`, and `sav_test` are mounted but raw `sav_train`
+is not, run `scripts/company/40_sync_sav_task_annotations_from_datalake.sh`
+once. It reads only manifest-selected `*_manual.json` objects from the Data
+Lake and writes them under
+`/group-volume/danny-dataset/sam2_distill/data/sav_task_annotations/sav_train`.
+It does not copy train MP4s or auto annotations. Build a runtime `SAV_ROOT` by
+linking that `sav_train` directory together with the three mounted directories;
+the manifest can remain unchanged while its mounted train image paths exist.
+
 ## Experiment Matrix
 
 | Stage | Research question | Trainable modules | Frames/clip | Epochs | Encoder LR | Other LR |
