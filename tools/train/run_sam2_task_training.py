@@ -63,6 +63,13 @@ def init_wandb(args: argparse.Namespace):
             "frames": int(os.environ.get("TASK_NUM_FRAMES", "0")),
             "encoder_lr": float(os.environ.get("TASK_ENCODER_LR", "0")),
             "head_lr": float(os.environ.get("TASK_HEAD_LR", "0")),
+            "freeze_batchnorm": os.environ.get(
+                "TASK_FREEZE_BATCHNORM", "true"
+            ).lower()
+            == "true",
+            "num_correction_points": int(
+                os.environ.get("TASK_NUM_CORRECTION_POINTS", "1")
+            ),
         },
     )
     run_file.write_text(

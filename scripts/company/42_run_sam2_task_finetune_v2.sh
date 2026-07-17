@@ -10,6 +10,8 @@ SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 export RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/sam2_task_finetune_tv21_v2}"
 export WANDB_PROJECT="${WANDB_PROJECT:-sam2-task-finetune-tv21-v2}"
 export WANDB_LOSS_EMA_BETA=0.98
+export SMOKE_WANDB_PROJECT="${WANDB_PROJECT}"
+export SMOKE_WANDB_MODE="${WANDB_MODE:-online}"
 
 export STAGE1_NAME="stage1_encoder_task_2ep_v2"
 export STAGE1_MODE="image_encoder_only"

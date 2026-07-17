@@ -43,7 +43,7 @@ trainer:
   model:
     _target_: sam2_distill.edgetam.train_model.EdgeTAMTrain
     trainable_module_mode: ${oc.env:TASK_TRAINABLE_MODE}
-    freeze_batchnorm: true
+    freeze_batchnorm: ${oc.decode:${oc.env:TASK_FREEZE_BATCHNORM,true}}
     image_encoder_forward_batch_size: 1
     image_encoder_activation_checkpoint: true
     image_encoder:
@@ -150,7 +150,7 @@ trainer:
     add_all_frames_to_correct_as_cond: true
     num_init_cond_frames_for_train: 1
     rand_init_cond_frames_for_train: false
-    num_correction_pt_per_frame: 1
+    num_correction_pt_per_frame: ${oc.decode:${oc.env:TASK_NUM_CORRECTION_POINTS,1}}
     use_act_ckpt_iterative_pt_sampling: true
     prob_to_use_pt_input_for_eval: 1.0
     prob_to_use_box_input_for_eval: 1.0
