@@ -37,6 +37,12 @@ It does not copy train MP4s or auto annotations. Build a runtime `SAV_ROOT` by
 linking that `sav_train` directory together with the three mounted directories;
 the manifest can remain unchanged while its mounted train image paths exist.
 
+If the Data Lake release mount omits files, the storage-heavy fallback is
+`scripts/company/41_sync_sav_runtime_from_datalake.sh`. It copies only
+`JPEGImages`, `sav_val`, and `sav_test` to
+`/group-volume/danny-dataset/SA-V`, resumes files whose sizes already match,
+and leaves raw train MP4s out. Confirm group quota before using this fallback.
+
 ## Experiment Matrix
 
 | Stage | Research question | Trainable modules | Frames/clip | Epochs | Encoder LR | Other LR |
