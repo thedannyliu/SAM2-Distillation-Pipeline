@@ -79,6 +79,11 @@ Each stage writes:
 - Full `sav_val` and `sav_test` image metrics: mIoU, AP, and latency.
 - Full `sav_val` and `sav_test` video metrics: J&F and latency.
 
+The runner executes `train -> full sav_val -> full sav_test` for every stage.
+Starting or resuming stage training writes `.full_eval_required`; this forces
+fresh downstream metrics for the updated checkpoint even when older summaries
+exist. The marker is removed only after both split evaluations succeed.
+
 Do not judge convergence from adjacent step losses. Video/object composition
 changes each step, so the decision signal is epoch-average task loss plus the
 full validation metrics. Compare Stage 2 primarily on mIoU/AP and Stage 3
@@ -94,3 +99,11 @@ The runner replaces upstream full-model and optimizer parameter-set dumps with
 a compact parameter-count summary. It also disables upstream environment dumps
 and logs task losses/LR directly to W&B instead of using TensorBoard patching;
 warnings and tracebacks remain visible.
+
+The smoke uses the configured online W&B project and a fresh local run root.
+It succeeds only after the W&B API can read `train/loss_total` from remote
+history. Use the standalone `smoke` action before a formal run; do not disable
+remote verification unless intentionally testing offline mode. Task runs log
+canonical `train/loss_*`, `train/lr_group_*`, `train/epoch`, and
+`train/global_step` metrics directly from rank 0; `PRINT_EVERY` controls
+terminal frequency and `LOG_EVERY` controls W&B frequency.

@@ -246,8 +246,8 @@ trainer:
       flush_secs: 120
       should_log: true
     log_dir: ${oc.env:TASK_RUN_DIR}/logs
-    log_freq: 300
-    log_scalar_frequency: 30
+    log_freq: ${oc.decode:${oc.env:TASK_PRINT_EVERY,300}}
+    log_scalar_frequency: ${oc.decode:${oc.env:TASK_LOG_EVERY,30}}
     log_visual_frequency: 10000
 
   checkpoint:

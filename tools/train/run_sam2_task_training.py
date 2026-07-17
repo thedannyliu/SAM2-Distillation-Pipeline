@@ -66,9 +66,18 @@ def init_wandb(args: argparse.Namespace):
         },
     )
     run_file.write_text(
-        json.dumps({"run_id": run.id, "url": run.url, "project": args.wandb_project})
+        json.dumps(
+            {
+                "run_id": run.id,
+                "url": run.url,
+                "entity": run.entity,
+                "project": args.wandb_project,
+                "name": args.wandb_name,
+            }
+        )
         + "\n"
     )
+    print(f"W&B run: {run.url} (id={run.id})", flush=True)
     return run
 
 
@@ -76,6 +85,18 @@ def _scalar(value):
     if hasattr(value, "item"):
         value = value.item()
     return float(value)
+
+
+def _wandb_loss_name(name: str) -> str:
+    aliases = {
+        "Losses/train_all_loss": "train/loss_total",
+        "Losses/train_all_core_loss": "train/loss_core",
+        "Losses/train_all_loss_mask": "train/loss_mask",
+        "Losses/train_all_loss_dice": "train/loss_dice",
+        "Losses/train_all_loss_iou": "train/loss_iou",
+        "Losses/train_all_loss_class": "train/loss_class",
+    }
+    return aliases.get(name, f"train/{name.replace('/', '_')}")
 
 
 def patch_sam2_training_runtime(wandb_run=None) -> None:
@@ -144,23 +165,23 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
         should_log = (completed_step - 1) % log_frequency == 0
         if wandb_run is not None and self.distributed_rank == 0 and should_log:
             metrics = {
-                f"{name}/current": _scalar(meter.val)
+                _wandb_loss_name(name): _scalar(meter.val)
                 for name, meter in loss_mts.items()
             }
             metrics.update(
                 {
-                    f"{name}/current": _scalar(meter.val)
+                    _wandb_loss_name(name): _scalar(meter.val)
                     for name, meter in extra_loss_mts.items()
                 }
             )
             metrics.update(
                 {
-                    "Trainer/epoch": float(self.epoch),
-                    "Trainer/global_step": float(completed_step),
+                    "train/epoch": float(self.epoch),
+                    "train/global_step": float(completed_step),
                 }
             )
             for index, group in enumerate(self.optim.optimizer.param_groups):
-                metrics[f"Optim/group_{index}_lr"] = float(group["lr"])
+                metrics[f"train/lr_group_{index}"] = float(group["lr"])
             wandb_run.log(metrics, step=completed_step)
         return result
 
@@ -190,12 +211,15 @@ def main() -> None:
     config = OmegaConf.load(args.config)
     run = init_wandb(args)
     patch_sam2_training_runtime(run)
+    succeeded = False
     try:
         trainer = instantiate(config.trainer, _recursive_=False)
         trainer.run()
+        succeeded = True
     finally:
         if run is not None:
-            run.finish()
+            run.summary["system/training_complete"] = int(succeeded)
+            run.finish(exit_code=0 if succeeded else 1)
 
 
 if __name__ == "__main__":

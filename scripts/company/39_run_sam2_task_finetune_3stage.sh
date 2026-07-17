@@ -22,6 +22,8 @@ CONFIG="${CONFIG:-configs/sam2_task/tv21_sav_progressive.yaml}"
 WANDB_PROJECT="${WANDB_PROJECT:-sam2-task-finetune-tv21-v1}"
 WANDB_MODE="${WANDB_MODE:-online}"
 TASK_NUM_WORKERS="${TASK_NUM_WORKERS:-8}"
+PRINT_EVERY="${PRINT_EVERY:-300}"
+LOG_EVERY="${LOG_EVERY:-30}"
 SKIP_DONE="${SKIP_DONE:-1}"
 
 STAGE1_NAME="stage1_encoder_task_2ep"
@@ -93,6 +95,7 @@ train_stage() {
     echo "skip training-complete task stage: ${stage_name}"
   else
     echo "===== Training ${stage_name} on GPUs ${GPUS} ====="
+    touch "${stage_dir}/.full_eval_required"
     CUDA_VISIBLE_DEVICES="${GPUS}" \
     PYTHONPATH="${REPO_ROOT}:${SAM2_TRAINING_ROOT}:${PYTHONPATH:-}" \
     SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT}" \
@@ -104,6 +107,8 @@ train_stage() {
     TASK_EPOCHS="${epochs}" \
     TASK_NUM_FRAMES="${frames}" \
     TASK_NUM_WORKERS="${TASK_NUM_WORKERS}" \
+    TASK_PRINT_EVERY="${PRINT_EVERY}" \
+    TASK_LOG_EVERY="${LOG_EVERY}" \
     TASK_MAX_VIDEOS="${max_videos}" \
     TASK_ENCODER_LR="${encoder_lr}" \
     TASK_ENCODER_LR_END="${encoder_lr_end}" \
@@ -133,6 +138,7 @@ train_stage() {
 evaluate_stage_split() {
   local stage_name="$1"
   local split="$2"
+  local skip_done="$3"
   local stage_dir="${RUN_ROOT}/${stage_name}"
   echo "===== Full ${split} evaluation: ${stage_name} on GPUs ${FULL_EVAL_GPUS} ====="
   MODEL_FAMILY=sam2 \
@@ -145,13 +151,21 @@ evaluate_stage_split() {
   SAV_ROOT="${SAV_ROOT}" \
   SAV_SPLIT="${split}" \
   EVAL_GPUS="${FULL_EVAL_GPUS}" \
-  SKIP_DONE="${SKIP_DONE}" \
+  SKIP_DONE="${skip_done}" \
   scripts/company/25_benchmark_stage1_sav_test.sh || return 1
 }
 
 evaluate_stage() {
-  evaluate_stage_split "$1" sav_val || return 1
-  evaluate_stage_split "$1" sav_test || return 1
+  local stage_name="$1"
+  local stage_dir="${RUN_ROOT}/${stage_name}"
+  local eval_skip_done="${SKIP_DONE}"
+  if [[ -f "${stage_dir}/.full_eval_required" ]]; then
+    eval_skip_done=0
+    echo "checkpoint changed; forcing fresh val/test for ${stage_name}"
+  fi
+  evaluate_stage_split "${stage_name}" sav_val "${eval_skip_done}" || return 1
+  evaluate_stage_split "${stage_name}" sav_test "${eval_skip_done}" || return 1
+  rm -f "${stage_dir}/.full_eval_required"
 }
 
 run_stage1() {
@@ -176,23 +190,28 @@ run_stage3() {
   evaluate_stage "${STAGE3_NAME}" || return 1
 }
 
-smoke_pipeline() {
-  local saved_run_root="${RUN_ROOT}"
-  local saved_wandb_mode="${WANDB_MODE}"
-  local revision
+smoke_pipeline() (
+  local revision smoke_id smoke_stage_dir
   revision="$(git rev-parse --short HEAD)"
-  RUN_ROOT="${SMOKE_RUN_ROOT:-/user-volume/sam2_task_finetune_smoke_${HOSTNAME}_${revision}}"
-  WANDB_MODE=disabled
+  smoke_id="${SMOKE_ID:-$(date +%Y%m%d_%H%M%S)}"
+  RUN_ROOT="${SMOKE_RUN_ROOT:-/user-volume/sam2_task_finetune_smoke_${HOSTNAME}_${revision}_${smoke_id}}"
+  WANDB_MODE="${SMOKE_WANDB_MODE:-${WANDB_MODE}}"
+  WANDB_PROJECT="${SMOKE_WANDB_PROJECT:-${WANDB_PROJECT}}"
+  smoke_stage_dir="${RUN_ROOT}/smoke_encoder_task"
   echo "===== Four-GPU task-loss smoke test (8 videos) ====="
   train_stage smoke_encoder_task image_encoder_only 1 2 \
-    1.0e-6 1.0e-7 1.0e-6 1.0e-7 "" 8 || {
-      RUN_ROOT="${saved_run_root}"
-      WANDB_MODE="${saved_wandb_mode}"
-      return 1
-    }
-  RUN_ROOT="${saved_run_root}"
-  WANDB_MODE="${saved_wandb_mode}"
-}
+    1.0e-6 1.0e-7 1.0e-6 1.0e-7 "" 8 || return 1
+  rm -f "${smoke_stage_dir}/.full_eval_required"
+  if [[ "${WANDB_MODE}" == "online" && "${SMOKE_VERIFY_WANDB:-1}" == "1" ]]; then
+    python tools/train/verify_wandb_history.py \
+      --run-file "${smoke_stage_dir}/wandb/wandb_run.json" \
+      --metric train/loss_total \
+      --timeout-seconds "${SMOKE_WANDB_TIMEOUT:-120}" || return 1
+  else
+    echo "skip remote W&B smoke verification: WANDB_MODE=${WANDB_MODE}"
+  fi
+  echo "Smoke run root: ${RUN_ROOT}"
+)
 
 for path in "${MANIFEST}" "${SAV_ROOT}/JPEGImages" \
   "${SAV_ROOT}/sav_val/sav_val.txt" "${SAV_ROOT}/sav_test/sav_test.txt" \
