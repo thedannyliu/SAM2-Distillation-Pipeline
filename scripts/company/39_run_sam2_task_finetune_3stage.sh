@@ -26,9 +26,32 @@ PRINT_EVERY="${PRINT_EVERY:-300}"
 LOG_EVERY="${LOG_EVERY:-30}"
 SKIP_DONE="${SKIP_DONE:-1}"
 
-STAGE1_NAME="stage1_encoder_task_2ep"
-STAGE2_NAME="stage2_encoder_decoder_task_2ep"
-STAGE3_NAME="stage3_encoder_decoder_memory_task_1ep"
+STAGE1_NAME="${STAGE1_NAME:-stage1_encoder_task_2ep}"
+STAGE1_MODE="${STAGE1_MODE:-image_encoder_only}"
+STAGE1_EPOCHS="${STAGE1_EPOCHS:-2}"
+STAGE1_FRAMES="${STAGE1_FRAMES:-2}"
+STAGE1_ENCODER_LR="${STAGE1_ENCODER_LR:-1.0e-6}"
+STAGE1_ENCODER_LR_END="${STAGE1_ENCODER_LR_END:-1.0e-7}"
+STAGE1_HEAD_LR="${STAGE1_HEAD_LR:-1.0e-6}"
+STAGE1_HEAD_LR_END="${STAGE1_HEAD_LR_END:-1.0e-7}"
+
+STAGE2_NAME="${STAGE2_NAME:-stage2_encoder_decoder_task_2ep}"
+STAGE2_MODE="${STAGE2_MODE:-image_encoder_mask_decoder}"
+STAGE2_EPOCHS="${STAGE2_EPOCHS:-2}"
+STAGE2_FRAMES="${STAGE2_FRAMES:-2}"
+STAGE2_ENCODER_LR="${STAGE2_ENCODER_LR:-5.0e-7}"
+STAGE2_ENCODER_LR_END="${STAGE2_ENCODER_LR_END:-5.0e-8}"
+STAGE2_HEAD_LR="${STAGE2_HEAD_LR:-2.0e-6}"
+STAGE2_HEAD_LR_END="${STAGE2_HEAD_LR_END:-2.0e-7}"
+
+STAGE3_NAME="${STAGE3_NAME:-stage3_encoder_decoder_memory_task_1ep}"
+STAGE3_MODE="${STAGE3_MODE:-image_encoder_mask_decoder_memory}"
+STAGE3_EPOCHS="${STAGE3_EPOCHS:-1}"
+STAGE3_FRAMES="${STAGE3_FRAMES:-4}"
+STAGE3_ENCODER_LR="${STAGE3_ENCODER_LR:-3.0e-7}"
+STAGE3_ENCODER_LR_END="${STAGE3_ENCODER_LR_END:-3.0e-8}"
+STAGE3_HEAD_LR="${STAGE3_HEAD_LR:-1.0e-6}"
+STAGE3_HEAD_LR_END="${STAGE3_HEAD_LR_END:-1.0e-7}"
 
 require_path() {
   if [[ ! -e "$1" ]]; then
@@ -165,28 +188,42 @@ evaluate_stage() {
   fi
   evaluate_stage_split "${stage_name}" sav_val "${eval_skip_done}" || return 1
   evaluate_stage_split "${stage_name}" sav_test "${eval_skip_done}" || return 1
+  if [[ "${WANDB_MODE}" == "online" ]]; then
+    python tools/train/log_task_eval_to_wandb.py \
+      --run-file "${stage_dir}/wandb/wandb_run.json" \
+      --metrics "sav_val=${stage_dir}/sav_val_box_benchmark/metrics.csv" \
+      --metrics "sav_test=${stage_dir}/sav_test_box_benchmark/metrics.csv" || return 1
+  else
+    echo "skip W&B evaluation summary: WANDB_MODE=${WANDB_MODE}"
+  fi
   rm -f "${stage_dir}/.full_eval_required"
 }
 
 run_stage1() {
-  train_stage "${STAGE1_NAME}" image_encoder_only 2 2 \
-    1.0e-6 1.0e-7 1.0e-6 1.0e-7 "" 0 || return 1
+  train_stage "${STAGE1_NAME}" "${STAGE1_MODE}" \
+    "${STAGE1_EPOCHS}" "${STAGE1_FRAMES}" \
+    "${STAGE1_ENCODER_LR}" "${STAGE1_ENCODER_LR_END}" \
+    "${STAGE1_HEAD_LR}" "${STAGE1_HEAD_LR_END}" "" 0 || return 1
   evaluate_stage "${STAGE1_NAME}" || return 1
 }
 
 run_stage2() {
   local previous="${RUN_ROOT}/${STAGE1_NAME}/checkpoints/checkpoint.pt"
   require_path "${previous}" || return 1
-  train_stage "${STAGE2_NAME}" image_encoder_mask_decoder 2 2 \
-    5.0e-7 5.0e-8 2.0e-6 2.0e-7 "${previous}" 0 || return 1
+  train_stage "${STAGE2_NAME}" "${STAGE2_MODE}" \
+    "${STAGE2_EPOCHS}" "${STAGE2_FRAMES}" \
+    "${STAGE2_ENCODER_LR}" "${STAGE2_ENCODER_LR_END}" \
+    "${STAGE2_HEAD_LR}" "${STAGE2_HEAD_LR_END}" "${previous}" 0 || return 1
   evaluate_stage "${STAGE2_NAME}" || return 1
 }
 
 run_stage3() {
   local previous="${RUN_ROOT}/${STAGE2_NAME}/checkpoints/checkpoint.pt"
   require_path "${previous}" || return 1
-  train_stage "${STAGE3_NAME}" image_encoder_mask_decoder_memory 1 4 \
-    3.0e-7 3.0e-8 1.0e-6 1.0e-7 "${previous}" 0 || return 1
+  train_stage "${STAGE3_NAME}" "${STAGE3_MODE}" \
+    "${STAGE3_EPOCHS}" "${STAGE3_FRAMES}" \
+    "${STAGE3_ENCODER_LR}" "${STAGE3_ENCODER_LR_END}" \
+    "${STAGE3_HEAD_LR}" "${STAGE3_HEAD_LR_END}" "${previous}" 0 || return 1
   evaluate_stage "${STAGE3_NAME}" || return 1
 }
 
@@ -197,10 +234,14 @@ smoke_pipeline() (
   RUN_ROOT="${SMOKE_RUN_ROOT:-/user-volume/sam2_task_finetune_smoke_${HOSTNAME}_${revision}_${smoke_id}}"
   WANDB_MODE="${SMOKE_WANDB_MODE:-${WANDB_MODE}}"
   WANDB_PROJECT="${SMOKE_WANDB_PROJECT:-${WANDB_PROJECT}}"
-  smoke_stage_dir="${RUN_ROOT}/smoke_encoder_task"
+  SMOKE_NAME="${SMOKE_NAME:-smoke_encoder_task}"
+  SMOKE_MODE="${SMOKE_MODE:-image_encoder_only}"
+  smoke_stage_dir="${RUN_ROOT}/${SMOKE_NAME}"
   echo "===== Four-GPU task-loss smoke test (8 videos) ====="
-  train_stage smoke_encoder_task image_encoder_only 1 2 \
-    1.0e-6 1.0e-7 1.0e-6 1.0e-7 "" 8 || return 1
+  train_stage "${SMOKE_NAME}" "${SMOKE_MODE}" 1 2 \
+    1.0e-6 1.0e-7 \
+    "${SMOKE_HEAD_LR:-1.0e-6}" "${SMOKE_HEAD_LR_END:-1.0e-7}" \
+    "" 8 || return 1
   rm -f "${smoke_stage_dir}/.full_eval_required"
   if [[ "${WANDB_MODE}" == "online" && "${SMOKE_VERIFY_WANDB:-1}" == "1" ]]; then
     python tools/train/verify_wandb_history.py \

@@ -51,12 +51,14 @@ class EdgeTAMTrain(SAM2Train):
         if mode not in {
             "image_neck_only",
             "image_encoder_only",
+            "mask_decoder_only",
             "image_encoder_mask_decoder",
             "image_encoder_mask_decoder_memory",
         }:
             raise ValueError(
                 "trainable_module_mode must be one of: image_neck_only, "
-                "image_encoder_only, image_encoder_mask_decoder, "
+                "image_encoder_only, mask_decoder_only, "
+                "image_encoder_mask_decoder, "
                 "image_encoder_mask_decoder_memory"
             )
 
@@ -67,6 +69,8 @@ class EdgeTAMTrain(SAM2Train):
             modules = [self.image_encoder.neck]
         elif mode == "image_encoder_only":
             modules = [self.image_encoder]
+        elif mode == "mask_decoder_only":
+            modules = [self.sam_mask_decoder]
         elif mode == "image_encoder_mask_decoder":
             modules = [self.image_encoder, self.sam_mask_decoder]
         else:
@@ -81,6 +85,7 @@ class EdgeTAMTrain(SAM2Train):
                 param.requires_grad = True
 
         frozen_candidates = [
+            self.image_encoder,
             self.sam_prompt_encoder,
             self.sam_mask_decoder,
             self.memory_attention,

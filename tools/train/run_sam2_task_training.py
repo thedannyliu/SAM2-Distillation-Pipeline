@@ -143,6 +143,8 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
 
     original_run_step = trainer_module.Trainer._run_step
     original_save_checkpoint = trainer_module.Trainer._save_checkpoint
+    loss_ema: dict[str, float] = {}
+    ema_beta = float(os.environ.get("WANDB_LOSS_EMA_BETA", "0.98"))
 
     def run_step_with_wandb(
         self,
@@ -163,16 +165,25 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
         completed_step = int(self.steps[phase])
         log_frequency = int(self.logging_conf.log_scalar_frequency)
         should_log = (completed_step - 1) % log_frequency == 0
-        if wandb_run is not None and self.distributed_rank == 0 and should_log:
-            metrics = {
+        if wandb_run is not None and self.distributed_rank == 0:
+            current_losses = {
                 _wandb_loss_name(name): _scalar(meter.val)
                 for name, meter in loss_mts.items()
             }
-            metrics.update(
+            current_losses.update(
                 {
                     _wandb_loss_name(name): _scalar(meter.val)
                     for name, meter in extra_loss_mts.items()
                 }
+            )
+            for name, value in current_losses.items():
+                previous = loss_ema.get(name, value)
+                loss_ema[name] = ema_beta * previous + (1.0 - ema_beta) * value
+            if not should_log:
+                return result
+            metrics = dict(current_losses)
+            metrics.update(
+                {f"{name}_ema": value for name, value in loss_ema.items()}
             )
             metrics.update(
                 {
