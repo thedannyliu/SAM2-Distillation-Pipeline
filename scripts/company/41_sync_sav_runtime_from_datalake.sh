@@ -7,6 +7,7 @@ BUCKET="${BUCKET:-sdp-ril}"
 SOURCE_ROOT="${SOURCE_ROOT:-danny-dataset/SA-V}"
 OUT_ROOT="${OUT_ROOT:-/group-volume/danny-dataset/SA-V}"
 NUM_WORKERS="${NUM_WORKERS:-32}"
+FILE_RETRIES="${FILE_RETRIES:-8}"
 RESERVE_GIB="${RESERVE_GIB:-5}"
 
 python tools/data/sync_sav_runtime_from_s3.py \
@@ -14,6 +15,7 @@ python tools/data/sync_sav_runtime_from_s3.py \
   --source-root "${SOURCE_ROOT}" \
   --out-root "${OUT_ROOT}" \
   --workers "${NUM_WORKERS}" \
+  --file-retries "${FILE_RETRIES}" \
   --reserve-gib "${RESERVE_GIB}"
 status=$?
 

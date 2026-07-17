@@ -6,13 +6,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import shutil
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
 
 
 COMPONENTS = ("JPEGImages", "sav_val", "sav_test")
+
+
+class DownloadSizeError(IOError):
+    pass
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +31,7 @@ def parse_args() -> argparse.Namespace:
         default=Path("/group-volume/danny-dataset/SA-V"),
     )
     parser.add_argument("--workers", type=int, default=32)
+    parser.add_argument("--file-retries", type=int, default=8)
     parser.add_argument(
         "--components",
         nargs="+",
@@ -59,9 +66,7 @@ def is_current(path: Path, size: int) -> bool:
     return path.is_file() and path.stat().st_size == size
 
 
-def download_one(client, bucket: str, key: str, size: int, target: Path) -> str:
-    if is_current(target, size):
-        return "skipped"
+def download_once(client, bucket: str, key: str, size: int, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
@@ -81,23 +86,71 @@ def download_one(client, bucket: str, key: str, size: int, target: Path) -> str:
                 body.close()
         actual_size = temporary.stat().st_size
         if actual_size != size:
-            raise IOError(
+            raise DownloadSizeError(
                 f"Size mismatch for s3://{bucket}/{key}: "
                 f"got {actual_size}, expected {size}"
             )
         temporary.chmod(0o660)
         temporary.replace(target)
-        return "downloaded"
     finally:
         if temporary is not None and temporary.exists():
             temporary.unlink()
+
+
+def download_one(
+    client,
+    bucket: str,
+    key: str,
+    size: int,
+    target: Path,
+    file_retries: int,
+) -> str:
+    if is_current(target, size):
+        return "skipped"
+
+    from botocore.exceptions import (
+        ConnectionClosedError,
+        ConnectTimeoutError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+        ResponseStreamingError,
+    )
+
+    retryable = (
+        ConnectionClosedError,
+        ConnectTimeoutError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+        ResponseStreamingError,
+        DownloadSizeError,
+    )
+    for attempt in range(file_retries + 1):
+        try:
+            download_once(client, bucket, key, size, target)
+            return "downloaded"
+        except retryable as error:
+            if attempt >= file_retries:
+                raise
+            delay = min(30.0, 2**attempt) + random.random()
+            print(
+                f"retry {attempt + 1}/{file_retries} "
+                f"s3://{bucket}/{key} after {type(error).__name__}",
+                flush=True,
+            )
+            time.sleep(delay)
+    raise AssertionError("unreachable")
 
 
 def inventory(client, args: argparse.Namespace) -> dict[str, dict[str, int]]:
     result = {}
     for component in args.components:
         prefix = f"{args.source_root.strip('/')}/{component}/"
-        counts = {"objects": 0, "bytes": 0, "missing_objects": 0, "missing_bytes": 0}
+        counts = {
+            "objects": 0,
+            "bytes": 0,
+            "missing_objects": 0,
+            "missing_bytes": 0,
+        }
         for key, size in iter_objects(client, args.bucket, prefix):
             counts["objects"] += 1
             counts["bytes"] += size
@@ -125,10 +178,26 @@ def sync_component(
             page.append((key, size, target_path(key, args.source_root, args.out_root)))
             if len(page) < 1000:
                 continue
-            _sync_page(executor, client, args.bucket, page, counts, component)
+            _sync_page(
+                executor,
+                client,
+                args.bucket,
+                page,
+                counts,
+                component,
+                args.file_retries,
+            )
             page = []
         if page:
-            _sync_page(executor, client, args.bucket, page, counts, component)
+            _sync_page(
+                executor,
+                client,
+                args.bucket,
+                page,
+                counts,
+                component,
+                args.file_retries,
+            )
     finally:
         executor.shutdown(wait=True, cancel_futures=True)
     print(
@@ -139,9 +208,25 @@ def sync_component(
     return counts
 
 
-def _sync_page(executor, client, bucket, page, counts, component) -> None:
+def _sync_page(
+    executor,
+    client,
+    bucket,
+    page,
+    counts,
+    component,
+    file_retries,
+) -> None:
     futures = {
-        executor.submit(download_one, client, bucket, key, size, target): key
+        executor.submit(
+            download_one,
+            client,
+            bucket,
+            key,
+            size,
+            target,
+            file_retries,
+        ): key
         for key, size, target in page
     }
     for future in as_completed(futures):
@@ -159,6 +244,8 @@ def main() -> None:
     args = parse_args()
     if args.workers < 1:
         raise SystemExit("--workers must be at least 1")
+    if args.file_retries < 0:
+        raise SystemExit("--file-retries cannot be negative")
     os.umask(0o007)
     args.out_root.mkdir(parents=True, exist_ok=True)
 
