@@ -9,16 +9,34 @@ SAM2D_ROOT="${SAM2D_ROOT:-${DATA_ROOT}/sam2_distill}"
 
 export RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/sam2_task_finetune_tv21_v2}"
 export WANDB_PROJECT="${WANDB_PROJECT:-sam2-task-finetune-tv21-v2}"
+export WANDB_LOSS_EMA_BETA=0.98
 
 export STAGE1_NAME="stage1_encoder_task_2ep_v2"
+export STAGE1_MODE="image_encoder_only"
+export STAGE1_EPOCHS=2
+export STAGE1_FRAMES=2
+export STAGE1_ENCODER_LR=1.0e-6
+export STAGE1_ENCODER_LR_END=1.0e-7
+export STAGE1_HEAD_LR=1.0e-6
+export STAGE1_HEAD_LR_END=1.0e-7
 
 export STAGE2_NAME="stage2_decoder_only_task_1ep_v2"
 export STAGE2_MODE="mask_decoder_only"
 export STAGE2_EPOCHS=1
+export STAGE2_FRAMES=2
+export STAGE2_ENCODER_LR=5.0e-7
+export STAGE2_ENCODER_LR_END=5.0e-8
 export STAGE2_HEAD_LR=5.0e-7
 export STAGE2_HEAD_LR_END=1.0e-7
 
 export STAGE3_NAME="stage3_encoder_decoder_memory_task_1ep_v2"
+export STAGE3_MODE="image_encoder_mask_decoder_memory"
+export STAGE3_EPOCHS=1
+export STAGE3_FRAMES=4
+export STAGE3_ENCODER_LR=3.0e-7
+export STAGE3_ENCODER_LR_END=3.0e-8
+export STAGE3_HEAD_LR=1.0e-6
+export STAGE3_HEAD_LR_END=1.0e-7
 
 export SMOKE_NAME="smoke_decoder_only_v2"
 export SMOKE_MODE="mask_decoder_only"
