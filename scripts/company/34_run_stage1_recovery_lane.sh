@@ -59,7 +59,7 @@ sam2_queue() {
 
 run_full_eval() {
   local family="$1" name="$2" run_dir="$3" skip_done="$4"
-  local split sam2_config sam2_checkpoint
+  local split sam2_config sam2_checkpoint run_file
   [[ "${FULL_EVAL}" == "1" ]] || return
   sam2_config="configs/sam2.1/sam2.1_hiera_l.yaml"
   sam2_checkpoint="${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt"
@@ -89,6 +89,41 @@ run_full_eval() {
     EVAL_GPUS="${FULL_EVAL_GPUS}" \
       scripts/company/25_benchmark_stage1_sav_test.sh
   done
+  if [[ "${DRY_RUN}" != "1" ]]; then
+    [[ "${WANDB_MODE:-online}" == "online" ]] || {
+      echo "W&B online mode is required for recovery experiments" >&2
+      return 1
+    }
+    run_file="${run_dir}/wandb_run.json"
+    python tools/train/verify_wandb_history.py \
+      --run-file "${run_file}" \
+      --metric train/global_step
+    python tools/train/log_task_eval_to_wandb.py \
+      --run-file "${run_file}" \
+      --metrics "sav_val=${run_dir}/sav_val_box_benchmark/metrics.csv" \
+      --metrics "sav_test=${run_dir}/sav_test_box_benchmark/metrics.csv"
+  fi
+}
+
+prune_stage1_checkpoints() {
+  local run_dir="$1" checkpoint_dir unexpected
+  checkpoint_dir="${run_dir}/checkpoints"
+  [[ "${DRY_RUN}" == "1" ]] && return
+  [[ -s "${checkpoint_dir}/last.pt" && -s "${checkpoint_dir}/best.pt" ]] || {
+    echo "refusing checkpoint prune without last.pt and best.pt: ${checkpoint_dir}" >&2
+    return 1
+  }
+  find "${checkpoint_dir}" -maxdepth 1 -type f \
+    \( -name 'step_*.pt' -o -name 'checkpoint_[0-9]*.pt' \) \
+    -print -delete
+  unexpected="$(find "${checkpoint_dir}" -maxdepth 1 -type f -name '*.pt' \
+    ! -name last.pt ! -name best.pt -print)"
+  if [[ -n "${unexpected}" ]]; then
+    echo "unexpected Stage 1 checkpoints (only last.pt/best.pt are allowed):" >&2
+    echo "${unexpected}" >&2
+    return 1
+  fi
+  echo "checkpoint retention: PASS | last.pt + best.pt | ${checkpoint_dir}"
 }
 
 run_sam2() {
@@ -127,6 +162,7 @@ run_sam2() {
     fi
   fi
   run_full_eval sam2 "${name}" "${run_dir}" "${eval_skip_done}"
+  prune_stage1_checkpoints "${run_dir}"
 }
 
 sam31_config() {
@@ -192,6 +228,7 @@ run_sam31() {
     fi
   fi
   run_full_eval sam31 "${name}" "${run_dir}" "${eval_skip_done}"
+  prune_stage1_checkpoints "${run_dir}"
 }
 
 gpu_count="$(python - "${GPUS}" <<'PY'
@@ -245,8 +282,22 @@ case "${LANE}" in
     run_sam2 tv21_proj_sam21bplus_msehr 252265
     run_sam31 n3_cos025_relation010_adapter_ft_w2k
     ;;
+  sam2)
+    [[ -n "${2:-}" && -n "${3:-}" ]] || {
+      echo "Usage: $0 sam2 EXPERIMENT TARGET_STEP" >&2
+      exit 2
+    }
+    run_sam2 "$2" "$3"
+    ;;
+  sam31)
+    [[ -n "${2:-}" ]] || {
+      echo "Usage: $0 sam31 EXPERIMENT" >&2
+      exit 2
+    }
+    run_sam31 "$2"
+    ;;
   *)
-    echo "Usage: $0 {8gpu_primary|lane1|lane2|lane3|lane4|lane5}" >&2
+    echo "Usage: $0 {8gpu_primary|lane1|lane2|lane3|lane4|lane5|sam2 EXPERIMENT TARGET_STEP|sam31 EXPERIMENT}" >&2
     exit 2
     ;;
 esac

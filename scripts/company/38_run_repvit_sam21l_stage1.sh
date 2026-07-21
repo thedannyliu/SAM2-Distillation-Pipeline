@@ -72,12 +72,36 @@ print(f"{steps_per_epoch} {steps_per_epoch * 5}")
 PY
 }
 
+checkpoint_complete() {
+  local run_dir="$1" target="$2"
+  python - "${run_dir}" "${target}" <<'PY'
+import sys
+from pathlib import Path
+import torch
+
+run_dir = Path(sys.argv[1])
+target = int(sys.argv[2])
+last = run_dir / "checkpoints/last.pt"
+best = run_dir / "checkpoints/best.pt"
+if not last.is_file() or not best.is_file():
+    raise SystemExit(1)
+checkpoint = torch.load(last, map_location="cpu", weights_only=False)
+raise SystemExit(0 if int(checkpoint.get("step", 0)) >= target else 1)
+PY
+}
+
 train_model() {
   local experiment="$1" model_name="$2" checkpoint="$3" batch_size="$4" lr="$5"
   local run_dir="${RUN_ROOT}/${experiment}" steps_per_epoch max_steps plan
   plan="$(step_plan "${batch_size}")" || return 1
   read -r steps_per_epoch max_steps <<< "${plan}"
+  if checkpoint_complete "${run_dir}" "${max_steps}"; then
+    echo "skip training-complete RepViT run: ${experiment}"
+    return
+  fi
   echo "===== train ${experiment}: steps/epoch=${steps_per_epoch}, max_steps=${max_steps} ====="
+  mkdir -p "${run_dir}"
+  touch "${run_dir}/.full_eval_required"
   DATA_ROOT="${DATA_ROOT}" \
   SAM2D_ROOT="${SAM2D_ROOT}" \
   SAM2_UPSTREAM="${SAM2_UPSTREAM:-/user-volume/repo/facebookresearch-sam2}" \
@@ -140,7 +164,7 @@ PY
 }
 
 eval_split() {
-  local experiment="$1" model_name="$2" checkpoint="$3" split="$4"
+  local experiment="$1" model_name="$2" checkpoint="$3" split="$4" skip_done="$5"
   local run_dir="${RUN_ROOT}/${experiment}"
   echo "===== full ${split} ${experiment} ====="
   MODEL_FAMILY=sam2 \
@@ -154,19 +178,47 @@ eval_split() {
   EVAL_GPUS="${FULL_EVAL_GPUS}" \
   MAX_VIDEOS=0 \
   MAX_IMAGE_OBJECTS=0 \
-  SKIP_DONE="${SKIP_DONE}" \
+  SKIP_DONE="${skip_done}" \
   scripts/company/25_benchmark_stage1_sav_test.sh
 }
 
 eval_model() {
   local experiment="$1" model_name="$2" checkpoint="$3"
-  local best="${RUN_ROOT}/${experiment}/checkpoints/best.pt"
+  local run_dir="${RUN_ROOT}/${experiment}"
+  local best="${run_dir}/checkpoints/best.pt"
+  local unexpected eval_skip_done="${SKIP_DONE}"
   if [[ ! -s "${best}" ]]; then
     echo "missing best checkpoint for evaluation: ${best}" >&2
     return 1
   fi
-  eval_split "${experiment}" "${model_name}" "${checkpoint}" sav_val || return 1
-  eval_split "${experiment}" "${model_name}" "${checkpoint}" sav_test
+  if [[ -f "${run_dir}/.full_eval_required" ]]; then
+    eval_skip_done=0
+  fi
+  eval_split "${experiment}" "${model_name}" "${checkpoint}" sav_val "${eval_skip_done}" || return 1
+  eval_split "${experiment}" "${model_name}" "${checkpoint}" sav_test "${eval_skip_done}" || return 1
+  if [[ "${WANDB_MODE}" != "online" ]]; then
+    echo "W&B online mode is required for RepViT experiments" >&2
+    return 1
+  fi
+  python tools/train/verify_wandb_history.py \
+    --run-file "${run_dir}/wandb_run.json" \
+    --metric train/global_step || return 1
+  python tools/train/log_task_eval_to_wandb.py \
+    --run-file "${run_dir}/wandb_run.json" \
+    --metrics "sav_val=${run_dir}/sav_val_box_benchmark/metrics.csv" \
+    --metrics "sav_test=${run_dir}/sav_test_box_benchmark/metrics.csv" || return 1
+  find "${run_dir}/checkpoints" -maxdepth 1 -type f \
+    \( -name 'step_*.pt' -o -name 'checkpoint_[0-9]*.pt' \) \
+    -print -delete
+  unexpected="$(find "${run_dir}/checkpoints" -maxdepth 1 -type f -name '*.pt' \
+    ! -name last.pt ! -name best.pt -print)"
+  if [[ -n "${unexpected}" ]]; then
+    echo "unexpected RepViT checkpoints (only last.pt/best.pt are allowed):" >&2
+    echo "${unexpected}" >&2
+    return 1
+  fi
+  echo "checkpoint retention: PASS | last.pt + best.pt | ${run_dir}/checkpoints"
+  rm -f "${run_dir}/.full_eval_required"
 }
 
 run_train_matrix() {

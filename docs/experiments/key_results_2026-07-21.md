@@ -143,18 +143,29 @@ run, and the old standalone SAM3.1 run remain visible in the universal report
 with status `superseded` and are excluded from recovery. They are historical
 legacy/smoke artifacts, not missing cells in the current formal matrices.
 
-Three foreground recovery lanes are defined in
+Six foreground recovery lanes are defined in
 `scripts/company/46_run_remaining_experiment_lane.sh`. A failed job is logged
 and later jobs continue, maximizing weekend utilization. Every formal job
 uses its existing directory and W&B ID when resuming, then runs full SA-V val
-and test image/VOS evaluation.
+and test image/VOS evaluation. Training history and val/test summaries are
+verified against the same online W&B run before a pipeline is considered
+successful.
 
 | Lane | Formal pipelines | Allocation |
 | --- | ---: | --- |
-| `node1` | 10 | SAM3.1 interface/relations lane 4, two mask v1, three mask v2 |
-| `node2` | 8 | Stage 1 lane 5, both RepViT sizes, two mask v1, one mask v2 |
-| `node3` | 13 | Stage 1 lanes 1-3, two mask v1, eight mask v2 plus hardness preparation |
+| `node1` | 6 | SAM3.1 n1 cosine pair, two mask v1, mask v2 A00/A03 |
+| `node2` | 6 | SAM3.1 n2 adapter pair, two mask v1, mask v2 A04/A10 |
+| `node3` | 6 | SAM3.1 n3 cosine/relation pair, two mask v1, mask v2 A01/A02 |
+| `node4` | 5 | SAM3.1 n3 cosine+relation, SAM2.1 adapter, mask v2 A07/A08/A11 |
+| `node5` | 3 | SAM2.1 Base+ and both RepViT sizes |
+| `node6` | 5 | Two evaluation-only SAM3.1 recoveries and mask v2 A05/A06/A09 after hardness preparation |
 
-The unequal pipeline counts account for the longer Stage 1 and RepViT jobs on
-nodes 1 and 2. Each lane writes per-job logs and a final universal CSV under
+The unequal pipeline counts account for Stage 1 progress, the two RepViT
+trainings on node 5, and the multi-stage/hard-subset mask work on node 6. Each
+lane writes per-job logs and a final universal CSV under
 `/user-volume/remaining_experiment_logs/<lane>`.
+
+Stage 1 and RepViT runs disable periodic step checkpoints and retain only
+`last.pt` and `best.pt`. The upstream SAM2 task trainer requires its native
+names: `checkpoint.pt` is the resumable last state and `stage.pt` is the final
+export used for validation/test; no periodic task checkpoints are retained.
