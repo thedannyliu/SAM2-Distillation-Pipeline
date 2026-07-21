@@ -54,7 +54,15 @@ if [[ "${PRIORITY_DRY_RUN}" != "1" ]]; then
 import wandb
 
 viewer = wandb.Api(timeout=30).viewer
-identity = viewer.get("username") or viewer.get("entity") or "authenticated user"
+if isinstance(viewer, dict):
+    identity = viewer.get("username") or viewer.get("email") or viewer.get("entity")
+else:
+    identity = None
+    for name in ("username", "email", "entity"):
+        identity = getattr(viewer, name, None)
+        if identity:
+            break
+identity = identity or str(viewer) or "authenticated user"
 print(f"W&B online preflight: PASS | {identity}", flush=True)
 PY
 fi
