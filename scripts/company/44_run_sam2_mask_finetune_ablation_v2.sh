@@ -428,18 +428,51 @@ validate_common_paths() {
   done
 }
 
+acquire_action_lock() {
+  local lock_file=""
+  case "${ACTION}" in
+    run|eval)
+      is_variant "${VARIANT}" || return 0
+      mkdir -p "${ABLATION_ROOT}/${VARIANT}"
+      lock_file="${ABLATION_ROOT}/${VARIANT}/.pipeline.lock"
+      ;;
+    prepare-hardness)
+      mkdir -p "${HARDNESS_ROOT}"
+      lock_file="${HARDNESS_ROOT}/.pipeline.lock"
+      ;;
+    *)
+      return
+      ;;
+  esac
+  command -v flock >/dev/null 2>&1 || {
+    echo "[ERROR] flock is required for cross-node mask-run protection" >&2
+    return 1
+  }
+  exec 9>"${lock_file}" || return 1
+  if ! flock -n 9; then
+    echo "Another node owns ${lock_file}; waiting to avoid checkpoint collision."
+    flock 9 || return 1
+  fi
+  echo "Pipeline lock acquired: ${lock_file}"
+}
+
 STATUS=0
+acquire_action_lock || STATUS="$?"
 case "${ACTION}" in
   describe)
     is_variant "${VARIANT}" && describe_variant "${VARIANT}"
     STATUS="$?"
     ;;
   prepare-hardness)
-    validate_common_paths && audit_inputs && prepare_hardness
-    STATUS="$?"
+    if [[ "${STATUS}" -eq 0 ]]; then
+      validate_common_paths && audit_inputs && prepare_hardness
+      STATUS="$?"
+    fi
     ;;
   run)
-    if ! is_variant "${VARIANT}"; then
+    if [[ "${STATUS}" -ne 0 ]]; then
+      :
+    elif ! is_variant "${VARIANT}"; then
       echo "[ERROR] Set a valid variant after 'run'; use '$0 list'." >&2
       STATUS=2
     else
@@ -448,7 +481,9 @@ case "${ACTION}" in
     fi
     ;;
   eval)
-    if ! is_variant "${VARIANT}"; then
+    if [[ "${STATUS}" -ne 0 ]]; then
+      :
+    elif ! is_variant "${VARIANT}"; then
       echo "[ERROR] Set a valid variant after 'eval'." >&2
       STATUS=2
     else

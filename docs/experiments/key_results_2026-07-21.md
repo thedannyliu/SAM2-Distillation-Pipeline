@@ -143,29 +143,53 @@ run, and the old standalone SAM3.1 run remain visible in the universal report
 with status `superseded` and are excluded from recovery. They are historical
 legacy/smoke artifacts, not missing cells in the current formal matrices.
 
-Six foreground recovery lanes are defined in
-`scripts/company/46_run_remaining_experiment_lane.sh`. A failed job is logged
-and later jobs continue, maximizing weekend utilization. Every formal job
-uses its existing directory and W&B ID when resuming, then runs full SA-V val
-and test image/VOS evaluation. Training history and val/test summaries are
-verified against the same online W&B run before a pipeline is considered
-successful.
+The actual company launch used the earlier three-lane allocation from commit
+`c68e7a8`; all 31 formal recovery pipelines are already queued on those three
+nodes. Do not launch the later six-lane rebalance concurrently. A failed job is
+logged and later jobs continue. Every formal job uses its existing directory
+and W&B ID when resuming, then runs full SA-V val and test image/VOS
+evaluation.
 
 | Lane | Formal pipelines | Allocation |
 | --- | ---: | --- |
-| `node1` | 6 | SAM3.1 n1 cosine pair, two mask v1, mask v2 A00/A03 |
-| `node2` | 6 | SAM3.1 n2 adapter pair, two mask v1, mask v2 A04/A10 |
-| `node3` | 6 | SAM3.1 n3 cosine/relation pair, two mask v1, mask v2 A01/A02 |
-| `node4` | 5 | SAM3.1 n3 cosine+relation, SAM2.1 adapter, mask v2 A07/A08/A11 |
-| `node5` | 3 | SAM2.1 Base+ and both RepViT sizes |
-| `node6` | 5 | Two evaluation-only SAM3.1 recoveries and mask v2 A05/A06/A09 after hardness preparation |
+| `node1` | 10 | SAM3.1 interface/relations lane 4, two mask v1, three mask v2 |
+| `node2` | 8 | Stage 1 lane 5, both RepViT sizes, two mask v1, one mask v2 |
+| `node3` | 13 | Stage 1 lanes 1-3, two mask v1, eight mask v2 plus hardness preparation |
 
-The unequal pipeline counts account for Stage 1 progress, the two RepViT
-trainings on node 5, and the multi-stage/hard-subset mask work on node 6. Each
-lane writes per-job logs and a final universal CSV under
+Each recovery lane writes per-job logs and a final universal CSV under
 `/user-volume/remaining_experiment_logs/<lane>`.
 
 Stage 1 and RepViT runs disable periodic step checkpoints and retain only
 `last.pt` and `best.pt`. The upstream SAM2 task trainer requires its native
 names: `checkpoint.pt` is the resumable last state and `stage.pt` is the final
 export used for validation/test; no periodic task checkpoints are retained.
+
+## Priority Mask Fine-Tuning Pull-Forward
+
+The recovery queues place the mask experiments after long Stage 1/RepViT
+work. Three additional nodes should therefore pull forward the nine highest
+information mask-v2 experiments without launching a second copy of the full
+31-run scope. The first concurrent wave is the exact-box causal KD trio:
+
+| Variant | Only material difference | Question |
+| --- | --- | --- |
+| `A01_e2e_t4_box0` | no KD | exact-box E2E control |
+| `A10_e2e_t4_box0_imgkd` | image KD 0.5 | does interface anchoring stabilize E2E? |
+| `A11_e2e_t4_box0_imgmemkd` | image KD 0.5 + memory KD 0.25 | is the temporal interface an additional bottleneck? |
+
+The follow-up allocations are:
+
+| Priority lane | Sequence | Research comparison |
+| --- | --- | --- |
+| `priority1` | A01 → A00 → A02 | correction/prompt simulation |
+| `priority2` | A10 → A03 → A04 | image KD, then decoder/memory trainable scope |
+| `priority3` | A11 → hardness → A05 → A06 | memory KD, T8, and T16 hard refinement |
+
+`A07` warmup, `A08` global batch, and `A09` hard sampling remain in the
+original recovery queue because they are second-order questions until the KD
+trio establishes the stable E2E recipe. The priority runner is
+`scripts/company/47_run_priority_mask_finetune_lane.sh`. Per-variant `flock`
+locks prevent the priority and recovery nodes from writing the same checkpoint
+directory concurrently; a later recovery invocation waits, then observes and
+skips the completed run. All priority runs require online W&B, execute
+train → full val → full test, and update the shared mask `summary.csv`.
