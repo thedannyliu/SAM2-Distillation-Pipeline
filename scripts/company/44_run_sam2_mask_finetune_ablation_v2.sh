@@ -513,10 +513,20 @@ case "${ACTION}" in
   smoke)
     validate_common_paths && audit_inputs || STATUS="$?"
     if [[ "${STATUS}" -eq 0 ]]; then
-      configure_variant A00_e2e_t4_box1_control || STATUS="$?"
+      smoke_variant="${VARIANT:-A00_e2e_t4_box1_control}"
+      if ! is_variant "${smoke_variant}"; then
+        echo "[ERROR] Invalid smoke variant: ${smoke_variant}" >&2
+        STATUS=2
+      fi
+    fi
+    if [[ "${STATUS}" -eq 0 ]]; then
+      configure_variant "${smoke_variant}" || STATUS="$?"
       export TASK_MAX_VIDEOS="${SMOKE_MAX_VIDEOS:-8}"
-      smoke_dir="${ABLATION_ROOT}/smoke_A00_${HOSTNAME:-node}"
-      train_stage "${smoke_dir}" smoke_A00_e2e_t4_box1_control "${BASE_CHECKPOINT}" || STATUS="$?"
+      smoke_dir="${ABLATION_ROOT}/smoke_${smoke_variant}_${HOSTNAME:-node}"
+      train_stage \
+        "${smoke_dir}" \
+        "smoke_${smoke_variant}" \
+        "${BASE_CHECKPOINT}" || STATUS="$?"
     fi
     ;;
   all)
@@ -531,7 +541,7 @@ case "${ACTION}" in
     fi
     ;;
   *)
-    echo "Usage: $0 {list|describe VARIANT|smoke|prepare-hardness|run VARIANT|eval VARIANT|summarize|all}" >&2
+    echo "Usage: $0 {list|describe VARIANT|smoke [VARIANT]|prepare-hardness|run VARIANT|eval VARIANT|summarize|all}" >&2
     STATUS=2
     ;;
 esac

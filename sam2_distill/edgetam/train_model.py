@@ -236,7 +236,14 @@ class EdgeTAMTrain(SAM2Train):
         current_out["multistep_point_inputs"] = [point_inputs]
         current_out["multistep_object_score_logits"] = [object_score_logits]
 
-        if frame_idx in frames_to_add_correction_pt:
+        # Upstream SAM2 leaves ``sam_outputs`` uninitialized when the
+        # iterative-correction loop has zero iterations. Exact-box controls
+        # intentionally request zero correction clicks, so keep the initial
+        # SAM prediction instead of entering that unsupported path.
+        if (
+            self.num_correction_pt_per_frame > 0
+            and frame_idx in frames_to_add_correction_pt
+        ):
             point_inputs, final_sam_outputs = self._iter_correct_pt_sampling(
                 is_init_cond_frame,
                 point_inputs,
