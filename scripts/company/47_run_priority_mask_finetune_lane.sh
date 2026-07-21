@@ -5,9 +5,9 @@ cd "${REPO_ROOT}" || return 1 2>/dev/null || exit 1
 
 LANE="${1:-}"
 case "${LANE}" in
-  priority1|priority2|priority3) ;;
+  priority1|priority2|priority3|priority4|priority5) ;;
   *)
-    echo "Usage: $0 {priority1|priority2|priority3}" >&2
+    echo "Usage: $0 {priority1|priority2|priority3|priority4|priority5}" >&2
     return 2 2>/dev/null || exit 2
     ;;
 esac
@@ -164,6 +164,16 @@ case "${LANE}" in
     for variant in A05_e2e_t8 A06_e2e_t8_s4_t16_hard; do
       run_logged "mask_v2_${variant}" run_variant "${variant}"
     done
+    ;;
+  priority4)
+    for variant in A07_e2e_t4_warmup5 A08_e2e_t4_gb8; do
+      run_logged "mask_v2_${variant}" run_variant "${variant}"
+    done
+    ;;
+  priority5)
+    run_logged mask_v2_prepare_hardness prepare_hardness
+    run_logged mask_v2_A09_e2e_t4_hard50x2 \
+      run_variant A09_e2e_t4_hard50x2
     ;;
 esac
 
