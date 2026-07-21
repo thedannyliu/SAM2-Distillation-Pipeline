@@ -177,7 +177,7 @@ information mask-v2 experiments without launching a second copy of the full
 | `A10_e2e_t4_box0_imgkd` | image KD 0.5 | does interface anchoring stabilize E2E? |
 | `A11_e2e_t4_box0_imgmemkd` | image KD 0.5 + memory KD 0.25 | is the temporal interface an additional bottleneck? |
 
-The follow-up allocations are:
+With three additional nodes, the follow-up allocations are:
 
 | Priority lane | Sequence | Research comparison |
 | --- | --- | --- |
@@ -185,9 +185,16 @@ The follow-up allocations are:
 | `priority2` | A10 → A03 → A04 | image KD, then decoder/memory trainable scope |
 | `priority3` | A11 → hardness → A05 → A06 | memory KD, T8, and T16 hard refinement |
 
-`A07` warmup, `A08` global batch, and `A09` hard sampling remain in the
-original recovery queue because they are second-order questions until the KD
-trio establishes the stable E2E recipe. The priority runner is
+When five additional nodes are available, use the final two lanes to pull the
+remaining optimization/data-selection variants forward as well:
+
+| Priority lane | Sequence | Research comparison |
+| --- | --- | --- |
+| `priority4` | A07 → A08 | warmup and global-batch stability |
+| `priority5` | hardness → A09 | hard-example sampling at two epochs |
+
+Priority 5 starts the shared resumable hardness mining early; priority 3 later
+reuses the same fingerprinted outputs for A05/A06. The priority runner is
 `scripts/company/47_run_priority_mask_finetune_lane.sh`. Per-variant `flock`
 locks prevent the priority and recovery nodes from writing the same checkpoint
 directory concurrently; a later recovery invocation waits, then observes and
