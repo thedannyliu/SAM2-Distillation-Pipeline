@@ -31,4 +31,4 @@ fi
 
 echo "All-experiment report status: ${STATUS}"
 echo "All-experiment CSV: ${OUT_CSV}"
-return "${STATUS}" 2>/dev/null || false
+return "${STATUS}" 2>/dev/null || exit "${STATUS}"
