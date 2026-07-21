@@ -40,6 +40,7 @@ class SAVManifestJSONRawDataset:
         verify_paths: bool = True,
         max_videos: int = 0,
         sav_root: str | Path | None = None,
+        video_ids_file: str | Path | None = None,
     ):
         from training.dataset.vos_raw_dataset import VOSFrame, VOSVideo
         from training.dataset.vos_segment_loader import JSONSegmentLoader
@@ -55,9 +56,27 @@ class SAVManifestJSONRawDataset:
         if frame.empty:
             raise ValueError(f"No rows found for split {split!r} in {manifest}")
         frame = frame.sort_values(["video_id", "frame_idx_24fps"])
-        self.records = []
+        requested_video_ids = None
+        if video_ids_file:
+            requested_video_ids = [
+                line.strip()
+                for line in Path(video_ids_file).read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            ]
+            if not requested_video_ids:
+                raise ValueError(f"Empty SA-V video ID file: {video_ids_file}")
+        requested_video_id_set = (
+            set(requested_video_ids) if requested_video_ids is not None else None
+        )
+
+        records_by_video_id = {}
         missing_annotation_video_ids = []
         for video_id, rows in frame.groupby("video_id", sort=True):
+            if (
+                requested_video_id_set is not None
+                and str(video_id) not in requested_video_id_set
+            ):
+                continue
             annotation_values = [
                 value
                 for value in rows["annotation_path"].tolist()
@@ -77,9 +96,36 @@ class SAVManifestJSONRawDataset:
                     raise FileNotFoundError(
                         f"Missing SA-V task inputs for {video_id}: {missing[:5]}"
                     )
-            self.records.append((str(video_id), annotation, images))
-            if max_videos > 0 and len(self.records) >= max_videos:
+            records_by_video_id[str(video_id)] = (str(video_id), annotation, images)
+            if (
+                requested_video_ids is None
+                and max_videos > 0
+                and len(records_by_video_id) >= max_videos
+            ):
                 break
+
+        if requested_video_ids is None:
+            self.records = list(records_by_video_id.values())
+        else:
+            # Preserve order and duplicates. Repeated IDs deliberately match the
+            # full-data sample/update budget in hard-subset ablations.
+            self.records = [
+                records_by_video_id[video_id]
+                for video_id in requested_video_ids
+                if video_id in records_by_video_id
+            ]
+            missing_requested = sorted(
+                set(requested_video_ids).difference(records_by_video_id)
+            )
+            if missing_requested and int(os.environ.get("RANK", "0")) == 0:
+                logging.warning(
+                    "Excluded %d requested SA-V videos absent from the manifest or "
+                    "without readable annotations; examples: %s",
+                    len(missing_requested),
+                    missing_requested[:10],
+                )
+        if max_videos > 0:
+            self.records = self.records[:max_videos]
         self.missing_annotation_video_ids = missing_annotation_video_ids
         if not self.records:
             raise FileNotFoundError(

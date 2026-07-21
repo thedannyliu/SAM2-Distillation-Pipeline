@@ -6,6 +6,8 @@ available on PYTHONPATH.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import torch
 import torch.utils.checkpoint
 
@@ -52,12 +54,15 @@ class EdgeTAMTrain(SAM2Train):
             "image_neck_only",
             "image_encoder_only",
             "mask_decoder_only",
+            "mask_decoder_memory",
+            "memory_only",
             "image_encoder_mask_decoder",
             "image_encoder_mask_decoder_memory",
         }:
             raise ValueError(
                 "trainable_module_mode must be one of: image_neck_only, "
                 "image_encoder_only, mask_decoder_only, "
+                "mask_decoder_memory, memory_only, "
                 "image_encoder_mask_decoder, "
                 "image_encoder_mask_decoder_memory"
             )
@@ -71,6 +76,24 @@ class EdgeTAMTrain(SAM2Train):
             modules = [self.image_encoder]
         elif mode == "mask_decoder_only":
             modules = [self.sam_mask_decoder]
+        elif mode in {"mask_decoder_memory", "memory_only"}:
+            modules = [self.memory_attention, self.memory_encoder]
+            if mode == "mask_decoder_memory":
+                modules.append(self.sam_mask_decoder)
+            for name in ("obj_ptr_proj", "obj_ptr_tpos_proj"):
+                module = getattr(self, name, None)
+                if isinstance(module, torch.nn.Module):
+                    modules.append(module)
+            for name in (
+                "maskmem_tpos_enc",
+                "no_mem_embed",
+                "no_mem_pos_enc",
+                "no_obj_ptr",
+                "no_obj_embed_spatial",
+            ):
+                parameter = getattr(self, name, None)
+                if isinstance(parameter, torch.nn.Parameter):
+                    parameter.requires_grad = True
         elif mode == "image_encoder_mask_decoder":
             modules = [self.image_encoder, self.sam_mask_decoder]
         else:
@@ -310,13 +333,48 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         *args,
         teacher_model: torch.nn.Module | None = None,
         teacher_feature_cache_path: str | None = None,
+        teacher_model_config: str | None = None,
+        teacher_checkpoint: str | None = None,
         synthetic_teacher: bool = False,
         synthetic_teacher_offset: float = 0.01,
         freeze_teacher: bool = True,
         **kwargs,
     ):
+        teacher_prompt_kwargs = {
+            key: kwargs[key]
+            for key in (
+                "prob_to_use_pt_input_for_train",
+                "prob_to_use_box_input_for_train",
+                "prob_to_sample_from_gt_for_train",
+                "num_frames_to_correct_for_train",
+                "rand_frames_to_correct_for_train",
+                "add_all_frames_to_correct_as_cond",
+                "num_init_cond_frames_for_train",
+                "rand_init_cond_frames_for_train",
+                "num_correction_pt_per_frame",
+                "use_act_ckpt_iterative_pt_sampling",
+                "prob_to_use_pt_input_for_eval",
+                "prob_to_use_box_input_for_eval",
+                "num_frames_to_correct_for_eval",
+                "num_init_cond_frames_for_eval",
+                "forward_backbone_per_frame_for_eval",
+            )
+            if key in kwargs
+        }
         super().__init__(*args, **kwargs)
-        self.teacher_model = teacher_model
+        if teacher_model is None and teacher_model_config is not None:
+            if teacher_checkpoint is None:
+                raise ValueError(
+                    "teacher_checkpoint is required with teacher_model_config"
+                )
+            teacher_model = self._build_teacher_model(
+                teacher_model_config,
+                teacher_checkpoint,
+                teacher_prompt_kwargs,
+            )
+        # Bypass nn.Module.__setattr__: the frozen online teacher must move and
+        # run on each rank, but must not enter DDP, optimizer, or checkpoints.
+        object.__setattr__(self, "_teacher_model", teacher_model)
         self.teacher_feature_cache = (
             TeacherFeatureCache(teacher_feature_cache_path)
             if teacher_feature_cache_path is not None
@@ -325,32 +383,67 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         self.synthetic_teacher = synthetic_teacher
         self.synthetic_teacher_offset = synthetic_teacher_offset
 
-        if self.teacher_model is not None and freeze_teacher:
-            self.teacher_model.eval()
-            for param in self.teacher_model.parameters():
+        if self._teacher_model is not None and freeze_teacher:
+            self._teacher_model.eval()
+            for param in self._teacher_model.parameters():
                 param.requires_grad = False
 
         teacher_sources = [
-            self.teacher_model is not None,
+            self._teacher_model is not None,
             self.teacher_feature_cache is not None,
             self.synthetic_teacher,
         ]
         if sum(teacher_sources) != 1:
             raise ValueError(
-                "EdgeTAMTrainWithTeacher requires exactly one of teacher_model, "
+                "EdgeTAMTrainWithTeacher requires exactly one online teacher "
+                "(teacher_model or teacher_model_config), "
                 "teacher_feature_cache_path, or synthetic_teacher=True"
             )
+
+    @staticmethod
+    def _build_teacher_model(
+        config_path: str,
+        checkpoint_path: str,
+        prompt_kwargs: dict,
+    ) -> torch.nn.Module:
+        from hydra.utils import instantiate
+        from omegaconf import OmegaConf
+
+        config = OmegaConf.load(Path(config_path))
+        model_config = config.model if "model" in config else config.trainer.model
+        model_config._target_ = "sam2_distill.edgetam.train_model.EdgeTAMTrain"
+        for key, value in prompt_kwargs.items():
+            model_config[key] = value
+        model_config.image_encoder_forward_batch_size = 1
+        model_config.image_encoder_activation_checkpoint = False
+        model_config.trainable_module_mode = None
+        model_config.freeze_batchnorm = True
+        teacher = instantiate(model_config, _recursive_=True)
+        checkpoint = torch.load(
+            Path(checkpoint_path), map_location="cpu", weights_only=True
+        )
+        state = checkpoint.get("model", checkpoint)
+        teacher.load_state_dict(state, strict=True)
+        teacher.eval()
+        for parameter in teacher.parameters():
+            parameter.requires_grad = False
+        return teacher
+
+    @property
+    def teacher_model(self):
+        return self._teacher_model
 
     def forward(self, input):
         student_outputs = super().forward(input)
 
-        if self.teacher_model is not None:
-            was_training = self.teacher_model.training
-            self.teacher_model.eval()
+        if self._teacher_model is not None:
+            input_device = input.flat_img_batch.device
+            teacher_parameter = next(self._teacher_model.parameters())
+            if teacher_parameter.device != input_device:
+                self._teacher_model.to(input_device)
+            self._teacher_model.eval()
             with torch.no_grad():
-                teacher_outputs = self.teacher_model(input)
-            if was_training:
-                self.teacher_model.train()
+                teacher_outputs = self._teacher_model(input)
             attach_teacher_features(student_outputs, teacher_outputs)
         elif self.teacher_feature_cache is not None:
             self.teacher_feature_cache.attach(student_outputs)
