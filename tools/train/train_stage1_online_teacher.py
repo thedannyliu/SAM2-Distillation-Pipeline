@@ -451,7 +451,15 @@ def main() -> None:
         wandb_run_id = wandb_run.id
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "wandb_run.json").write_text(
-            json.dumps({"run_id": wandb_run_id, "url": wandb_run.url, "project": args.wandb_project}) + "\n"
+            json.dumps(
+                {
+                    "entity": wandb_run.entity,
+                    "run_id": wandb_run_id,
+                    "url": wandb_run.url,
+                    "project": args.wandb_project,
+                }
+            )
+            + "\n"
         )
         wandb_run.log(
             {

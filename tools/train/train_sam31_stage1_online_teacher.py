@@ -400,7 +400,12 @@ def main() -> None:
             wandb_run_id = wandb_run.id
             (out_dir / "wandb_run.json").write_text(
                 json.dumps(
-                    {"run_id": wandb_run.id, "url": wandb_run.url, "project": args.wandb_project},
+                    {
+                        "entity": wandb_run.entity,
+                        "run_id": wandb_run.id,
+                        "url": wandb_run.url,
+                        "project": args.wandb_project,
+                    },
                     indent=2,
                 )
                 + "\n"

@@ -9,6 +9,7 @@ import json
 import math
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 METRICS_BY_MODE = {
@@ -25,6 +26,22 @@ METRICS_BY_MODE = {
     ),
     "video_tracking": ("J&F", "J", "F", "elapsed_sec", "sec_per_video"),
 }
+
+
+def infer_entity(run_info: dict[str, object]) -> str | None:
+    entity = run_info.get("entity")
+    if entity:
+        return str(entity)
+    parts = [
+        part
+        for part in urlparse(str(run_info.get("url", ""))).path.split("/")
+        if part
+    ]
+    if "runs" in parts:
+        runs_index = parts.index("runs")
+        if runs_index >= 2:
+            return parts[runs_index - 2]
+    return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,19 +84,23 @@ def main() -> None:
     metrics = read_metrics(args.metrics)
     import wandb
 
+    entity = infer_entity(run_info)
     run = wandb.init(
-        entity=run_info.get("entity"),
+        entity=entity,
         project=run_info["project"],
         id=run_info["run_id"],
         resume="must",
         dir=str(args.run_file.parent),
     )
+    entity = entity or run.entity
     run.summary.update(metrics)
     run.finish()
 
-    entity = run_info.get("entity")
     if not entity:
         raise ValueError(f"W&B run metadata has no entity: {args.run_file}")
+    if not run_info.get("entity"):
+        run_info["entity"] = entity
+        args.run_file.write_text(json.dumps(run_info, indent=2) + "\n")
     run_path = f"{entity}/{run_info['project']}/{run_info['run_id']}"
     verify_name, verify_value = next(iter(sorted(metrics.items())))
     deadline = time.monotonic() + args.timeout_seconds

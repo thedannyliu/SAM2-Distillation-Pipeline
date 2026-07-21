@@ -7,6 +7,23 @@ import argparse
 import json
 import time
 from pathlib import Path
+from urllib.parse import urlparse
+
+
+def infer_entity(metadata: dict[str, object]) -> str | None:
+    entity = metadata.get("entity")
+    if entity:
+        return str(entity)
+    parts = [
+        part
+        for part in urlparse(str(metadata.get("url", ""))).path.split("/")
+        if part
+    ]
+    if "runs" in parts:
+        runs_index = parts.index("runs")
+        if runs_index >= 2:
+            return parts[runs_index - 2]
+    return None
 
 
 def main() -> None:
@@ -18,6 +35,7 @@ def main() -> None:
     args = parser.parse_args()
 
     metadata = json.loads(args.run_file.read_text(encoding="utf-8"))
+    metadata["entity"] = infer_entity(metadata)
     required = ("entity", "project", "run_id")
     missing = [key for key in required if not metadata.get(key)]
     if missing:
