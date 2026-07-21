@@ -317,8 +317,18 @@ def wandb_metadata(run_dir: Path, checkpoint: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def superseded_reason(relative: str) -> str:
+    suite = Path(relative).parts[0]
+    if suite.startswith("stage1_online_teacher_sav000_018_"):
+        return "superseded by sav_stage1_ablation_v2"
+    if suite == "sam31_stage1":
+        return "superseded by sam31_stage1_ablation_v1"
+    return ""
+
+
 ACTIONS = {
     "complete": "none",
+    "superseded": "none; retained as historical artifact",
     "not_started": "start experiment",
     "checkpoint_invalid": "inspect or restore checkpoint",
     "training_failed": "inspect logs and resume with the same W&B run",
@@ -381,6 +391,9 @@ def inspect_run(
         issues.append(f"sav_test={test['status']}")
     else:
         status = "complete"
+    if reason := superseded_reason(relative):
+        status = "superseded"
+        issues.append(reason)
     reference = next(
         (
             path
@@ -440,6 +453,8 @@ def inspect_run(
 
 def missing_row(expected: Expected, root: Path) -> dict[str, Any]:
     row = {field: "" for field in FIELDS}
+    reason = superseded_reason(expected.relative_dir)
+    status = "superseded" if reason else "not_started"
     row.update(
         {
             "family": expected.family,
@@ -447,8 +462,8 @@ def missing_row(expected: Expected, root: Path) -> dict[str, Any]:
             "experiment": expected.experiment,
             "stage": expected.stage,
             "registered": True,
-            "status": "not_started",
-            "next_action": ACTIONS["not_started"],
+            "status": status,
+            "next_action": ACTIONS[status],
             "progress_pct": "0.00",
             "target_unit": expected.target_unit,
             "target_value": expected.target_value or "",
@@ -456,6 +471,7 @@ def missing_row(expected: Expected, root: Path) -> dict[str, Any]:
             "test_status": "missing",
             "run_dir": str(root / expected.relative_dir),
             "relative_dir": expected.relative_dir,
+            "issues": reason,
             "_mtime": 0.0,
         }
     )
@@ -476,6 +492,7 @@ STATUS_SCORE = {
             "test_incomplete",
             "evaluation_stale",
             "finalization_incomplete",
+            "superseded",
             "complete",
         )
     )

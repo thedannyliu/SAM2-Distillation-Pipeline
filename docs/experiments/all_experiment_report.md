@@ -22,6 +22,11 @@ metrics newer than the evaluated training checkpoint, and no pending
 `.full_eval_required` marker. Unknown legacy training targets remain
 `training_state_unknown` even when partial artifacts exist.
 
+The pre-v2 `stage1_online_teacher_sav000_018_*` runs and the standalone or
+smoke `sam31_stage1` runs are retained as `superseded`. They remain auditable
+in the CSV but are not counted as work required by the current formal Stage 1
+matrices.
+
 Example:
 
 ```bash

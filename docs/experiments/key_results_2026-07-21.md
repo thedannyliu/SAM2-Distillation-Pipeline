@@ -2,9 +2,10 @@
 
 Source: company all-experiment report generated from
 `/group-volume/danny-dataset/sam2_distill/runs`. The snapshot contains 59
-rows: 19 complete, 26 not started, 7 training incomplete, and 7 validation
-incomplete. Model decisions use `sav_val`; `sav_test` is reported only as a
-held-out descriptive result.
+rows: 19 complete, 31 formally incomplete, and 9 superseded historical rows.
+The 31 active rows consist of 25 not started, 4 training incomplete, and 2
+validation incomplete after superseded runs are classified. Model decisions
+use `sav_val`; `sav_test` is reported only as a held-out descriptive result.
 
 ## Current Pareto Leaders
 
@@ -47,8 +48,8 @@ already complete and are skipped.
 
 Seven old `stage1_online_teacher_sav000_018_*` directories, the SAM3.1 smoke
 run, and the old standalone SAM3.1 run remain visible in the universal report
-but are excluded from recovery. They are superseded legacy/smoke artifacts,
-not missing cells in the current formal matrices.
+with status `superseded` and are excluded from recovery. They are historical
+legacy/smoke artifacts, not missing cells in the current formal matrices.
 
 Three foreground recovery lanes are defined in
 `scripts/company/46_run_remaining_experiment_lane.sh`. A failed job is logged
