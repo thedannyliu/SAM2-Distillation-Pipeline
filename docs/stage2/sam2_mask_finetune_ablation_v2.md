@@ -71,6 +71,7 @@ First validate a two-update control smoke run:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
+mkdir -p /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2
 GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh smoke 2>&1 | tee /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2/smoke.log
 ```
 
@@ -79,6 +80,7 @@ on this pass and may run concurrently; A05, A06, and A09 require it.
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
+mkdir -p /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2
 GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh prepare-hardness 2>&1 | tee /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2/prepare-hardness.log
 ```
 
