@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -78,10 +79,17 @@ def read_metrics(specs: list[str]) -> dict[str, float]:
     return output
 
 
+def clear_empty_wandb_run_id() -> None:
+    """Ignore an empty inherited ID before W&B validates environment settings."""
+    if not os.environ.get("WANDB_RUN_ID"):
+        os.environ.pop("WANDB_RUN_ID", None)
+
+
 def main() -> None:
     args = parse_args()
     run_info = json.loads(args.run_file.read_text())
     metrics = read_metrics(args.metrics)
+    clear_empty_wandb_run_id()
     import wandb
 
     entity = infer_entity(run_info)
