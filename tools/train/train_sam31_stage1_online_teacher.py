@@ -393,7 +393,7 @@ def main() -> None:
                 project=args.wandb_project,
                 name=args.wandb_name,
                 id=wandb_run_id,
-                resume="must" if wandb_run_id else None,
+                resume="allow" if wandb_run_id else None,
                 dir=str(out_dir / "wandb"),
                 config=vars(args),
             )
