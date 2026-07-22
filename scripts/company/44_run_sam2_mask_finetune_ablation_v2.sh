@@ -349,6 +349,34 @@ evaluate_stage() {
   rm -f "${stage_dir}/.full_eval_required"
 }
 
+finalize_stage() {
+  local stage_dir="$1"
+  local stage_name="$2"
+  local split metrics
+  for split in sav_val sav_test; do
+    metrics="${stage_dir}/${split}_box_benchmark/metrics.csv"
+    [[ -s "${metrics}" ]] || {
+      echo "[ERROR] Missing existing ${split} metrics: ${metrics}" >&2
+      return 1
+    }
+  done
+  [[ -s "${stage_dir}/wandb/wandb_run.json" ]] || {
+    echo "[ERROR] Missing W&B run descriptor: ${stage_dir}/wandb/wandb_run.json" >&2
+    return 1
+  }
+  [[ "${WANDB_MODE}" == "online" ]] || {
+    echo "[ERROR] finalize requires WANDB_MODE=online" >&2
+    return 1
+  }
+  echo "===== W&B-only finalization: ${stage_name} ====="
+  python tools/train/log_task_eval_to_wandb.py \
+    --run-file "${stage_dir}/wandb/wandb_run.json" \
+    --metrics "sav_val=${stage_dir}/sav_val_box_benchmark/metrics.csv" \
+    --metrics "sav_test=${stage_dir}/sav_test_box_benchmark/metrics.csv" || return 1
+  rm -f "${stage_dir}/.full_eval_required"
+  echo "Finalization complete without rerunning evaluation: ${stage_dir}"
+}
+
 record_summary() {
   local variant_dir="$1"
   local stage_dir="$2"
@@ -431,7 +459,7 @@ validate_common_paths() {
 acquire_action_lock() {
   local lock_file=""
   case "${ACTION}" in
-    run|eval)
+    run|eval|finalize)
       is_variant "${VARIANT}" || return 0
       mkdir -p "${ABLATION_ROOT}/${VARIANT}"
       lock_file="${ABLATION_ROOT}/${VARIANT}/.pipeline.lock"
@@ -506,6 +534,22 @@ case "${ACTION}" in
       fi
     fi
     ;;
+  finalize)
+    if [[ "${STATUS}" -ne 0 ]]; then
+      :
+    elif ! is_variant "${VARIANT}"; then
+      echo "[ERROR] Set a valid variant after 'finalize'." >&2
+      STATUS=2
+    else
+      final_dir="${ABLATION_ROOT}/${VARIANT}/main"
+      if [[ "${VARIANT}" == "A06_e2e_t8_s4_t16_hard" ]]; then
+        final_dir="${ABLATION_ROOT}/${VARIANT}/refine_t16"
+      fi
+      finalize_stage "${final_dir}" "${VARIANT}" && \
+        record_summary "${ABLATION_ROOT}/${VARIANT}" "${final_dir}"
+      STATUS="$?"
+    fi
+    ;;
   summarize)
     summarize_all
     STATUS="$?"
@@ -541,7 +585,7 @@ case "${ACTION}" in
     fi
     ;;
   *)
-    echo "Usage: $0 {list|describe VARIANT|smoke [VARIANT]|prepare-hardness|run VARIANT|eval VARIANT|summarize|all}" >&2
+    echo "Usage: $0 {list|describe VARIANT|smoke [VARIANT]|prepare-hardness|run VARIANT|eval VARIANT|finalize VARIANT|summarize|all}" >&2
     STATUS=2
     ;;
 esac

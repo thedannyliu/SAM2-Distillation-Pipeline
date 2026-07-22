@@ -105,6 +105,28 @@ SAM2.1 Stage 1 not-started row. The current 3-lane processes should be allowed
 to resume these directories; none of the 12 mask-v2 training jobs should be
 launched again.
 
+### Selected continuation on three 4-H100 nodes
+
+After reviewing the completed mask results, the broad recovery queue is
+reduced to experiments that are already near completion, close a necessary
+causal comparison, or provide a missing architecture/teacher control.
+`scripts/company/48_run_selected_continuation_lane.sh` distributes them by
+remaining training load:
+
+| Lane | Training/resume work | Evaluation/finalization work |
+| --- | --- | --- |
+| `selected1` | frozen-BN mask-v1 control; SAM2.1-B+ Stage 1 control | W&B-only A00-A03 finalization |
+| `selected2` | SAM3.1 cosine-0.25 anchor | full eval for cosine 0 and 1; W&B-only A04-A07 finalization |
+| `selected3` | RepViT-M09 final 20%; SAM3.1 frozen-adapter final 80% | full eval for SAM3.1 projection; W&B-only A08-A11 finalization |
+
+Mask-v2 `finalize` validates and reuses the existing passing full val/test
+metrics, syncs them to the original W&B run, updates the summary, and removes
+`.full_eval_required`; it does not rerun training or GPU evaluation. RepViT
+M23, decoder LR 2e-6, SAM3.1 warmup-0/cosine-1.5/relation variants, and new
+T16/warmup/batch sweeps remain paused pending the selected results and W&B
+curve audit. Do not run the selected lanes concurrently with the old recovery
+lanes because the Stage 1 runners share checkpoint directories.
+
 ## 2026-07-21 Baseline Pareto Leaders
 
 | Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |

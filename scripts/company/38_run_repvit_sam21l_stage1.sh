@@ -28,7 +28,7 @@ M23_NAME="repvit_m2_3.dist_450e_in1k"
 M23_CKPT="${REPVIT_ROOT}/${M23_NAME}.safetensors"
 
 usage() {
-  echo "Usage: scripts/company/38_run_repvit_sam21l_stage1.sh smoke|train|eval|all"
+  echo "Usage: scripts/company/38_run_repvit_sam21l_stage1.sh smoke|train|eval|m09|m23|all"
 }
 
 check_inputs() {
@@ -247,6 +247,16 @@ case "${MODE}" in
     ;;
   eval)
     run_eval_matrix
+    ;;
+  m09)
+    smoke_model "${M09_NAME}" "${M09_CKPT}" || exit 1
+    train_model repvit_m09_proj_sam21l_msehr_cos025_l1010 "${M09_NAME}" "${M09_CKPT}" 8 1e-4 || exit 1
+    eval_model repvit_m09_proj_sam21l_msehr_cos025_l1010 "${M09_NAME}" "${M09_CKPT}"
+    ;;
+  m23)
+    smoke_model "${M23_NAME}" "${M23_CKPT}" || exit 1
+    train_model repvit_m23_proj_sam21l_msehr_cos025_l1010 "${M23_NAME}" "${M23_CKPT}" 4 5e-5 || exit 1
+    eval_model repvit_m23_proj_sam21l_msehr_cos025_l1010 "${M23_NAME}" "${M23_CKPT}"
     ;;
   all)
     smoke_model "${M09_NAME}" "${M09_CKPT}" || exit 1
