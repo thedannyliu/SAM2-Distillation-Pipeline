@@ -1,13 +1,111 @@
-# Key Results: 2026-07-21
+# Key Results through 2026-07-22
 
-Source: company all-experiment report generated from
-`/group-volume/danny-dataset/sam2_distill/runs`. The snapshot contains 59
-rows: 19 complete, 31 formally incomplete, and 9 superseded historical rows.
-The 31 active rows consist of 25 not started, 4 training incomplete, and 2
-validation incomplete after superseded runs are classified. Model decisions
-use `sav_val`; `sav_test` is reported only as a held-out descriptive result.
+Source: company all-experiment reports generated from
+`/group-volume/danny-dataset/sam2_distill/runs`. The latest 2026-07-22 snapshot
+contains 61 rows: 24 complete, 12 finalization incomplete, 8 not started, 3
+training incomplete, 5 validation incomplete, and 9 superseded historical
+rows. Two of the validation-incomplete rows are A01 smoke checks rather than
+formal experiments. Model decisions use `sav_val`; `sav_test` is reported only
+as a held-out descriptive result.
 
-## Current Pareto Leaders
+The 12 mask-v2 rows marked `finalization_incomplete` have all reached 100%
+training and have passing full SA-V val and test image/VOS metrics. Their
+`.full_eval_required` marker remains because the post-evaluation W&B summary
+sync or final marker cleanup did not finish. They need finalization only, not
+training or benchmark reruns.
+
+## 2026-07-22 Mask Fine-Tuning Results
+
+### Mask v2: evaluated, pending finalization
+
+All variants use the same Stage 1 task-fine-tuned starting point. Status is
+kept explicit so these rows are not misrepresented as fully closed pipelines.
+
+| Variant | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F | Status |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `A00_e2e_t4_box1_control` | 0.8376 | 0.7131 | 71.6 | 0.8356 | 0.7164 | 73.7 | finalization incomplete |
+| `A01_e2e_t4_box0` | 0.8377 | 0.7132 | 71.3 | 0.8355 | 0.7161 | 73.7 | finalization incomplete |
+| `A02_e2e_t4_official_prompt` | 0.8374 | 0.7129 | **72.0** | 0.8347 | 0.7151 | 74.1 | finalization incomplete |
+| `A03_decmem_t4` | 0.8377 | 0.7134 | 71.8 | 0.8357 | 0.7167 | 73.4 | finalization incomplete |
+| `A04_memory_t4` | 0.8373 | 0.7128 | 71.7 | 0.8353 | 0.7160 | 73.8 | finalization incomplete |
+| `A05_e2e_t8` | 0.8375 | 0.7132 | 71.9 | 0.8355 | 0.7164 | **74.3** | finalization incomplete |
+| `A06_e2e_t8_s4_t16_hard` | 0.8377 | 0.7138 | 71.4 | 0.8357 | 0.7169 | 73.9 | finalization incomplete |
+| `A07_e2e_t4_warmup5` | 0.8374 | 0.7131 | 71.3 | 0.8356 | 0.7163 | 73.9 | finalization incomplete |
+| `A08_e2e_t4_gb8` | 0.8374 | 0.7133 | 71.9 | 0.8355 | 0.7165 | 73.4 | finalization incomplete |
+| `A09_e2e_t4_hard50x2` | **0.8379** | 0.7137 | 70.8 | 0.8357 | 0.7166 | 72.9 | finalization incomplete |
+| `A10_e2e_t4_box0_imgkd` | 0.8377 | 0.7134 | 71.3 | **0.8361** | 0.7167 | 72.8 | finalization incomplete |
+| `A11_e2e_t4_box0_imgmemkd` | 0.8378 | **0.7143** | 71.3 | 0.8358 | **0.7168** | 73.3 | finalization incomplete |
+
+Relative to A00, the largest validation signals are orthogonal rather than one
+variant winning every metric:
+
+- A02 improves val J&F by 0.4 while reducing val mIoU/AP by 0.0002 each.
+- A05 improves val J&F by 0.3 and matches the best observed test J&F, but its
+  val mIoU is 0.0001 lower.
+- A09 improves val mIoU by 0.0003 and AP by 0.0006 but loses 0.8 J&F.
+- A11 improves val mIoU by 0.0002 and AP by 0.0012 but loses 0.3 J&F.
+- A06 gains 0.0007 val AP but loses 0.2 val J&F, so the hard T16 refinement
+  does not justify its extra complexity in this run.
+
+### Mask v1: completed
+
+| Variant | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `decoder_lr2e7` | 0.8375 | 0.7128 | 70.0 | 0.8356 | 0.7161 | 71.5 |
+| `decoder_lr5e7` | 0.8376 | 0.7128 | 70.2 | 0.8354 | 0.7162 | 71.4 |
+| `decoder_lr5e7_boxonly` | 0.8376 | 0.7128 | **70.3** | **0.8357** | 0.7161 | **71.7** |
+| `encdec_low_trainbn` | 0.8343 | 0.7039 | 69.2 | 0.8347 | 0.7143 | 71.2 |
+
+Decoder-only mask tuning is tightly clustered and does not improve over the
+task-fine-tuned checkpoints. Training the encoder with trainable BN is clearly
+harmful to image metrics, supporting frozen normalization for later E2E work.
+
+### Newly completed Stage 1 result
+
+| Variant | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tv21_adapter_sam21l_msehr_cos025` | 0.8347 | 0.7078 | 70.5 | 0.8359 | 0.7171 | 74.2 |
+
+Adding cosine 0.25 to the TV21 adapter improves its earlier plain-adapter
+result substantially on image metrics and test tracking, but it remains below
+task fine-tuning on the validation objectives used for selection.
+
+### Current cross-family validation Pareto set
+
+| Run | val mIoU | val AP | val J&F | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| Task v1 stage 3 | **0.8381** | 0.7133 | 71.5 | strongest val mIoU |
+| Mask v2 A02 | 0.8374 | 0.7129 | **72.0** | strongest val tracking |
+| Mask v2 A09 | 0.8379 | 0.7137 | 70.8 | high image accuracy, temporal regression |
+| Mask v2 A11 | 0.8378 | **0.7143** | 71.3 | strongest val AP |
+
+No mask-v2 setting dominates the task-v1 stage-3 checkpoint. Prompt
+simulation, hard sampling, and KD move different objectives, which argues for
+a small confirmation phase around A02 and A11 instead of a broad second grid.
+
+## 2026-07-22 Pipeline Status
+
+The original 31-run recovery launch has produced 17 newly evaluated or
+completed formal results: all 12 mask-v2 variants, four mask-v1 variants, and
+`tv21_adapter_sam21l_msehr_cos025`. Fourteen formal pipelines still require
+compute or evaluation; the two A01 smoke directories are excluded.
+
+| Category | Runs | Action |
+| --- | ---: | --- |
+| Mask v2 finalization only | 12 | sync existing val/test metrics to W&B, update summary, remove marker |
+| Formal not started | 8 | train -> val -> test |
+| Formal training incomplete | 3 | resume same checkpoint and W&B run -> val -> test |
+| Formal validation incomplete | 3 | finish val -> test |
+| A01 smoke validation incomplete | 2 | no action; retain as smoke provenance |
+| Superseded history | 9 | no action |
+
+The 14 formal compute/evaluation rows are both RepViT runs, two remaining mask
+v1 runs, and nine SAM3.1 runs. `tv21_proj_sam21bplus_msehr` is the remaining
+SAM2.1 Stage 1 not-started row. The current 3-lane processes should be allowed
+to resume these directories; none of the 12 mask-v2 training jobs should be
+launched again.
+
+## 2026-07-21 Baseline Pareto Leaders
 
 | Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -23,7 +121,7 @@ val J&F and is the correct alternative when validation tracking is the primary
 selection metric. Latency was measured on separate evaluation jobs and is not
 used for model ranking until hardware/load conditions are controlled.
 
-## All Completed Results
+## 2026-07-21 Completed Baseline Results
 
 `Image s` is mean total seconds per prompted object. `Video s` is seconds per
 video. Values preserve the precision printed by the 2026-07-21 universal
@@ -59,10 +157,11 @@ VOS metrics on both splits.
 | `tv5_proj_sam21l_msehr` | 0.7928 | 0.6321 | 0.0469 | 64.2 | 31.4687 | 0.7971 | 0.6458 | 0.0464 | 66.5 | 33.0099 |
 | `tv5_proj_sam21l_msehr_cos025` | 0.7923 | 0.6318 | 0.1096 | 63.7 | 35.6212 | 0.7958 | 0.6444 | 0.1001 | 66.2 | 36.7279 |
 
-## All Active Incomplete Experiments
+## 2026-07-21 Launch-Time Incomplete Experiments
 
-These 31 rows are the formal recovery scope. `Progress` is checkpoint progress
-reported in the snapshot, not evaluation progress.
+These 31 rows were the formal recovery scope before the 3-lane launch.
+`Progress` is checkpoint progress reported in that snapshot, not evaluation
+progress. Refer to the 2026-07-22 pipeline status above for current state.
 
 | Suite | Experiment | Status | Progress | Required action |
 | --- | --- | --- | ---: | --- |
@@ -131,7 +230,7 @@ targets. `Last state` records what existed before applying `superseded`.
    TV21 is stronger than TV11, which is stronger than TV5 on image metrics and
    J&F. Adapter variants do not yet show a consistent advantage over projection.
 
-## Recovery Scope
+## 2026-07-21 Recovery Launch
 
 The formal remaining scope is 31 resumable pipelines: 11 registered SAM2 or
 SAM3.1 Stage 1 runs, 2 RepViT runs, 6 mask-ablation v1 runs, and 12
