@@ -92,8 +92,7 @@ run_repvit_m09() {
   RUN_ROOT="${SAM2D_ROOT}/runs/repvit_stage1_v1" \
   CHECKPOINT_ROOT="${SAM2D_ROOT}/checkpoints" \
   WANDB_PROJECT=sam2-distill-repvit-stage1-v1 \
-  WANDB_RUN_ID='' \
-    scripts/company/38_run_repvit_sam21l_stage1.sh m09
+    env -u WANDB_RUN_ID scripts/company/38_run_repvit_sam21l_stage1.sh m09
 }
 
 run_mask_v1() {
@@ -106,8 +105,8 @@ finalize_mask_v2() {
   local variant="$1"
   MASK_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2" \
   WANDB_PROJECT=sam2-mask-finetune-ablation-v2 \
-  WANDB_RUN_ID='' \
-    scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh finalize "${variant}"
+    env -u WANDB_RUN_ID \
+      scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh finalize "${variant}"
 }
 
 run_report() {
