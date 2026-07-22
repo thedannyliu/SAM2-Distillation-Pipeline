@@ -189,6 +189,9 @@ def merge_vos(shard_roots: list[Path], out_dir: Path, expected: list[str]) -> No
             "num_prediction_pngs": sum(
                 int(item.get("num_prediction_pngs", 0)) for item in summaries
             ),
+            "num_zero_fallback_objects": sum(
+                int(item.get("num_zero_fallback_objects", 0)) for item in summaries
+            ),
             "video_summaries": [rows_by_video[name] for name in expected],
         }
     )

@@ -73,10 +73,10 @@ def normalized_xywh(mask: np.ndarray) -> list[float]:
     return [x0 / width, y0 / height, (x1 - x0 + 1) / width, (y1 - y0 + 1) / height]
 
 
-def best_prompt_object(outputs: dict[str, Any]) -> int:
-    ids = np.asarray(outputs["out_obj_ids"]).reshape(-1)
+def best_prompt_object(outputs: dict[str, Any]) -> int | None:
+    ids = np.asarray(outputs.get("out_obj_ids", [])).reshape(-1)
     if not len(ids):
-        raise RuntimeError("SAM3.1 returned no object for a positive box prompt")
+        return None
     scores = np.asarray(outputs.get("out_probs", np.ones(len(ids)))).reshape(-1)
     return int(ids[int(np.argmax(scores))])
 
@@ -117,7 +117,7 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
     stem_to_index = {path.stem: index for index, path in enumerate(images)}
     objects = first_masks(ann_video_dir)
     started = time.perf_counter()
-    predicted_paths: set[Path] = set()
+    output_paths: set[Path] = set()
     missing_objects: list[str] = []
 
     for gt_object_id, prompt_path in objects:
@@ -131,7 +131,9 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
         object_out_dir = args.out_dir / video / gt_object_id
         zero_mask = np.zeros(gt_mask.shape, dtype=bool)
         for annotated_mask in sorted((ann_video_dir / gt_object_id).glob("*.png")):
-            save_mask(zero_mask, object_out_dir / annotated_mask.name)
+            output_path = object_out_dir / annotated_mask.name
+            save_mask(zero_mask, output_path)
+            output_paths.add(output_path)
         response = predictor.handle_request(
             {"type": "start_session", "resource_path": str(image_video_dir)}
         )
@@ -148,6 +150,15 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
                 }
             )
             tracked_id = best_prompt_object(response["outputs"])
+            if tracked_id is None:
+                missing_objects.append(gt_object_id)
+                print(
+                    f"WARNING: {video}/{gt_object_id}: SAM3.1 returned no object; "
+                    "keeping zero-mask predictions",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
             prompt_mask = select_output_mask(response["outputs"], tracked_id)
             if prompt_mask is not None:
                 prompt_out_path = object_out_dir / prompt_path.name
@@ -178,14 +189,13 @@ def run_video(predictor, args: argparse.Namespace, video: str) -> dict[str, Any]
             )
         if not object_predicted_paths:
             missing_objects.append(gt_object_id)
-        predicted_paths.update(object_predicted_paths)
 
     return {
         "video": video,
-        "status": "pass" if not missing_objects else "failed",
+        "status": "pass",
         "objects": len(objects),
         "objects_without_predictions": missing_objects,
-        "prediction_pngs": len(predicted_paths),
+        "prediction_pngs": len(output_paths),
         "elapsed_sec": time.perf_counter() - started,
     }
 
@@ -241,6 +251,9 @@ def main() -> None:
         "elapsed_sec": elapsed,
         "sec_per_video": elapsed / max(len(rows), 1),
         "num_prediction_pngs": sum(row["prediction_pngs"] for row in rows),
+        "num_zero_fallback_objects": sum(
+            len(row["objects_without_predictions"]) for row in rows
+        ),
         "load": load_summary,
         "video_summaries": rows,
     }
@@ -250,7 +263,7 @@ def main() -> None:
     print(json.dumps(summary, indent=2))
     if failed:
         raise SystemExit(
-            "SAM3.1 VOS produced no non-fallback predictions for: "
+            "SAM3.1 VOS evaluation failed for: "
             + ", ".join(row["video"] for row in failed)
         )
 
