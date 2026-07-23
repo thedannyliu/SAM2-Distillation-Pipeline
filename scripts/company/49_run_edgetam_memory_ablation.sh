@@ -23,7 +23,19 @@ IFS=, read -r -a GPU_ARRAY <<< "${GPUS}"
 NPROC="${#GPU_ARRAY[@]}"
 
 SAM2D_ROOT="${SAM2D_ROOT:-/group-volume/danny-dataset/sam2_distill}"
-SAV_ROOT="${SAV_ROOT:-/danny-dataset/SA-V}"
+if [[ -z "${SAV_ROOT:-}" ]]; then
+  for candidate in \
+    /group-volume/danny-dataset/SA-V \
+    /mnt/data/danny-dataset/SA-V \
+    /danny-dataset/SA-V; do
+    if [[ -f "${candidate}/sav_val/sav_val.txt" && \
+          -f "${candidate}/sav_test/sav_test.txt" ]]; then
+      SAV_ROOT="${candidate}"
+      break
+    fi
+  done
+fi
+SAV_ROOT="${SAV_ROOT:-/group-volume/danny-dataset/SA-V}"
 MANIFEST="${MANIFEST:-${SAM2D_ROOT}/manifests/sav_stage1_vbal16_6fps_group_runtime.parquet}"
 SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"

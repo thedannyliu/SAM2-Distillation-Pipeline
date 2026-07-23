@@ -427,6 +427,12 @@ def scan(root: Path, legacy_roots: list[Path], central_csv: Path) -> None:
             for row in rows
         }.values()
     )
+    if not rows:
+        print(
+            "No experiment metadata rows found; preserving "
+            f"{central_csv}"
+        )
+        return
     update_central(central_csv, rows)
     print(f"Wrote {len(rows)} rows to {central_csv}")
 
