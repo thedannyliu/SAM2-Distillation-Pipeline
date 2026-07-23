@@ -1,40 +1,70 @@
-# Key Results through 2026-07-22
+# Key Results through 2026-07-23
 
 Source: company all-experiment reports generated from
-`/group-volume/danny-dataset/sam2_distill/runs`. The latest 2026-07-22 snapshot
-contains 61 rows: 24 complete, 12 finalization incomplete, 8 not started, 3
-training incomplete, 5 validation incomplete, and 9 superseded historical
+`/group-volume/danny-dataset/sam2_distill/runs`. The latest 2026-07-23 snapshot
+contains 69 rows: 51 complete, 1 finalization incomplete, 4 not started, 1
+training incomplete, 3 validation incomplete, and 9 superseded historical
 rows. Two of the validation-incomplete rows are A01 smoke checks rather than
 formal experiments. Model decisions use `sav_val`; `sav_test` is reported only
 as a held-out descriptive result.
 
-The 12 mask-v2 rows marked `finalization_incomplete` have all reached 100%
-training and have passing full SA-V val and test image/VOS metrics. Their
-`.full_eval_required` marker remains because the post-evaluation W&B summary
-sync or final marker cleanup did not finish. They need finalization only, not
-training or benchmark reruns.
+All 12 mask-v2 rows and all eight EdgeTAM-memory rows completed train -> full
+SA-V val -> full SA-V test. The remaining `finalization_incomplete` row is
+RepViT-M09, whose observed accuracy is not competitive.
+
+## 2026-07-23 EdgeTAM Memory Results
+
+All runs retain the TinyViT-21M image encoder and start from the selected A02
+end-to-end checkpoint. M0-M2 isolate memory topology; R0-R3 test whether
+end-to-end task/KD training can recover the compressed EdgeTAM path.
+
+| Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `M0_sam2_mem4` | 0.8405 | 0.7167 | **71.5** | 0.8391 | 0.7191 | **74.3** |
+| `M1_sam2_mem2` | **0.8406** | 0.7167 | 53.3 | 0.8391 | **0.7197** | 56.1 |
+| `M2a_edgetam_hybrid2_official` | 0.8405 | 0.7166 | 15.6 | 0.8391 | 0.7190 | 12.8 |
+| `M2b_edgetam_hybrid2_current` | **0.8406** | 0.7167 | 13.2 | 0.8391 | 0.7191 | 10.6 |
+| `R0_edgetam_e2e_t4_task` | 0.8369 | 0.7096 | 23.0 | 0.8364 | 0.7137 | 21.5 |
+| `R1_edgetam_e2e_t4_imgkd` | **0.8379** | **0.7121** | 23.6 | 0.8373 | 0.7165 | 21.7 |
+| `R2_edgetam_e2e_t4_imgmemkd` | 0.8377 | 0.7117 | **25.3** | **0.8374** | **0.7167** | **23.2** |
+| `R3_edgetam_e2e_t8_imgmemkd` | 0.8374 | 0.7114 | 21.9 | 0.8367 | 0.7157 | 19.1 |
+
+The image metrics remain healthy while VOS collapses, which is strong evidence
+of temporal-interface incompatibility rather than a general TinyViT or mask
+decoder failure. M1 loses 18.2 J&F on both splits versus M0, showing that
+two-layer truncation alone is already destructive. Official M2 attention
+initialization is slightly better than retaining the A02 layers, but both are
+unusable. Memory KD is the best recovery signal (+1.7 val, +1.5 test J&F over
+R1), while the eight-frame run is worse.
+
+Keep M0 as an uncompressed continued-memory baseline. Stop the present M1/M2/R
+line as production candidates and do not spend the next compute block on a
+broad hyperparameter sweep. First require a 20-50-video temporal compatibility
+gate, coherent full-temporal-stack initialization, and frozen-module memory
+distillation to recover at least 60 mini-val J&F. The detailed causal analysis
+and next protocol are in `docs/experiments/edgetam_memory_ablation_v1.md`.
 
 ## 2026-07-22 Mask Fine-Tuning Results
 
-### Mask v2: evaluated, pending finalization
+### Mask v2: completed
 
 All variants use the same Stage 1 task-fine-tuned starting point. Status is
 kept explicit so these rows are not misrepresented as fully closed pipelines.
 
 | Variant | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `A00_e2e_t4_box1_control` | 0.8376 | 0.7131 | 71.6 | 0.8356 | 0.7164 | 73.7 | finalization incomplete |
-| `A01_e2e_t4_box0` | 0.8377 | 0.7132 | 71.3 | 0.8355 | 0.7161 | 73.7 | finalization incomplete |
-| `A02_e2e_t4_official_prompt` | 0.8374 | 0.7129 | **72.0** | 0.8347 | 0.7151 | 74.1 | finalization incomplete |
-| `A03_decmem_t4` | 0.8377 | 0.7134 | 71.8 | 0.8357 | 0.7167 | 73.4 | finalization incomplete |
-| `A04_memory_t4` | 0.8373 | 0.7128 | 71.7 | 0.8353 | 0.7160 | 73.8 | finalization incomplete |
-| `A05_e2e_t8` | 0.8375 | 0.7132 | 71.9 | 0.8355 | 0.7164 | **74.3** | finalization incomplete |
-| `A06_e2e_t8_s4_t16_hard` | 0.8377 | 0.7138 | 71.4 | 0.8357 | 0.7169 | 73.9 | finalization incomplete |
-| `A07_e2e_t4_warmup5` | 0.8374 | 0.7131 | 71.3 | 0.8356 | 0.7163 | 73.9 | finalization incomplete |
-| `A08_e2e_t4_gb8` | 0.8374 | 0.7133 | 71.9 | 0.8355 | 0.7165 | 73.4 | finalization incomplete |
-| `A09_e2e_t4_hard50x2` | **0.8379** | 0.7137 | 70.8 | 0.8357 | 0.7166 | 72.9 | finalization incomplete |
-| `A10_e2e_t4_box0_imgkd` | 0.8377 | 0.7134 | 71.3 | **0.8361** | 0.7167 | 72.8 | finalization incomplete |
-| `A11_e2e_t4_box0_imgmemkd` | 0.8378 | **0.7143** | 71.3 | 0.8358 | **0.7168** | 73.3 | finalization incomplete |
+| `A00_e2e_t4_box1_control` | 0.8376 | 0.7131 | 71.6 | 0.8356 | 0.7164 | 73.7 | complete |
+| `A01_e2e_t4_box0` | 0.8377 | 0.7132 | 71.3 | 0.8355 | 0.7161 | 73.7 | complete |
+| `A02_e2e_t4_official_prompt` | 0.8374 | 0.7129 | **72.0** | 0.8347 | 0.7151 | 74.1 | complete |
+| `A03_decmem_t4` | 0.8377 | 0.7134 | 71.8 | 0.8357 | 0.7167 | 73.4 | complete |
+| `A04_memory_t4` | 0.8373 | 0.7128 | 71.7 | 0.8353 | 0.7160 | 73.8 | complete |
+| `A05_e2e_t8` | 0.8375 | 0.7132 | 71.9 | 0.8355 | 0.7164 | **74.3** | complete |
+| `A06_e2e_t8_s4_t16_hard` | 0.8377 | 0.7138 | 71.4 | 0.8357 | 0.7169 | 73.9 | complete |
+| `A07_e2e_t4_warmup5` | 0.8374 | 0.7131 | 71.3 | 0.8356 | 0.7163 | 73.9 | complete |
+| `A08_e2e_t4_gb8` | 0.8374 | 0.7133 | 71.9 | 0.8355 | 0.7165 | 73.4 | complete |
+| `A09_e2e_t4_hard50x2` | **0.8379** | 0.7137 | 70.8 | 0.8357 | 0.7166 | 72.9 | complete |
+| `A10_e2e_t4_box0_imgkd` | 0.8377 | 0.7134 | 71.3 | **0.8361** | 0.7167 | 72.8 | complete |
+| `A11_e2e_t4_box0_imgmemkd` | 0.8378 | **0.7143** | 71.3 | 0.8358 | **0.7168** | 73.3 | complete |
 
 Relative to A00, the largest validation signals are orthogonal rather than one
 variant winning every metric:
@@ -51,9 +81,11 @@ variant winning every metric:
 
 | Variant | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `decoder_lr2e6` | 0.8374 | 0.7127 | 70.3 | 0.8352 | 0.7161 | 70.6 |
 | `decoder_lr2e7` | 0.8375 | 0.7128 | 70.0 | 0.8356 | 0.7161 | 71.5 |
 | `decoder_lr5e7` | 0.8376 | 0.7128 | 70.2 | 0.8354 | 0.7162 | 71.4 |
 | `decoder_lr5e7_boxonly` | 0.8376 | 0.7128 | **70.3** | **0.8357** | 0.7161 | **71.7** |
+| `encdec_low_frozenbn` | 0.8374 | 0.7127 | 69.9 | 0.8355 | 0.7163 | 71.2 |
 | `encdec_low_trainbn` | 0.8343 | 0.7039 | 69.2 | 0.8347 | 0.7143 | 71.2 |
 
 Decoder-only mask tuning is tightly clustered and does not improve over the
@@ -74,16 +106,19 @@ task fine-tuning on the validation objectives used for selection.
 
 | Run | val mIoU | val AP | val J&F | Interpretation |
 | --- | ---: | ---: | ---: | --- |
-| Task v1 stage 3 | **0.8381** | 0.7133 | 71.5 | strongest val mIoU |
+| EdgeTAM suite M0 | **0.8405** | **0.7167** | 71.5 | strongest image metrics; uncompressed memory |
+| Task v1 stage 3 | 0.8381 | 0.7133 | 71.5 | balanced pre-M0 baseline |
 | Mask v2 A02 | 0.8374 | 0.7129 | **72.0** | strongest val tracking |
 | Mask v2 A09 | 0.8379 | 0.7137 | 70.8 | high image accuracy, temporal regression |
-| Mask v2 A11 | 0.8378 | **0.7143** | 71.3 | strongest val AP |
+| Mask v2 A11 | 0.8378 | 0.7143 | 71.3 | strongest mask-v2 val AP |
 
-No mask-v2 setting dominates the task-v1 stage-3 checkpoint. Prompt
-simulation, hard sampling, and KD move different objectives, which argues for
-a small confirmation phase around A02 and A11 instead of a broad second grid.
+M0 improves image metrics without improving validation tracking and is not a
+compressed EdgeTAM model. No mask-v2 setting dominates the task-v1 stage-3
+checkpoint. Prompt simulation, hard sampling, and KD move different
+objectives; the EdgeTAM result now shifts the next experiment from another
+mask-finetuning grid to temporal compatibility and memory distillation.
 
-## 2026-07-22 Pipeline Status
+## 2026-07-22 Historical Pipeline Status
 
 The original 31-run recovery launch has produced 17 newly evaluated or
 completed formal results: all 12 mask-v2 variants, four mask-v1 variants, and
