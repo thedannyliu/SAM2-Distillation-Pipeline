@@ -4,7 +4,7 @@
 
 After the TinyViT-21M hybrid has been trained end to end with SA-V mask GT, does EdgeTAM's compressed spatial memory improve video segmentation, and is any change caused by compression or by the official EdgeTAM initialization?
 
-The starting point for every row is `A02_e2e_t4_official_prompt`. The image encoder and mask decoder are frozen. Training updates the memory attention, memory encoder, object-pointer memory parameters, and, when present, the spatial Perceiver.
+The starting point for every row is `A02_e2e_t4_official_prompt`. The M rows freeze the image encoder and mask decoder to isolate memory architecture. The R rows then reproduce the EdgeTAM video-training signals while keeping the TinyViT-21M encoder.
 
 ## Controlled experiment table
 
@@ -17,17 +17,30 @@ The starting point for every row is `A02_e2e_t4_official_prompt`. The image enco
 
 This is a 2x2 causal sequence rather than a broad hyperparameter sweep: compare M0 vs M1 for depth, M1 vs M2b for compression, and M2b vs M2a for initialization.
 
+## TinyViT-21M reproduction ladder
+
+| Run | Frames | Trainable scope | Image KD | Memory KD | Question | Lane | Status |
+|---|---:|---|---:|---:|---|---|---|
+| `R0_edgetam_e2e_t4_task` | 4 | full student except prompt encoder | 0 | 0 | Does full task tuning unlock the transferred memory? | `memory1` | pending |
+| `R1_edgetam_e2e_t4_imgkd` | 4 | full student except prompt encoder | 1 | 0 | What is gained by EdgeTAM image-feature distillation? | `memory2` | pending |
+| `R2_edgetam_e2e_t4_imgmemkd` | 4 | full student except prompt encoder | 1 | 1 | What is additionally gained by memory-output distillation? | `memory2` | pending |
+| `R3_edgetam_e2e_t8_imgmemkd` | 8 | full student except prompt encoder | 1 | 1 | Does the official eight-frame horizon matter? | `memory1` | pending |
+
+The official EdgeTAM video stage uses task loss plus unit-weight image and memory MSE, eight frames, two memory-attention blocks, and 256 global plus 256 2D latents. It also uses a much larger mixed dataset and 130K-iteration schedule. These R rows reproduce the model, prompt, and loss method with the available SA-V data; they do not claim to reproduce the original compute or dataset mixture. The frozen online teacher is SAM2.1 Hiera-L and consumes the same frames and prompt simulation as the TinyViT student.
+
 ## Shared protocol
 
-- Data: all usable SA-V train videos (currently 50,337), four sampled frames per example, full SA-V val and test.
-- Hardware: four H100s per run; batch 2/GPU, global batch 8; one epoch.
-- Prompt: exact first-frame box; no correction click. This matches the deployed box-prompt evaluation path.
-- Frozen: TinyViT-21M encoder, neck, prompt encoder, and mask decoder. BatchNorm is frozen.
-- Trainable: memory attention, memory encoder, object-pointer memory parameters, and the Perceiver for M2a/M2b.
+- Data: all usable SA-V train videos (currently 50,337), full SA-V val and test. R3 uses the audited eight-frame-eligible subset.
+- Hardware: four H100s per run; one epoch. M rows use batch 2/GPU; R rows use batch 1/GPU because the full student and online teacher are resident together.
+- M-row prompt: exact first-frame box with no correction click, matching the deployed box-prompt evaluation path.
+- R-row prompt: point probability 0.5, conditional box probability 0.5, GT-click probability 0.1, two randomly chosen correction frames, seven iterative correction points, and up to three objects.
+- M-row scope: TinyViT-21M encoder, neck, prompt encoder, and mask decoder frozen; train memory attention, memory encoder, object-pointer memory parameters, and the Perceiver for M2a/M2b.
+- R-row scope: train the full student except the prompt encoder; the teacher is eval-only and excluded from DDP, optimizer state, and checkpoints. BatchNorm remains frozen.
 - Learning rates: Perceiver `1e-5 -> 1e-6`, memory attention `3e-6 -> 3e-7`, other memory parameters `1e-6 -> 1e-7`; 5% linear warmup, cosine decay, gradient clipping at 0.1.
+- R-row encoder learning rate: `3e-7 -> 3e-8` with 10% warmup. Image/memory MSE is computed in fp32.
 - Tracking: online W&B project `edgetam-memory-ablation-v1`, TensorBoard fallback, raw and EMA losses, LR groups, normalized loss, object-frame count, and samples whose total loss is at least 20.
 - Pipeline: train -> full val -> select best -> full test -> append central CSV. Training resumes the same checkpoint, TensorBoard directory, and W&B run ID.
-- Storage: each run keeps one physical `last.pt`; `best.pt` and the compatibility `checkpoint.pt` are symlinks. Evaluation predictions are deleted after scoring. Four runs add well below 10 GB, excluding the shared SA-V data and starting checkpoints.
+- Storage: each run keeps one physical `last.pt`; `best.pt` and the compatibility `checkpoint.pt` are symlinks. The teacher is never checkpointed and evaluation predictions are deleted after scoring. All eight runs add well below 10 GB, excluding shared data and starting checkpoints.
 
 Run root:
 
@@ -42,6 +55,8 @@ Central result table:
 Primary selection uses SA-V val J&F. Test is reported only after the val result exists. Also report image mIoU/AP and both image/video latency so a J&F gain is not accepted blindly if the compressed module regresses prompt segmentation or speed.
 
 Treat changes smaller than 0.3 J&F as inconclusive without a repeat seed. Keep EdgeTAM memory only if M2a or M2b improves val J&F over both M0 and M1 without a material image-quality regression. If M2b beats M2a, preserve A02 attention initialization; if M2a wins, the official attention pair is part of the useful transfer.
+
+For the reproduction ladder, compare R1-R0 for image KD, R2-R1 for memory KD, and R3-R2 for the longer horizon. R2 is the primary compact reproduction candidate. R3 is retained only if its additional training cost produces a clear video gain without degrading image-prompt metrics.
 
 ## Implementation
 

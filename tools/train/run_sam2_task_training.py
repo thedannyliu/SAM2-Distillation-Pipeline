@@ -490,6 +490,23 @@ def apply_edgetam_memory_overrides(config) -> None:
                 "param_names": ["spatial_perceiver.*"],
             }
         )
+    encoder_lr = float(os.environ.get("TASK_ENCODER_LR", "0"))
+    if encoder_lr > 0:
+        encoder_lr_end = float(
+            os.environ.get("TASK_ENCODER_LR_END", str(encoder_lr))
+        )
+        lr_options.append(
+            {
+                "scheduler": {
+                    "_target_": (
+                        "fvcore.common.param_scheduler.CosineParamScheduler"
+                    ),
+                    "start_value": encoder_lr,
+                    "end_value": encoder_lr_end,
+                },
+                "param_names": ["image_encoder.*"],
+            }
+        )
     config.trainer.optim.options.lr = OmegaConf.create(lr_options)
     config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(
         {

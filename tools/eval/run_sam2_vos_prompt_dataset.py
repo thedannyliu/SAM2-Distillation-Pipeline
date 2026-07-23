@@ -191,6 +191,13 @@ def build_edgetam_trainer_predictor(
         "num_frames_to_correct_for_eval",
         "num_init_cond_frames_for_eval",
         "forward_backbone_per_frame_for_eval",
+        "freeze_teacher",
+        "synthetic_teacher",
+        "synthetic_teacher_offset",
+        "teacher_checkpoint",
+        "teacher_feature_cache_path",
+        "teacher_model",
+        "teacher_model_config",
     ):
         if key in model_cfg:
             del model_cfg[key]

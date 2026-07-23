@@ -129,12 +129,17 @@ def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
     cfg = OmegaConf.load(args.config)
     model_cfg = cfg.model if "model" in cfg else cfg.trainer.model
     model_cfg._target_ = "sam2_distill.edgetam.train_model.EdgeTAMTrain"
-    if "synthetic_teacher" in model_cfg:
-        del model_cfg.synthetic_teacher
-    if "teacher_feature_cache_path" in model_cfg:
-        del model_cfg.teacher_feature_cache_path
-    if "synthetic_teacher_offset" in model_cfg:
-        del model_cfg.synthetic_teacher_offset
+    for key in (
+        "freeze_teacher",
+        "synthetic_teacher",
+        "synthetic_teacher_offset",
+        "teacher_checkpoint",
+        "teacher_feature_cache_path",
+        "teacher_model",
+        "teacher_model_config",
+    ):
+        if key in model_cfg:
+            del model_cfg[key]
     model = instantiate(model_cfg, _recursive_=True)
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
