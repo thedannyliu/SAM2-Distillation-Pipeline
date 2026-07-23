@@ -91,10 +91,16 @@ official training budget.
 
 ## Current execution decision
 
-Run E0 after one of the three TinyViT size nodes becomes free. Do not spend
-the current block on C2, C3, another Perceiver LR sweep, or T8. E1-E4 remain
-gated; implement and launch each only when its predecessor identifies the
-next failure boundary.
+Use the two additional four-H100 nodes for independent E0 checks while the
+three TinyViT size fine-tunes continue:
+
+- primary seed `edgetam-memory-gate-v2`: gate, then full val/test on pass;
+- replication seed `edgetam-fidelity-v3-seed2`: independent gate only.
+
+Both checks use separate run directories and W&B runs. Do not spend this
+block on C2, C3, another Perceiver LR sweep, or T8. E1-E4 remain gated;
+implement and launch each only when its predecessor identifies the next
+failure boundary.
 
 W&B project: `edgetam-fidelity-v3`
 
