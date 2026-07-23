@@ -2,15 +2,18 @@
 
 Source: company all-experiment reports generated from
 `/group-volume/danny-dataset/sam2_distill/runs`. The latest 2026-07-23 snapshot
-contains 69 rows: 51 complete, 1 finalization incomplete, 4 not started, 1
-training incomplete, 3 validation incomplete, and 9 superseded historical
-rows. Two of the validation-incomplete rows are A01 smoke checks rather than
-formal experiments. Model decisions use `sav_val`; `sav_test` is reported only
-as a held-out descriptive result.
+contains 73 rows: 51 complete, 2 final-checkpoint incomplete, 1 finalization
+incomplete, 6 not started, 1 training incomplete, 3 validation incomplete,
+and 9 superseded historical rows. The two final-checkpoint-incomplete rows are
+completed EdgeTAM recovery training runs that intentionally stopped after
+failing the mini-val gate. Two of the validation-incomplete rows are A01 smoke
+checks rather than formal experiments. Model decisions use `sav_val`;
+`sav_test` is reported only as a held-out descriptive result.
 
 All 12 mask-v2 rows and all eight EdgeTAM-memory rows completed train -> full
-SA-V val -> full SA-V test. The remaining `finalization_incomplete` row is
-RepViT-M09, whose observed accuracy is not competitive.
+SA-V val -> full SA-V test. EdgeTAM recovery C0 and C1 completed training but
+did not proceed to full val/test. The remaining `finalization_incomplete` row
+is RepViT-M09, whose observed accuracy is not competitive.
 
 ## 2026-07-23 EdgeTAM Memory Results
 
@@ -50,6 +53,27 @@ same-TinyViT/decoder teacher, compares coherent versus partial temporal
 initialization, and compares staged versus joint training at equal two-epoch
 data exposure. All candidates must pass a fixed 32-video validation gate before
 full val/test.
+
+### EdgeTAM recovery v2 gate results
+
+| Run | Initialization | Gate mIoU | Gate AP | Gate J&F | J&F vs M0 | Status |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| M0 gate reference | functional four-layer memory | 0.852800 | 0.756663 | 71.6 | 0.0 | reference |
+| `C0_coherent_m0mem_align` | coherent official temporal | 0.852409 | 0.755670 | **31.5** | -40.1 | gate failed |
+| `C1_partial_m0mem_align` | v1 partial/legacy | **0.852822** | **0.756625** | 31.1 | -40.5 | gate failed |
+
+Both candidates completed one full SA-V epoch and passed the image guardrails,
+but neither approached the 60 J&F compatibility threshold. Coherent transfer
+improves tracking by only 0.4 over partial transfer, so incomplete official
+initialization was not the dominant cause of collapse. Same-interface M0
+distillation on final memory-conditioned `F_M` is also insufficient: it
+preserves prompted-image quality while leaving temporal propagation broken.
+
+C3 is blocked because C0 failed. C2 was not started in this snapshot and
+should be retained only as an explicit negative joint-training control, not as
+the expected recovery path. The next experiment should first localize
+per-frame decay and then supervise intermediate memory tokens, object pointers,
+or attention behavior rather than relying only on final-feature MSE.
 
 ## 2026-07-22 Mask Fine-Tuning Results
 

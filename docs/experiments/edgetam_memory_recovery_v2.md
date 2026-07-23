@@ -57,7 +57,7 @@ The v1 results isolate the failure:
 | Run | Transfer | val J&F | test J&F | val mIoU |
 | --- | --- | ---: | ---: | ---: |
 | M0 | functional four-layer SAM2 memory | 71.5 | 74.3 | 0.8405 |
-| M1 | first two M0 attention layers | 53.3 | 56.1 | 0.8406 |
+| M1 | first two A02 attention layers | 53.3 | 56.1 | 0.8406 |
 | M2a | official Perceiver + attention only | 15.6 | 12.8 | 0.8405 |
 | R2 | M2a + task/image/memory KD | 25.3 | 23.2 | 0.8377 |
 
@@ -103,10 +103,10 @@ setting, with IoU and occlusion weights of 1.
 
 | Run | Initializer/layout | Epochs | Objective | Causal question | Status |
 | --- | --- | ---: | --- | --- | --- |
-| `C0_coherent_m0mem_align` | coherent official temporal | 1 | `Lmem` | Can pure functional alignment cross the compatibility gate? | planned |
-| `C1_partial_m0mem_align` | v1 partial/legacy | 1 | `Lmem` | At fixed M0 teacher, how much does coherent initialization matter? | planned |
-| `C2_coherent_m0mem_joint2ep` | coherent official temporal | 2 | `Ltask + Lmem` | Does joint training work when given two equal data passes? | planned |
-| `C3_coherent_m0mem_staged` | C0 checkpoint | 1 after C0 | `Ltask + Lmem` | Does one alignment epoch before one joint epoch beat C2? | planned |
+| `C0_coherent_m0mem_align` | coherent official temporal | 1 | `Lmem` | Can pure functional alignment cross the compatibility gate? | gate failed |
+| `C1_partial_m0mem_align` | v1 partial/legacy | 1 | `Lmem` | At fixed M0 teacher, how much does coherent initialization matter? | gate failed |
+| `C2_coherent_m0mem_joint2ep` | coherent official temporal | 2 | `Ltask + Lmem` | Does joint training work when given two equal data passes? | not started |
+| `C3_coherent_m0mem_staged` | C0 checkpoint | 1 after C0 | `Ltask + Lmem` | Does one alignment epoch before one joint epoch beat C2? | blocked by C0 |
 
 C2 and C0 -> C3 each see exactly two epochs, so the curriculum comparison is
 not confounded by data exposure. C3 is blocked unless C0 passes its gate.
@@ -141,6 +141,41 @@ cleaner and much cheaper than evaluating a known-broken model on test.
 
 The 32-video gate is only a triage device. Final model selection still uses
 full SA-V val J&F. Changes below 0.3 full-val J&F require another seed.
+
+## Recovery results through 2026-07-23
+
+C0 and C1 completed their full training epochs and were evaluated on the same
+deterministic 32-video gate. Both passed the image guardrails but failed both
+tracking requirements:
+
+| Run | Gate mIoU | Gate AP | Gate J&F | J&F vs M0 | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| M0 fixed reference | 0.852800 | 0.756663 | 71.6 | 0.0 | reference |
+| C0 coherent + `Lmem` | 0.852409 | 0.755670 | **31.5** | -40.1 | fail |
+| C1 partial + `Lmem` | **0.852822** | **0.756625** | 31.1 | -40.5 | fail |
+
+The universal report labels C0 and C1 `final_checkpoint_incomplete` because a
+failed gate intentionally prevents creation of `best.pt` and full val/test
+artifacts. This is not incomplete training: each run reached 100% of its
+planned epoch and retains `last.pt`. Their research status is `gate_failed`.
+
+The coherent stack gains only 0.4 gate J&F over the partial initializer while
+remaining 40.1 points below M0. This is too small to support H1 and shows that
+initialization provenance and pointer layout are not the dominant remaining
+failure. H2 and H3 are also insufficient in their tested form: even an M0
+teacher with a pure memory-output objective does not recover temporal
+propagation in one full SA-V pass.
+
+The nearly exact M0 image metrics strengthen the temporal diagnosis. The
+compressed model still answers a box correctly on the prompted image, but the
+memory-conditioned state does not preserve the object across frames. A single
+final `F_M` MSE permits internal memory tokens, temporal embeddings, object
+pointers, and attention dynamics to remain functionally misaligned.
+
+C3 is therefore blocked as designed. C2 had not started at report time. It
+should not be launched as an expected recovery run after this gate result;
+retain it only if a deliberately controlled negative joint-training baseline
+is worth two additional epochs.
 
 ## Optimization and tracking
 
@@ -182,13 +217,15 @@ Entry points:
 
 ## Decision after this suite
 
-1. If C0 fails, stop task tuning. Inspect per-frame decay and tensor
-   distributions before changing optimization.
-2. If C0 passes and C1 fails, coherent transfer is necessary.
-3. If both pass, compare their full-val J&F to measure whether coherent
-   transfer is still useful after same-interface alignment.
-4. Compare C3 with C2 at equal exposure. Keep staged training only for a
-   greater than 0.3 val J&F gain without image regression.
-5. Only after a compact T4 model reaches at least 60 gate J&F and competitive
-   full-val tracking should T8, stronger augmentation, or progressive T16 be
-   reconsidered.
+1. Stop the staged C3 path because C0 failed its gate.
+2. Do not interpret coherent initialization as a recovery: C0 exceeds C1 by
+   only 0.4 gate J&F and both remain near 31.
+3. Before further optimization, measure first-frame J/F, per-frame decay,
+   memory-token norms, object-pointer norms, and attention outputs for M0,
+   C0, and C1 on the fixed gate.
+4. The next training method must constrain intermediate temporal state or
+   behavior, not only final `F_M`: candidates include layer-wise attention
+   distillation, memory-token projection/alignment, and teacher-mask
+   propagation targets.
+5. Only after a compact T4 model reaches at least 60 gate J&F should T8,
+   stronger augmentation, or progressive T16 be reconsidered.
