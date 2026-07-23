@@ -44,6 +44,7 @@ def patch_edgetam_perceiver_view() -> None:
         pos_2d = self.position_encoding(latents_2d)
         pos_2d = pos_2d.permute(0, 2, 3, 1).flatten(1, 2)
         latents_2d = latents_2d.permute(0, 2, 3, 1).flatten(1, 2)
+        latents_2d = self.norm(latents_2d)
         return latents_2d, pos_2d
 
     PerceiverResampler.forward_2d = forward_2d

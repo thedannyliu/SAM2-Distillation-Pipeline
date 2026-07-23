@@ -14,6 +14,26 @@ from typing import Any
 
 
 REGISTRY = {
+    "M0_sam2_mem4": (
+        "memory_control",
+        "Continue the current four-layer uncompressed SAM2 memory stack.",
+        "",
+    ),
+    "M1_sam2_mem2": (
+        "memory_depth",
+        "Isolate the effect of reducing memory attention from four to two layers.",
+        "M0_sam2_mem4",
+    ),
+    "M2a_edgetam_hybrid2_official": (
+        "memory_compression",
+        "Test EdgeTAM global-plus-2D Perceiver with the official memory pair.",
+        "M1_sam2_mem2",
+    ),
+    "M2b_edgetam_hybrid2_current": (
+        "memory_initialization",
+        "Test the same Perceiver with current E2E memory-attention initialization.",
+        "M2a_edgetam_hybrid2_official",
+    ),
     "A00_e2e_t4_box1_control": (
         "control",
         "Full E2E T4, box plus one error-correction click.",
@@ -111,6 +131,11 @@ FIELDNAMES = [
     "lambda_img",
     "lambda_mem",
     "teacher_checkpoint",
+    "memory_topology",
+    "memory_layers",
+    "memory_initializer",
+    "num_global_latents",
+    "num_2d_latents",
     "planned_updates_per_epoch",
     "optimizer_updates",
     "train_elapsed_seconds",
@@ -192,7 +217,7 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
     batch = int(os.environ.get("TASK_TRAIN_BATCH_SIZE", "1"))
     return {
         "variant": variant,
-        "suite": "v2",
+        "suite": os.environ.get("TASK_EXPERIMENT_SUITE", "v2"),
         "axis": axis,
         "hypothesis": hypothesis,
         "control_variant": control,
@@ -222,6 +247,11 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         "lambda_img": os.environ.get("TASK_LAMBDA_IMG", "0"),
         "lambda_mem": os.environ.get("TASK_LAMBDA_MEM", "0"),
         "teacher_checkpoint": os.environ.get("TASK_TEACHER_CHECKPOINT", ""),
+        "memory_topology": os.environ.get("TASK_MEMORY_TOPOLOGY", ""),
+        "memory_layers": os.environ.get("TASK_MEMORY_LAYERS", ""),
+        "memory_initializer": os.environ.get("TASK_MEMORY_INITIALIZER", ""),
+        "num_global_latents": os.environ.get("TASK_NUM_GLOBAL_LATENTS", ""),
+        "num_2d_latents": os.environ.get("TASK_NUM_2D_LATENTS", ""),
         "stage_dir": str(stage_dir),
     }
 

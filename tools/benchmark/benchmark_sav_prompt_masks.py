@@ -139,7 +139,7 @@ def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)
-    incompatible = model.load_state_dict(state_dict, strict=False)
+    model.load_state_dict(state_dict, strict=True)
     model = model.to(device)
     model.eval()
     return SAM2ImagePredictor(model), {
@@ -147,8 +147,9 @@ def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
         "checkpoint_steps": checkpoint.get("steps"),
         "num_tensors": len(state_dict),
         "sam2_package": str(Path(sam2_package.__file__).resolve()),
-        "missing_keys": list(incompatible.missing_keys),
-        "unexpected_keys": list(incompatible.unexpected_keys),
+        "missing_keys": [],
+        "unexpected_keys": [],
+        "strict_load": True,
     }
 
 

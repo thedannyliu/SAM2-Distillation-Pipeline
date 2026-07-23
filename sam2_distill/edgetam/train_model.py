@@ -56,13 +56,14 @@ class EdgeTAMTrain(SAM2Train):
             "mask_decoder_only",
             "mask_decoder_memory",
             "memory_only",
+            "memory_perceiver_full",
             "image_encoder_mask_decoder",
             "image_encoder_mask_decoder_memory",
         }:
             raise ValueError(
                 "trainable_module_mode must be one of: image_neck_only, "
                 "image_encoder_only, mask_decoder_only, "
-                "mask_decoder_memory, memory_only, "
+                "mask_decoder_memory, memory_only, memory_perceiver_full, "
                 "image_encoder_mask_decoder, "
                 "image_encoder_mask_decoder_memory"
             )
@@ -76,10 +77,21 @@ class EdgeTAMTrain(SAM2Train):
             modules = [self.image_encoder]
         elif mode == "mask_decoder_only":
             modules = [self.sam_mask_decoder]
-        elif mode in {"mask_decoder_memory", "memory_only"}:
+        elif mode in {
+            "mask_decoder_memory",
+            "memory_only",
+            "memory_perceiver_full",
+        }:
             modules = [self.memory_attention, self.memory_encoder]
             if mode == "mask_decoder_memory":
                 modules.append(self.sam_mask_decoder)
+            if mode == "memory_perceiver_full":
+                spatial_perceiver = getattr(self, "spatial_perceiver", None)
+                if not isinstance(spatial_perceiver, torch.nn.Module):
+                    raise ValueError(
+                        "memory_perceiver_full requires model.spatial_perceiver"
+                    )
+                modules.append(spatial_perceiver)
             for name in ("obj_ptr_proj", "obj_ptr_tpos_proj"):
                 module = getattr(self, name, None)
                 if isinstance(module, torch.nn.Module):
@@ -113,6 +125,7 @@ class EdgeTAMTrain(SAM2Train):
             self.sam_mask_decoder,
             self.memory_attention,
             self.memory_encoder,
+            getattr(self, "spatial_perceiver", None),
         ]
         self._frozen_eval_modules = [
             module

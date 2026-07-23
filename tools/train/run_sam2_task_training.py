@@ -92,6 +92,15 @@ def init_wandb(args: argparse.Namespace):
             "num_frames_to_correct": int(
                 os.environ.get("TASK_NUM_FRAMES_TO_CORRECT", "1")
             ),
+            "memory_topology": os.environ.get("TASK_MEMORY_TOPOLOGY", ""),
+            "memory_initializer": os.environ.get(
+                "TASK_MEMORY_INITIALIZER", ""
+            ),
+            "memory_lr": float(os.environ.get("TASK_MEMORY_LR", "0")),
+            "memory_aux_lr": float(
+                os.environ.get("TASK_MEMORY_AUX_LR", "0")
+            ),
+            "perceiver_lr": float(os.environ.get("TASK_PERCEIVER_LR", "0")),
         },
     )
     run_file.write_text(
@@ -176,6 +185,8 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
     original_save_checkpoint = trainer_module.Trainer._save_checkpoint
     loss_ema: dict[str, float] = {}
     ema_beta = float(os.environ.get("WANDB_LOSS_EMA_BETA", "0.98"))
+    outlier_threshold = float(os.environ.get("TASK_LOSS_OUTLIER_THRESHOLD", "0"))
+    outlier_path = Path(os.environ.get("TASK_RUN_DIR", ".")) / "loss_outliers.jsonl"
 
     def run_step_with_wandb(
         self,
@@ -207,6 +218,46 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
                     for name, meter in extra_loss_mts.items()
                 }
             )
+            num_frames = int(getattr(batch, "num_frames", 0) or 0)
+            masks = getattr(batch, "masks", None)
+            present_object_frames = 0
+            if masks is not None:
+                present_object_frames = int(
+                    masks.detach().flatten(-2).any(-1).sum().item()
+                )
+            total_loss = current_losses.get("train/loss_total")
+            if total_loss is not None and num_frames > 0:
+                current_losses["train/loss_total_per_frame"] = (
+                    total_loss / num_frames
+                )
+            current_losses["train/present_object_frames"] = float(
+                present_object_frames
+            )
+            if (
+                outlier_threshold > 0
+                and total_loss is not None
+                and total_loss >= outlier_threshold
+            ):
+                identifiers = getattr(
+                    getattr(batch, "metadata", None),
+                    "unique_objects_identifier",
+                    None,
+                )
+                record = {
+                    "global_step": completed_step,
+                    "epoch": int(self.epoch),
+                    "num_frames": num_frames,
+                    "present_object_frames": present_object_frames,
+                    "losses": current_losses,
+                    "object_identifiers": identifiers.detach().cpu().tolist()
+                    if identifiers is not None
+                    else [],
+                    "mask_areas": masks.detach().flatten(-2).sum(-1).cpu().tolist()
+                    if masks is not None
+                    else [],
+                }
+                with outlier_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(record, sort_keys=True) + "\n")
             for name, value in current_losses.items():
                 previous = loss_ema.get(name, value)
                 loss_ema[name] = ema_beta * previous + (1.0 - ema_beta) * value
@@ -342,10 +393,137 @@ def apply_mask_ablation_overrides(config) -> None:
         )
 
 
+def apply_edgetam_memory_overrides(config) -> None:
+    """Build controlled standard/EdgeTAM memory topologies from one base config."""
+    if os.environ.get("TASK_EDGETAM_MEMORY_ABLATION", "0") != "1":
+        return
+
+    from omegaconf import OmegaConf
+
+    model = config.trainer.model
+    topology = os.environ.get("TASK_MEMORY_TOPOLOGY", "standard4")
+    if topology not in {"standard4", "standard2", "edgetam_hybrid2"}:
+        raise ValueError(
+            "TASK_MEMORY_TOPOLOGY must be standard4, standard2, or "
+            "edgetam_hybrid2"
+        )
+    memory_layers = 4 if topology == "standard4" else 2
+    model.memory_attention.num_layers = memory_layers
+
+    if topology == "edgetam_hybrid2":
+        model.memory_attention.layer.self_attention.feat_sizes = [32, 32]
+        model.memory_attention.layer.cross_attention = OmegaConf.create(
+            {
+                "_target_": "sam2.modeling.sam.transformer.RoPEAttentionv2",
+                "rope_theta": 10000.0,
+                "q_sizes": [64, 64],
+                "k_sizes": [16, 16],
+                "embedding_dim": 256,
+                "num_heads": 1,
+                "downsample_rate": 1,
+                "dropout": 0.1,
+                "kv_in_dim": 64,
+            }
+        )
+        model.spatial_perceiver = OmegaConf.create(
+            {
+                "_target_": "sam2.modeling.perceiver.PerceiverResampler",
+                "depth": 2,
+                "dim": 64,
+                "dim_head": 64,
+                "heads": 1,
+                "ff_mult": 4,
+                "hidden_dropout_p": 0.0,
+                "attention_dropout_p": 0.0,
+                "pos_enc_at_key_value": True,
+                "concat_kv_latents": False,
+                "num_latents": 256,
+                "num_latents_2d": 256,
+                "position_encoding": {
+                    "_target_": (
+                        "sam2.modeling.position_encoding.PositionEmbeddingSine"
+                    ),
+                    "num_pos_feats": 64,
+                    "normalize": True,
+                    "scale": None,
+                    "temperature": 10000,
+                },
+                "use_self_attn": True,
+            }
+        )
+
+    memory_lr = float(os.environ.get("TASK_MEMORY_LR", "3e-6"))
+    memory_lr_end = float(os.environ.get("TASK_MEMORY_LR_END", "3e-7"))
+    auxiliary_lr = float(os.environ.get("TASK_MEMORY_AUX_LR", "1e-6"))
+    auxiliary_lr_end = float(os.environ.get("TASK_MEMORY_AUX_LR_END", "1e-7"))
+    lr_options = [
+        {
+            "scheduler": {
+                "_target_": "fvcore.common.param_scheduler.CosineParamScheduler",
+                "start_value": auxiliary_lr,
+                "end_value": auxiliary_lr_end,
+            }
+        },
+        {
+            "scheduler": {
+                "_target_": "fvcore.common.param_scheduler.CosineParamScheduler",
+                "start_value": memory_lr,
+                "end_value": memory_lr_end,
+            },
+            "param_names": ["memory_attention.*"],
+        },
+    ]
+    if topology == "edgetam_hybrid2":
+        perceiver_lr = float(os.environ.get("TASK_PERCEIVER_LR", "1e-5"))
+        perceiver_lr_end = float(
+            os.environ.get("TASK_PERCEIVER_LR_END", "1e-6")
+        )
+        lr_options.append(
+            {
+                "scheduler": {
+                    "_target_": (
+                        "fvcore.common.param_scheduler.CosineParamScheduler"
+                    ),
+                    "start_value": perceiver_lr,
+                    "end_value": perceiver_lr_end,
+                },
+                "param_names": ["spatial_perceiver.*"],
+            }
+        )
+    config.trainer.optim.options.lr = OmegaConf.create(lr_options)
+    config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(
+        {
+            "_target_": (
+                "sam2_distill.models.task_finetune."
+                "initialize_edgetam_memory_model"
+            ),
+            "_partial_": True,
+            "previous_task_checkpoint": os.environ[
+                "PREVIOUS_TASK_CHECKPOINT"
+            ],
+            "memory_initializer": os.environ.get(
+                "TASK_MEMORY_INITIALIZER", "current"
+            ),
+            "edgetam_checkpoint": (
+                os.environ.get("EDGETAM_CHECKPOINT", "")
+                if topology == "edgetam_hybrid2"
+                else ""
+            ),
+        }
+    )
+
+
 def main() -> None:
     args = parse_args()
     sam2_root = Path(os.environ["SAM2_TRAINING_ROOT"])
     sys.path.insert(0, str(sam2_root))
+    if os.environ.get("TASK_EDGETAM_MEMORY_ABLATION", "0") == "1":
+        edgetam_root = Path(os.environ["EDGETAM_ROOT"])
+        if not (edgetam_root / "sam2/modeling/perceiver.py").is_file():
+            raise FileNotFoundError(
+                f"EdgeTAM checkout lacks spatial perceiver: {edgetam_root}"
+            )
+        sys.path.insert(0, str(edgetam_root))
     from hydra.utils import instantiate
     from omegaconf import OmegaConf
     from training.utils.train_utils import register_omegaconf_resolvers
@@ -353,6 +531,7 @@ def main() -> None:
     register_omegaconf_resolvers()
     config = OmegaConf.load(args.config)
     apply_mask_ablation_overrides(config)
+    apply_edgetam_memory_overrides(config)
     resolved_config = Path(os.environ["TASK_RUN_DIR"]) / "resolved_config.yaml"
     if int(os.environ.get("RANK", "0")) == 0:
         resolved_config.parent.mkdir(parents=True, exist_ok=True)
