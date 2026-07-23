@@ -146,6 +146,26 @@ def expected_experiments() -> list[Expected]:
                 1,
             )
         )
+    for variant in (
+        "M0_sam2_mem4",
+        "M1_sam2_mem2",
+        "M2a_edgetam_hybrid2_official",
+        "M2b_edgetam_hybrid2_current",
+        "R0_edgetam_e2e_t4_task",
+        "R1_edgetam_e2e_t4_imgkd",
+        "R2_edgetam_e2e_t4_imgmemkd",
+        "R3_edgetam_e2e_t8_imgmemkd",
+    ):
+        rows.append(
+            Expected(
+                f"edgetam_memory_ablation_v1/{variant}/main",
+                "sam2.1_edgetam",
+                variant,
+                "main",
+                "epoch",
+                1,
+            )
+        )
     rows.append(
         Expected(
             "sam31_stage1/tv21m_adapter_mse_cos025_5ep_v1",
