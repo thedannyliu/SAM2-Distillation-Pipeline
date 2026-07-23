@@ -110,6 +110,26 @@ def main() -> None:
     if missing_grad:
         raise RuntimeError(f"missing gradients for tensors: {missing_grad}")
 
+    alignment_loss_fn = EdgeTAMMultiStepDistillationLoss(
+        task_loss=task_loss,
+        lambda_task=0,
+        lambda_img=0,
+        lambda_mem=1,
+    )
+    alignment_outputs, alignment_targets, alignment_tensors = make_outputs(args)
+    alignment_losses = alignment_loss_fn(alignment_outputs, alignment_targets)
+    alignment_losses["core_loss"].backward()
+    memory_tensors = alignment_tensors[4::5]
+    if any(tensor.grad is None or not tensor.grad.any() for tensor in memory_tensors):
+        raise RuntimeError("pure memory alignment did not backpropagate to F_M")
+    non_memory_tensors = [
+        tensor
+        for index, tensor in enumerate(alignment_tensors)
+        if index % 5 != 4
+    ]
+    if any(tensor.grad is not None and tensor.grad.any() for tensor in non_memory_tensors):
+        raise RuntimeError("pure memory alignment leaked nonzero task/image gradients")
+
     student_outputs = [
         {
             "distill_F16": torch.randn(1, 256, 8, 8, requires_grad=True),
@@ -135,6 +155,7 @@ def main() -> None:
         "objects": args.objects,
         "losses": {key: float(value.detach().cpu()) for key, value in losses.items()},
         "checked_grad_tensors": len(grad_tensors),
+        "pure_memory_alignment": "pass",
         "teacher_injection": "pass",
         "result": "pass",
     }

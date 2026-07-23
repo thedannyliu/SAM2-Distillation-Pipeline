@@ -134,9 +134,16 @@ def initialize_edgetam_memory_model(
 ) -> nn.Module:
     """Initialize a memory-topology ablation with explicit tensor provenance."""
 
-    if memory_initializer not in {"current", "official_pair", "current_pair"}:
+    if memory_initializer not in {
+        "current",
+        "official_pair",
+        "current_pair",
+        "official_temporal",
+        "current_full",
+    }:
         raise ValueError(
-            "memory_initializer must be current, official_pair, or current_pair"
+            "memory_initializer must be current, official_pair, current_pair, "
+            "official_temporal, or current_full"
         )
     current_state = _checkpoint_model_state(previous_task_checkpoint)
     official_state = (
@@ -144,17 +151,49 @@ def initialize_edgetam_memory_model(
         if edgetam_checkpoint
         else {}
     )
-    if memory_initializer in {"official_pair", "current_pair"} and not official_state:
+    if (
+        memory_initializer in {
+            "official_pair",
+            "current_pair",
+            "official_temporal",
+        }
+        and not official_state
+    ):
         raise ValueError(
             f"{memory_initializer} requires a readable edgetam_checkpoint"
         )
 
     merged: dict[str, torch.Tensor] = {}
     provenance: dict[str, int] = {"current_e2e": 0, "official_edgetam": 0}
+    official_temporal_prefixes = (
+        "memory_attention.",
+        "memory_encoder.",
+        "spatial_perceiver.",
+        "obj_ptr_proj.",
+    )
+    official_temporal_parameters = {
+        "maskmem_tpos_enc",
+        "no_mem_embed",
+        "no_mem_pos_enc",
+        "no_obj_ptr",
+    }
     for key, target in model.state_dict().items():
-        use_official = key.startswith("spatial_perceiver.") or (
-            memory_initializer == "official_pair"
-            and key.startswith("memory_attention.")
+        use_official = (
+            (
+                memory_initializer != "current_full"
+                and key.startswith("spatial_perceiver.")
+            )
+            or (
+                memory_initializer == "official_pair"
+                and key.startswith("memory_attention.")
+            )
+            or (
+                memory_initializer == "official_temporal"
+                and (
+                    key.startswith(official_temporal_prefixes)
+                    or key in official_temporal_parameters
+                )
+            )
         )
         source_name = "official_edgetam" if use_official else "current_e2e"
         source_state = official_state if use_official else current_state

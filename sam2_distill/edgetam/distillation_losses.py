@@ -11,6 +11,7 @@ from torch.nn import functional as F
 
 @dataclass(frozen=True)
 class EdgeTAMDistillationWeights:
+    lambda_task: float = 1.0
     lambda_img: float = 1.0
     lambda_mem: float = 1.0
     core_loss_key: str = "core_loss"
@@ -32,7 +33,7 @@ def edgetam_distillation_loss(
         raise KeyError(f"task loss dict is missing {weights.core_loss_key!r}")
 
     losses = dict(task_losses)
-    total = losses[weights.core_loss_key]
+    total = weights.lambda_task * losses[weights.core_loss_key]
 
     if weights.lambda_img:
         loss_img = mse_feature_loss(student_features["F16"], teacher_features["F16"])
@@ -54,6 +55,7 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
     def __init__(
         self,
         task_loss: nn.Module,
+        lambda_task: float = 1.0,
         lambda_img: float = 1.0,
         lambda_mem: float = 1.0,
         core_loss_key: str = "core_loss",
@@ -61,6 +63,7 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
         super().__init__()
         self.task_loss = task_loss
         self.weights = EdgeTAMDistillationWeights(
+            lambda_task=lambda_task,
             lambda_img=lambda_img,
             lambda_mem=lambda_mem,
             core_loss_key=core_loss_key,
@@ -68,7 +71,7 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
 
     def forward(self, outs_batch: list[dict], targets_batch: torch.Tensor) -> dict[str, torch.Tensor]:
         losses = self.task_loss(outs_batch, targets_batch)
-        total = losses[self.weights.core_loss_key]
+        total = self.weights.lambda_task * losses[self.weights.core_loss_key]
 
         if self.weights.lambda_img:
             img_terms = self._collect_terms(outs_batch, "distill_F16", "teacher_distill_F16")
