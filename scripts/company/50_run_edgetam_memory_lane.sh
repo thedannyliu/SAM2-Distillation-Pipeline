@@ -56,8 +56,16 @@ if [[ "${STATUS}" -eq 0 ]]; then
       run_logged R1_edgetam_e2e_t4_imgkd R1_edgetam_e2e_t4_imgkd
       run_logged R2_edgetam_e2e_t4_imgmemkd R2_edgetam_e2e_t4_imgmemkd
       ;;
+    repro1)
+      run_logged R0_edgetam_e2e_t4_task R0_edgetam_e2e_t4_task
+      run_logged R3_edgetam_e2e_t8_imgmemkd R3_edgetam_e2e_t8_imgmemkd
+      ;;
+    repro2)
+      run_logged R1_edgetam_e2e_t4_imgkd R1_edgetam_e2e_t4_imgkd
+      run_logged R2_edgetam_e2e_t4_imgmemkd R2_edgetam_e2e_t4_imgmemkd
+      ;;
     *)
-      echo "Usage: $0 {memory1|memory2}" >&2
+      echo "Usage: $0 {memory1|memory2|repro1|repro2}" >&2
       STATUS=2
       ;;
   esac
