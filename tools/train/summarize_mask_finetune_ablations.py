@@ -14,6 +14,26 @@ from typing import Any
 
 
 REGISTRY = {
+    "C0_coherent_m0mem_align": (
+        "temporal_initialization",
+        "Align a coherent official EdgeTAM temporal stack to the functional M0 TinyViT memory output.",
+        "M0_sam2_mem4",
+    ),
+    "C1_partial_m0mem_align": (
+        "temporal_initialization_control",
+        "Hold M0 memory-output distillation fixed while retaining the partial M2 initializer.",
+        "C0_coherent_m0mem_align",
+    ),
+    "C2_coherent_m0mem_joint2ep": (
+        "memory_curriculum",
+        "Joint task and M0 memory distillation for two epochs from coherent initialization.",
+        "C0_coherent_m0mem_align",
+    ),
+    "C3_coherent_m0mem_staged": (
+        "memory_curriculum",
+        "Add one task-plus-memory epoch after the pure C0 alignment epoch.",
+        "C2_coherent_m0mem_joint2ep",
+    ),
     "R0_edgetam_e2e_t4_task": (
         "edgetam_reproduction_scope",
         "Train the full TinyViT EdgeTAM student with official prompt simulation and task loss only.",
@@ -150,10 +170,12 @@ FIELDNAMES = [
     "correction_points",
     "lambda_img",
     "lambda_mem",
+    "lambda_task",
     "teacher_checkpoint",
     "memory_topology",
     "memory_layers",
     "memory_initializer",
+    "memory_layout",
     "num_global_latents",
     "num_2d_latents",
     "planned_updates_per_epoch",
@@ -180,6 +202,9 @@ FIELDNAMES = [
     "val_AP_delta",
     "guardrail_pass",
     "selection_rank",
+    "gate_J&F",
+    "gate_pass",
+    "gate_metrics_path",
     "stage_dir",
     "val_metrics_path",
     "test_metrics_path",
@@ -266,10 +291,12 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         "correction_points": os.environ.get("TASK_NUM_CORRECTION_POINTS", "1"),
         "lambda_img": os.environ.get("TASK_LAMBDA_IMG", "0"),
         "lambda_mem": os.environ.get("TASK_LAMBDA_MEM", "0"),
+        "lambda_task": os.environ.get("TASK_LAMBDA_TASK", "1"),
         "teacher_checkpoint": os.environ.get("TASK_TEACHER_CHECKPOINT", ""),
         "memory_topology": os.environ.get("TASK_MEMORY_TOPOLOGY", ""),
         "memory_layers": os.environ.get("TASK_MEMORY_LAYERS", ""),
         "memory_initializer": os.environ.get("TASK_MEMORY_INITIALIZER", ""),
+        "memory_layout": os.environ.get("TASK_MEMORY_LAYOUT", "legacy"),
         "num_global_latents": os.environ.get("TASK_NUM_GLOBAL_LATENTS", ""),
         "num_2d_latents": os.environ.get("TASK_NUM_2D_LATENTS", ""),
         "stage_dir": str(stage_dir),
@@ -329,6 +356,13 @@ def build_row(metadata: dict[str, Any]) -> dict[str, Any]:
     row["train_elapsed_seconds"] = status.get("elapsed_seconds", "")
     row["wandb_run_id"] = wandb.get("run_id", "")
     row["wandb_url"] = wandb.get("url", "")
+    gate = read_json(stage_dir / "gate_status.json")
+    gate_metrics = gate.get("metrics", {})
+    row["gate_J&F"] = gate_metrics.get("J&F", "")
+    row["gate_pass"] = (
+        int(gate["status"] == "pass") if gate.get("status") else ""
+    )
+    row["gate_metrics_path"] = gate.get("metrics_path", "")
     add_split_metrics(
         row, "val", stage_dir / "sav_val_box_benchmark/metrics.csv"
     )

@@ -166,6 +166,22 @@ def expected_experiments() -> list[Expected]:
                 1,
             )
         )
+    for variant, epochs in (
+        ("C0_coherent_m0mem_align", 1),
+        ("C1_partial_m0mem_align", 1),
+        ("C2_coherent_m0mem_joint2ep", 2),
+        ("C3_coherent_m0mem_staged", 1),
+    ):
+        rows.append(
+            Expected(
+                f"edgetam_memory_recovery_v2/{variant}/main",
+                "sam2.1_edgetam",
+                variant,
+                "main",
+                "epoch",
+                epochs,
+            )
+        )
     rows.append(
         Expected(
             "sam31_stage1/tv21m_adapter_mse_cos025_5ep_v1",

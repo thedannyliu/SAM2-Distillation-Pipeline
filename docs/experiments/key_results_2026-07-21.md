@@ -44,6 +44,13 @@ gate, coherent full-temporal-stack initialization, and frozen-module memory
 distillation to recover at least 60 mini-val J&F. The detailed causal analysis
 and next protocol are in `docs/experiments/edgetam_memory_ablation_v1.md`.
 
+The implemented recovery protocol is
+`docs/experiments/edgetam_memory_recovery_v2.md`. It uses M0 as a
+same-TinyViT/decoder teacher, compares coherent versus partial temporal
+initialization, and compares staged versus joint training at equal two-epoch
+data exposure. All candidates must pass a fixed 32-video validation gate before
+full val/test.
+
 ## 2026-07-22 Mask Fine-Tuning Results
 
 ### Mask v2: completed

@@ -83,6 +83,7 @@ def init_wandb(args: argparse.Namespace):
             ),
             "lambda_img": float(os.environ.get("TASK_LAMBDA_IMG", "0")),
             "lambda_mem": float(os.environ.get("TASK_LAMBDA_MEM", "0")),
+            "lambda_task": float(os.environ.get("TASK_LAMBDA_TASK", "1")),
             "prompt_pt_probability": float(
                 os.environ.get("TASK_PROB_USE_POINT", "1")
             ),
@@ -95,6 +96,19 @@ def init_wandb(args: argparse.Namespace):
             "memory_topology": os.environ.get("TASK_MEMORY_TOPOLOGY", ""),
             "memory_initializer": os.environ.get(
                 "TASK_MEMORY_INITIALIZER", ""
+            ),
+            "memory_layout": os.environ.get("TASK_MEMORY_LAYOUT", "legacy"),
+            "teacher_checkpoint": os.environ.get(
+                "TASK_TEACHER_CHECKPOINT", ""
+            ),
+            "teacher_model_config": os.environ.get(
+                "TASK_TEACHER_MODEL_CONFIG", ""
+            ),
+            "gate_max_videos": int(
+                os.environ.get("EDGETAM_GATE_MAX_VIDEOS", "0")
+            ),
+            "gate_min_jf": float(
+                os.environ.get("EDGETAM_GATE_MIN_JF", "0")
             ),
             "memory_lr": float(os.environ.get("TASK_MEMORY_LR", "0")),
             "memory_aux_lr": float(
@@ -365,12 +379,17 @@ def apply_mask_ablation_overrides(config) -> None:
     for key, value in prompt_values.items():
         model[key] = value
 
+    lambda_task = float(os.environ.get("TASK_LAMBDA_TASK", "1"))
     lambda_img = float(os.environ.get("TASK_LAMBDA_IMG", "0"))
     lambda_mem = float(os.environ.get("TASK_LAMBDA_MEM", "0"))
-    if lambda_img or lambda_mem:
+    if lambda_task != 1 or lambda_img or lambda_mem:
+        if not lambda_img and not lambda_mem:
+            raise ValueError("TASK_LAMBDA_TASK requires an image or memory KD term")
         teacher_config = os.environ.get("TASK_TEACHER_MODEL_CONFIG", "").strip()
         teacher_checkpoint = os.environ.get("TASK_TEACHER_CHECKPOINT", "").strip()
-        if not teacher_config or not teacher_checkpoint:
+        if (lambda_img or lambda_mem) and (
+            not teacher_config or not teacher_checkpoint
+        ):
             raise ValueError(
                 "KD requires TASK_TEACHER_MODEL_CONFIG and TASK_TEACHER_CHECKPOINT"
             )
@@ -387,6 +406,7 @@ def apply_mask_ablation_overrides(config) -> None:
                     "EdgeTAMMultiStepDistillationLoss"
                 ),
                 "task_loss": task_loss,
+                "lambda_task": lambda_task,
                 "lambda_img": lambda_img,
                 "lambda_mem": lambda_mem,
             }
@@ -411,6 +431,14 @@ def apply_edgetam_memory_overrides(config) -> None:
     model.memory_attention.num_layers = memory_layers
 
     if topology == "edgetam_hybrid2":
+        memory_layout = os.environ.get("TASK_MEMORY_LAYOUT", "legacy")
+        if memory_layout not in {"legacy", "official"}:
+            raise ValueError("TASK_MEMORY_LAYOUT must be legacy or official")
+        if memory_layout == "official":
+            model.add_tpos_enc_to_obj_ptrs = False
+            model.proj_tpos_enc_in_obj_ptrs = False
+            model.use_signed_tpos_enc_to_obj_ptrs = False
+            model.no_obj_embed_spatial = False
         model.memory_attention.layer.self_attention.feat_sizes = [32, 32]
         model.memory_attention.layer.cross_attention = OmegaConf.create(
             {
