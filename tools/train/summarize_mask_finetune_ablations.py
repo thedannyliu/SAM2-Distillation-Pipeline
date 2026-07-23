@@ -14,6 +14,26 @@ from typing import Any
 
 
 REGISTRY = {
+    "R0_edgetam_e2e_t4_task": (
+        "edgetam_reproduction_scope",
+        "Train the full TinyViT EdgeTAM student with official prompt simulation and task loss only.",
+        "M2a_edgetam_hybrid2_official",
+    ),
+    "R1_edgetam_e2e_t4_imgkd": (
+        "edgetam_reproduction_image_kd",
+        "Add the official-weight image feature distillation term to full EdgeTAM training.",
+        "R0_edgetam_e2e_t4_task",
+    ),
+    "R2_edgetam_e2e_t4_imgmemkd": (
+        "edgetam_reproduction_memory_kd",
+        "Add memory-output distillation at the official unit weight.",
+        "R1_edgetam_e2e_t4_imgkd",
+    ),
+    "R3_edgetam_e2e_t8_imgmemkd": (
+        "edgetam_reproduction_horizon",
+        "Increase the full EdgeTAM distillation recipe from four to eight frames.",
+        "R2_edgetam_e2e_t4_imgmemkd",
+    ),
     "M0_sam2_mem4": (
         "memory_control",
         "Continue the current four-layer uncompressed SAM2 memory stack.",

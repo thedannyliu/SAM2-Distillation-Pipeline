@@ -10,6 +10,10 @@ VARIANTS=(
   M1_sam2_mem2
   M2a_edgetam_hybrid2_official
   M2b_edgetam_hybrid2_current
+  R0_edgetam_e2e_t4_task
+  R1_edgetam_e2e_t4_imgkd
+  R2_edgetam_e2e_t4_imgmemkd
+  R3_edgetam_e2e_t8_imgmemkd
 )
 
 if [[ "${ACTION}" == "list" ]]; then
@@ -41,9 +45,12 @@ SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
 EDGETAM_REQUIRED_COMMIT="${EDGETAM_REQUIRED_COMMIT:-7711e012a30a2402c4eaab637bdb00a521302c91}"
 EDGETAM_CHECKPOINT="${EDGETAM_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/edgetam/edgetam.pt}"
+SAM2_MODEL_CONFIG="${SAM2_MODEL_CONFIG:-${SAM2_TRAINING_ROOT}/sam2/configs/sam2.1/sam2.1_hiera_l.yaml}"
+SAM2_CHECKPOINT="${SAM2_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt}"
 TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_stage1_ablation_v2/4gpu_adapter_teacher/tv21_proj_sam21l_msehr_l1_025/checkpoints/best.pt}"
 BASE_CHECKPOINT="${BASE_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/A02_e2e_t4_official_prompt/main/checkpoints/checkpoint.pt}"
+HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
 ABLATION_ROOT="${EDGETAM_MEMORY_ROOT:-${SAM2D_ROOT}/runs/edgetam_memory_ablation_v1}"
 CENTRAL_CSV="${EDGETAM_MEMORY_SUMMARY_CSV:-${ABLATION_ROOT}/summary.csv}"
 CONFIG="${CONFIG:-configs/sam2_task/tv21_sav_progressive.yaml}"
@@ -113,6 +120,30 @@ configure_variant() {
   export TASK_LOSS_OUTLIER_THRESHOLD=20
   export TASK_NUM_GLOBAL_LATENTS=0
   export TASK_NUM_2D_LATENTS=0
+  export TASK_TEACHER_MODEL_CONFIG=""
+  export TASK_TEACHER_CHECKPOINT=""
+
+  case "$1" in
+    R0_*|R1_*|R2_*|R3_*)
+      export TASK_TRAIN_BATCH_SIZE=1
+      export TASK_MAX_NUM_OBJECTS=3
+      export TASK_TRAINABLE_MODE=image_encoder_mask_decoder_memory
+      export TASK_ENCODER_LR=3.0e-7
+      export TASK_ENCODER_LR_END=3.0e-8
+      export TASK_LR_WARMUP_FRACTION=0.1
+      export TASK_PROB_USE_POINT=0.5
+      export TASK_PROB_USE_BOX=0.5
+      export TASK_PROB_SAMPLE_GT=0.1
+      export TASK_NUM_FRAMES_TO_CORRECT=2
+      export TASK_RANDOM_CORRECTION_FRAMES=true
+      export TASK_NUM_CORRECTION_POINTS=7
+      export TASK_MEMORY_TOPOLOGY=edgetam_hybrid2
+      export TASK_MEMORY_LAYERS=2
+      export TASK_MEMORY_INITIALIZER=official_pair
+      export TASK_NUM_GLOBAL_LATENTS=256
+      export TASK_NUM_2D_LATENTS=256
+      ;;
+  esac
 
   case "$1" in
     M0_sam2_mem4)
@@ -142,6 +173,27 @@ configure_variant() {
       export TASK_TRAINABLE_MODE=memory_perceiver_full
       export TASK_NUM_GLOBAL_LATENTS=256
       export TASK_NUM_2D_LATENTS=256
+      ;;
+    R0_edgetam_e2e_t4_task)
+      ;;
+    R1_edgetam_e2e_t4_imgkd)
+      export TASK_LAMBDA_IMG=1
+      export TASK_TEACHER_MODEL_CONFIG="${SAM2_MODEL_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${SAM2_CHECKPOINT}"
+      ;;
+    R2_edgetam_e2e_t4_imgmemkd)
+      export TASK_LAMBDA_IMG=1
+      export TASK_LAMBDA_MEM=1
+      export TASK_TEACHER_MODEL_CONFIG="${SAM2_MODEL_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${SAM2_CHECKPOINT}"
+      ;;
+    R3_edgetam_e2e_t8_imgmemkd)
+      export TASK_NUM_FRAMES=8
+      export TASK_VIDEO_IDS_FILE="${HARDNESS_ROOT}/eligible_t8.txt"
+      export TASK_LAMBDA_IMG=1
+      export TASK_LAMBDA_MEM=1
+      export TASK_TEACHER_MODEL_CONFIG="${SAM2_MODEL_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${SAM2_CHECKPOINT}"
       ;;
     *)
       echo "[ERROR] Unknown EdgeTAM memory variant: $1" >&2
@@ -230,6 +282,13 @@ validate_common_paths() {
     }
   if [[ "${TASK_MEMORY_TOPOLOGY}" == "edgetam_hybrid2" ]]; then
     require_path "${EDGETAM_CHECKPOINT}" || return 1
+  fi
+  if [[ "${TASK_LAMBDA_IMG}" != "0" || "${TASK_LAMBDA_MEM}" != "0" ]]; then
+    require_path "${TASK_TEACHER_MODEL_CONFIG}" || return 1
+    require_path "${TASK_TEACHER_CHECKPOINT}" || return 1
+  fi
+  if [[ -n "${TASK_VIDEO_IDS_FILE}" ]]; then
+    require_path "${TASK_VIDEO_IDS_FILE}" || return 1
   fi
 }
 
@@ -350,6 +409,9 @@ case "${ACTION}" in
       echo "Initializer: ${TASK_MEMORY_INITIALIZER}"
       echo "Trainable mode: ${TASK_TRAINABLE_MODE}"
       echo "T/global batch: ${TASK_NUM_FRAMES}/$((TASK_TRAIN_BATCH_SIZE * NPROC))"
+      echo "Prompt point/box/GT: ${TASK_PROB_USE_POINT}/${TASK_PROB_USE_BOX}/${TASK_PROB_SAMPLE_GT}"
+      echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
+      echo "KD image/memory: ${TASK_LAMBDA_IMG}/${TASK_LAMBDA_MEM}"
     fi
     ;;
   run)
