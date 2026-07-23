@@ -49,7 +49,9 @@ if [[ -z "${EDGETAM_CONFIG:-}" ]]; then
   done
 fi
 EDGETAM_CONFIG="${EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
-RUN_DIR="${RUN_DIR:-${SAM2D_ROOT}/runs/edgetam_fidelity_v3/E0_official_upstream}"
+EXPERIMENT_NAME="${EDGETAM_FIDELITY_EXPERIMENT:-E0_official_upstream}"
+GATE_SEED="${EDGETAM_FIDELITY_GATE_SEED:-edgetam-memory-gate-v2}"
+RUN_DIR="${RUN_DIR:-${SAM2D_ROOT}/runs/edgetam_fidelity_v3/${EXPERIMENT_NAME}}"
 GATE_COUNT="${EDGETAM_FIDELITY_GATE_VIDEOS:-32}"
 GATE_MIN_JF="${EDGETAM_FIDELITY_MIN_JF:-55}"
 WANDB_PROJECT="${WANDB_PROJECT:-edgetam-fidelity-v3}"
@@ -57,11 +59,11 @@ WANDB_MODE="${WANDB_MODE:-online}"
 SKIP_DONE="${SKIP_DONE:-1}"
 
 describe() {
-  echo "Experiment: E0_official_upstream"
+  echo "Experiment: ${EXPERIMENT_NAME}"
   echo "Purpose: validate the unmodified released EdgeTAM model and evaluator"
   echo "Checkpoint: ${EDGETAM_CHECKPOINT}"
   echo "Config: ${EDGETAM_CONFIG}"
-  echo "Gate: fixed ${GATE_COUNT}-video SA-V val; J&F >= ${GATE_MIN_JF}"
+  echo "Gate: fixed ${GATE_COUNT}-video SA-V val; seed ${GATE_SEED}; J&F >= ${GATE_MIN_JF}"
   echo "Passing path: gate -> full SA-V val -> full SA-V test -> W&B"
   echo "Run dir: ${RUN_DIR}"
 }
@@ -74,11 +76,20 @@ require_path() {
 }
 
 ensure_checkpoint() {
+  local lock_file="${EDGETAM_CHECKPOINT}.download.lock"
+  local status=0
+  mkdir -p "$(dirname "${EDGETAM_CHECKPOINT}")" || return 1
+  exec 8>"${lock_file}" || return 1
+  flock 8 || return 1
   if [[ -f "${EDGETAM_CHECKPOINT}" ]]; then
+    flock -u 8
     return 0
   fi
   OUT="${EDGETAM_CHECKPOINT}" EDGETAM_ROOT="${EDGETAM_ROOT}" \
     scripts/company/17_download_edgetam_checkpoint.sh
+  status=$?
+  flock -u 8
+  return "${status}"
 }
 
 validate_inputs() {
@@ -101,7 +112,12 @@ validate_inputs() {
 
 ensure_wandb_run() {
   [[ "${WANDB_MODE}" == "online" ]] || return 0
-  WANDB_PROJECT="${WANDB_PROJECT}" RUN_DIR="${RUN_DIR}" python - <<'PY'
+  WANDB_PROJECT="${WANDB_PROJECT}" \
+  RUN_DIR="${RUN_DIR}" \
+  EXPERIMENT_NAME="${EXPERIMENT_NAME}" \
+  GATE_SEED="${GATE_SEED}" \
+  GATE_COUNT="${GATE_COUNT}" \
+    python - <<'PY'
 import json
 import os
 from pathlib import Path
@@ -109,6 +125,7 @@ from pathlib import Path
 import wandb
 
 run_dir = Path(os.environ["RUN_DIR"])
+experiment = os.environ["EXPERIMENT_NAME"]
 run_file = run_dir / "wandb/wandb_run.json"
 run_file.parent.mkdir(parents=True, exist_ok=True)
 run_id = None
@@ -116,15 +133,17 @@ if run_file.is_file():
     run_id = json.loads(run_file.read_text(encoding="utf-8"))["run_id"]
 run = wandb.init(
     project=os.environ["WANDB_PROJECT"],
-    name="E0_official_upstream",
+    name=experiment,
     id=run_id,
     resume="must" if run_id else None,
     dir=str(run_file.parent),
     config={
-        "experiment": "E0_official_upstream",
+        "experiment": experiment,
         "model": "official EdgeTAM",
         "training": False,
         "selection_split": "sav_val",
+        "gate_seed": os.environ["GATE_SEED"],
+        "gate_videos": int(os.environ["GATE_COUNT"]),
     },
 )
 run_file.write_text(
@@ -134,7 +153,7 @@ run_file.write_text(
             "url": run.url,
             "entity": run.entity,
             "project": os.environ["WANDB_PROJECT"],
-            "name": "E0_official_upstream",
+            "name": experiment,
         },
         indent=2,
     )
@@ -154,7 +173,7 @@ benchmark() {
   EDGETAM_ROOT="${EDGETAM_ROOT}" \
   EDGETAM_CONFIG="${EDGETAM_CONFIG}" \
   SAM2_ROOT="${SAM2_ROOT}" \
-  EXPERIMENT=E0_official_upstream \
+  EXPERIMENT="${EXPERIMENT_NAME}" \
   RUN_DIR="${RUN_DIR}" \
   BENCH_ROOT="${benchmark_root}" \
   AGGREGATE_CSV="${aggregate_csv}" \
@@ -241,7 +260,8 @@ ensure_wandb_run || return 1 2>/dev/null || exit 1
 python tools/experiments/sample_video_gate.py \
   --input "${SAV_ROOT}/sav_val/sav_val.txt" \
   --output "${RUN_DIR}/gate_sav_val_${GATE_COUNT}.txt" \
-  --count "${GATE_COUNT}" || return 1 2>/dev/null || exit 1
+  --count "${GATE_COUNT}" \
+  --seed "${GATE_SEED}" || return 1 2>/dev/null || exit 1
 benchmark \
   sav_val \
   "${RUN_DIR}/sav_val_gate${GATE_COUNT}_box_benchmark" \
