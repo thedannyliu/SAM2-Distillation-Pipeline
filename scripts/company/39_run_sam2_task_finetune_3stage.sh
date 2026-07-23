@@ -17,6 +17,8 @@ MANIFEST="${MANIFEST:-${SAM2D_ROOT}/manifests/sav_stage1_vbal16_6fps_mounted_v14
 SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 SAM2_CHECKPOINT="${SAM2_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt}"
 TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
+TINYVIT_MODEL_NAME="${TINYVIT_MODEL_NAME:-tiny_vit_21m_512.dist_in22k_ft_in1k}"
+TINYVIT_ADAPTER_MODE="${TINYVIT_ADAPTER_MODE:-projection}"
 SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_stage1_ablation_v2/4gpu_adapter_teacher/tv21_proj_sam21l_msehr_l1_025/checkpoints/best.pt}"
 CONFIG="${CONFIG:-configs/sam2_task/tv21_sav_progressive.yaml}"
 WANDB_PROJECT="${WANDB_PROJECT:-sam2-task-finetune-tv21-v1}"
@@ -25,6 +27,9 @@ TASK_NUM_WORKERS="${TASK_NUM_WORKERS:-8}"
 PRINT_EVERY="${PRINT_EVERY:-300}"
 LOG_EVERY="${LOG_EVERY:-30}"
 SKIP_DONE="${SKIP_DONE:-1}"
+TASK_EVAL_SPLITS="${TASK_EVAL_SPLITS:-sav_val,sav_test}"
+TASK_EXPORT_STAGE_CHECKPOINT="${TASK_EXPORT_STAGE_CHECKPOINT:-1}"
+STAGE1_PREVIOUS_CHECKPOINT="${STAGE1_PREVIOUS_CHECKPOINT:-}"
 
 STAGE1_NAME="${STAGE1_NAME:-stage1_encoder_task_2ep}"
 STAGE1_MODE="${STAGE1_MODE:-image_encoder_only}"
@@ -96,7 +101,9 @@ export_stage_checkpoint() {
     --output "${stage_dir}/checkpoints/stage.pt" \
     --stage-name "${stage_name}" \
     --trainable-mode "${mode}" \
-    --source-stage1-checkpoint "${SOURCE_STAGE1_CHECKPOINT}" || return 1
+    --source-stage1-checkpoint "${SOURCE_STAGE1_CHECKPOINT}" \
+    --model-name "${TINYVIT_MODEL_NAME}" \
+    --adapter-mode "${TINYVIT_ADAPTER_MODE}" || return 1
 }
 
 train_stage() {
@@ -139,6 +146,8 @@ train_stage() {
     TASK_HEAD_LR_END="${head_lr_end}" \
     SAM2_CHECKPOINT="${SAM2_CHECKPOINT}" \
     TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT}" \
+    TINYVIT_MODEL_NAME="${TINYVIT_MODEL_NAME}" \
+    TINYVIT_ADAPTER_MODE="${TINYVIT_ADAPTER_MODE}" \
     SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT}" \
     PREVIOUS_TASK_CHECKPOINT="${previous_checkpoint}" \
     WANDB_MODE="${WANDB_MODE}" \
@@ -155,7 +164,9 @@ train_stage() {
     echo "[ERROR] ${stage_name} did not reach epoch ${epochs}" >&2
     return 1
   }
-  export_stage_checkpoint "${stage_name}" "${mode}" || return 1
+  if [[ "${TASK_EXPORT_STAGE_CHECKPOINT}" == "1" ]]; then
+    export_stage_checkpoint "${stage_name}" "${mode}" || return 1
+  fi
 }
 
 evaluate_stage_split() {
@@ -164,11 +175,15 @@ evaluate_stage_split() {
   local skip_done="$3"
   local stage_dir="${RUN_ROOT}/${stage_name}"
   echo "===== Full ${split} evaluation: ${stage_name} on GPUs ${FULL_EVAL_GPUS} ====="
+  local evaluation_checkpoint="${stage_dir}/checkpoints/stage.pt"
+  if [[ ! -f "${evaluation_checkpoint}" ]]; then
+    evaluation_checkpoint="${stage_dir}/checkpoints/checkpoint.pt"
+  fi
   MODEL_FAMILY=sam2 \
   STUDENT_FAMILY=tinyvit \
   STUDENT_CHECKPOINT="${TINYVIT_CHECKPOINT}" \
-  STUDENT_MODEL_NAME=tiny_vit_21m_512.dist_in22k_ft_in1k \
-  STAGE1_CHECKPOINT="${stage_dir}/checkpoints/stage.pt" \
+  STUDENT_MODEL_NAME="${TINYVIT_MODEL_NAME}" \
+  STAGE1_CHECKPOINT="${evaluation_checkpoint}" \
   EXPERIMENT="${stage_name}" \
   RUN_DIR="${stage_dir}" \
   SAV_ROOT="${SAV_ROOT}" \
@@ -186,13 +201,28 @@ evaluate_stage() {
     eval_skip_done=0
     echo "checkpoint changed; forcing fresh val/test for ${stage_name}"
   fi
-  evaluate_stage_split "${stage_name}" sav_val "${eval_skip_done}" || return 1
-  evaluate_stage_split "${stage_name}" sav_test "${eval_skip_done}" || return 1
+  local split
+  local -a metrics_args=()
+  local -a eval_splits=()
+  IFS=, read -r -a eval_splits <<< "${TASK_EVAL_SPLITS}"
+  for split in "${eval_splits[@]}"; do
+    case "${split}" in
+      sav_val|sav_test) ;;
+      *)
+        echo "[ERROR] Unsupported TASK_EVAL_SPLITS entry: ${split}" >&2
+        return 2
+        ;;
+    esac
+    evaluate_stage_split "${stage_name}" "${split}" "${eval_skip_done}" || return 1
+    metrics_args+=(
+      --metrics
+      "${split}=${stage_dir}/${split}_box_benchmark/metrics.csv"
+    )
+  done
   if [[ "${WANDB_MODE}" == "online" ]]; then
     python tools/train/log_task_eval_to_wandb.py \
       --run-file "${stage_dir}/wandb/wandb_run.json" \
-      --metrics "sav_val=${stage_dir}/sav_val_box_benchmark/metrics.csv" \
-      --metrics "sav_test=${stage_dir}/sav_test_box_benchmark/metrics.csv" || return 1
+      "${metrics_args[@]}" || return 1
   else
     echo "skip W&B evaluation summary: WANDB_MODE=${WANDB_MODE}"
   fi
@@ -203,7 +233,8 @@ run_stage1() {
   train_stage "${STAGE1_NAME}" "${STAGE1_MODE}" \
     "${STAGE1_EPOCHS}" "${STAGE1_FRAMES}" \
     "${STAGE1_ENCODER_LR}" "${STAGE1_ENCODER_LR_END}" \
-    "${STAGE1_HEAD_LR}" "${STAGE1_HEAD_LR_END}" "" 0 || return 1
+    "${STAGE1_HEAD_LR}" "${STAGE1_HEAD_LR_END}" \
+    "${STAGE1_PREVIOUS_CHECKPOINT}" 0 || return 1
   evaluate_stage "${STAGE1_NAME}" || return 1
 }
 

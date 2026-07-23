@@ -59,6 +59,8 @@ def init_wandb(args: argparse.Namespace):
         dir=str(args.wandb_dir),
         config={
             "task_stage": os.environ.get("TASK_STAGE_NAME"),
+            "student_model_name": os.environ.get("TINYVIT_MODEL_NAME"),
+            "student_adapter_mode": os.environ.get("TINYVIT_ADAPTER_MODE"),
             "trainable_mode": os.environ.get("TASK_TRAINABLE_MODE"),
             "epochs": int(os.environ.get("TASK_EPOCHS", "0")),
             "frames": int(os.environ.get("TASK_NUM_FRAMES", "0")),

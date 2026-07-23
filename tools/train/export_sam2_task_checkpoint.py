@@ -22,6 +22,15 @@ def main() -> None:
     parser.add_argument("--stage-name", required=True)
     parser.add_argument("--trainable-mode", required=True)
     parser.add_argument("--source-stage1-checkpoint", required=True)
+    parser.add_argument(
+        "--model-name",
+        default="tiny_vit_21m_512.dist_in22k_ft_in1k",
+    )
+    parser.add_argument(
+        "--adapter-mode",
+        choices=("projection", "residual_dwconv"),
+        default="projection",
+    )
     args = parser.parse_args()
     summary = export_task_checkpoint(
         trainer_checkpoint=args.trainer_checkpoint,
@@ -29,6 +38,8 @@ def main() -> None:
         stage_name=args.stage_name,
         trainable_mode=args.trainable_mode,
         source_stage1_checkpoint=args.source_stage1_checkpoint,
+        model_name=args.model_name,
+        adapter_mode=args.adapter_mode,
     )
     print(json.dumps(summary, indent=2))
 
