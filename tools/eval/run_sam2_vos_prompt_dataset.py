@@ -22,7 +22,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-kind", choices=("sam2", "stage1-student"), default="sam2")
+    parser.add_argument(
+        "--model-kind",
+        choices=("edgetam-trainer", "sam2", "stage1-student"),
+        default="sam2",
+    )
     parser.add_argument("--prompt-kind", choices=("box", "point"), required=True)
     parser.add_argument("--sam2-root", required=True, type=Path)
     parser.add_argument("--sam2-cfg", required=True)
@@ -156,7 +160,69 @@ def patch_stage1_forward_image(predictor, args: argparse.Namespace, device: torc
     }
 
 
+def build_edgetam_trainer_predictor(
+    args: argparse.Namespace, device: torch.device
+):
+    import sam2 as sam2_package
+    from hydra.utils import instantiate
+    from omegaconf import OmegaConf
+    from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
+
+    patch_edgetam_perceiver_view()
+    cfg = OmegaConf.load(args.sam2_cfg)
+    model_cfg = cfg.model if "model" in cfg else cfg.trainer.model
+    model_cfg._target_ = "sam2.sam2_video_predictor.SAM2VideoPredictor"
+    for key in (
+        "freeze_batchnorm",
+        "image_encoder_activation_checkpoint",
+        "image_encoder_forward_batch_size",
+        "trainable_module_mode",
+        "prob_to_use_pt_input_for_train",
+        "prob_to_use_box_input_for_train",
+        "prob_to_sample_from_gt_for_train",
+        "num_frames_to_correct_for_train",
+        "rand_frames_to_correct_for_train",
+        "num_init_cond_frames_for_train",
+        "rand_init_cond_frames_for_train",
+        "num_correction_pt_per_frame",
+        "use_act_ckpt_iterative_pt_sampling",
+        "prob_to_use_pt_input_for_eval",
+        "prob_to_use_box_input_for_eval",
+        "num_frames_to_correct_for_eval",
+        "num_init_cond_frames_for_eval",
+        "forward_backbone_per_frame_for_eval",
+    ):
+        if key in model_cfg:
+            del model_cfg[key]
+    predictor = instantiate(model_cfg, _recursive_=True)
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    state_dict = extract_state_dict(checkpoint)
+    predictor.load_state_dict(state_dict, strict=True)
+
+    if getattr(predictor.image_encoder, "outputs_preprojected_sam_features", False):
+        def forward_image(self, img_batch: torch.Tensor):
+            return self.image_encoder(img_batch)
+
+        predictor.forward_image = types.MethodType(forward_image, predictor)
+    predictor = predictor.to(device).eval()
+    for param in predictor.parameters():
+        param.requires_grad_(False)
+    return predictor, {
+        "model_kind": "edgetam-trainer",
+        "sam2_cfg": args.sam2_cfg,
+        "checkpoint": str(args.checkpoint),
+        "checkpoint_epoch": checkpoint.get("epoch"),
+        "checkpoint_steps": checkpoint.get("steps"),
+        "num_tensors": len(state_dict),
+        "sam2_package": str(Path(sam2_package.__file__).resolve()),
+        "strict_load": True,
+    }
+
+
 def build_predictor(args: argparse.Namespace, device: torch.device):
+    if args.model_kind == "edgetam-trainer":
+        return build_edgetam_trainer_predictor(args, device)
+
     from sam2.build_sam import build_sam2_video_predictor
     from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
 

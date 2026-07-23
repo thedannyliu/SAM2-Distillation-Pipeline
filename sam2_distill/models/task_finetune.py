@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +111,80 @@ def initialize_task_model(
             )
         merged[key] = source
     model.load_state_dict(merged, strict=True)
+    return model
+
+
+def _checkpoint_model_state(path: str | Path) -> dict[str, torch.Tensor]:
+    checkpoint = _load_checkpoint(path)
+    for key in ("model", "task_model_state", "model_state", "state_dict"):
+        state = checkpoint.get(key)
+        if isinstance(state, dict):
+            return {
+                name.removeprefix("module."): value
+                for name, value in state.items()
+            }
+    raise KeyError(f"No model state in {path}")
+
+
+def initialize_edgetam_memory_model(
+    model: nn.Module,
+    previous_task_checkpoint: str,
+    memory_initializer: str,
+    edgetam_checkpoint: str | None = None,
+) -> nn.Module:
+    """Initialize a memory-topology ablation with explicit tensor provenance."""
+
+    if memory_initializer not in {"current", "official_pair", "current_pair"}:
+        raise ValueError(
+            "memory_initializer must be current, official_pair, or current_pair"
+        )
+    current_state = _checkpoint_model_state(previous_task_checkpoint)
+    official_state = (
+        _checkpoint_model_state(edgetam_checkpoint)
+        if edgetam_checkpoint
+        else {}
+    )
+    if memory_initializer in {"official_pair", "current_pair"} and not official_state:
+        raise ValueError(
+            f"{memory_initializer} requires a readable edgetam_checkpoint"
+        )
+
+    merged: dict[str, torch.Tensor] = {}
+    provenance: dict[str, int] = {"current_e2e": 0, "official_edgetam": 0}
+    for key, target in model.state_dict().items():
+        use_official = key.startswith("spatial_perceiver.") or (
+            memory_initializer == "official_pair"
+            and key.startswith("memory_attention.")
+        )
+        source_name = "official_edgetam" if use_official else "current_e2e"
+        source_state = official_state if use_official else current_state
+        source = source_state.get(key)
+        if source is None:
+            raise KeyError(
+                f"Missing {source_name} initializer tensor for {key}"
+            )
+        if tuple(source.shape) != tuple(target.shape):
+            raise ValueError(
+                f"Initializer shape mismatch for {key} from {source_name}: "
+                f"{tuple(source.shape)} != {tuple(target.shape)}"
+            )
+        merged[key] = source
+        provenance[source_name] += 1
+
+    model.load_state_dict(merged, strict=True)
+    summary = {
+        "previous_task_checkpoint": str(previous_task_checkpoint),
+        "edgetam_checkpoint": str(edgetam_checkpoint or ""),
+        "memory_initializer": memory_initializer,
+        "target_tensors": len(merged),
+        "tensor_provenance": provenance,
+        "status": "pass",
+    }
+    run_dir = os.environ.get("TASK_RUN_DIR", "").strip()
+    if run_dir and int(os.environ.get("RANK", "0")) == 0:
+        path = Path(run_dir) / "initialization_summary.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return model
 
 

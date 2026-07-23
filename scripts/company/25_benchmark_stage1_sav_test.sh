@@ -19,6 +19,8 @@ ANN_ROOT="${ANN_ROOT:-${SAV_SPLIT_ROOT}/Annotations_6fps}"
 VIDEO_LIST_FILE="${VIDEO_LIST_FILE:-${SAV_SPLIT_ROOT}/${SAV_SPLIT}.txt}"
 
 SAM2_ROOT="${SAM2_ROOT:-/user-volume/repo/facebookresearch-sam2}"
+EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
+EDGETAM_CONFIG="${EDGETAM_CONFIG:-${RUN_DIR}/resolved_config.yaml}"
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-/group-volume/danny-dataset/sam2_distill/checkpoints}"
 SAM2L_CONFIG="${SAM2L_CONFIG:-configs/sam2.1/sam2.1_hiera_l.yaml}"
 SAM2L_CHECKPOINT="${SAM2L_CHECKPOINT:-${CHECKPOINT_ROOT}/sam2.1/sam2.1_hiera_large.pt}"
@@ -40,10 +42,12 @@ EVAL_GPUS="${EVAL_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}"
 required_paths=("${STAGE1_CHECKPOINT}" "${IMAGE_ROOT}" "${ANN_ROOT}" "${VIDEO_LIST_FILE}")
 if [[ "${MODEL_FAMILY}" == "sam2" ]]; then
   required_paths+=("${SAM2L_CHECKPOINT}" "${STUDENT_CHECKPOINT}" "${SAM2_ROOT}")
+elif [[ "${MODEL_FAMILY}" == "edgetam" ]]; then
+  required_paths+=("${EDGETAM_ROOT}" "${EDGETAM_CONFIG}" "${SAM2_ROOT}/sav_dataset/sav_evaluator.py")
 elif [[ "${MODEL_FAMILY}" == "sam31" ]]; then
   required_paths+=("${SAM31_CHECKPOINT}" "${SAM3_ROOT}" "${SAM2_ROOT}/sav_dataset/sav_evaluator.py")
 else
-  echo "MODEL_FAMILY must be sam2 or sam31; got ${MODEL_FAMILY}" >&2
+  echo "MODEL_FAMILY must be sam2, edgetam, or sam31; got ${MODEL_FAMILY}" >&2
   exit 2
 fi
 for path in "${required_paths[@]}"; do
@@ -136,6 +140,13 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${image_out}/summary.json" ]]; then
       --student-model-name "${STUDENT_MODEL_NAME}"
       --sam2-root "${SAM2_ROOT}"
     )
+  elif [[ "${MODEL_FAMILY}" == "edgetam" ]]; then
+    image_args+=(
+      --model-kind edgetam-trainer
+      --config "${EDGETAM_CONFIG}"
+      --sam2-root "${SAM2_ROOT}"
+      --edgetam-root "${EDGETAM_ROOT}"
+    )
   else
     image_args+=(
       --model-kind sam31-stage1-student
@@ -194,6 +205,18 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
       --student-family "${STUDENT_FAMILY}"
       --student-checkpoint "${STUDENT_CHECKPOINT}"
       --student-model-name "${STUDENT_MODEL_NAME}"
+      --image-root "${IMAGE_ROOT}"
+      --ann-root "${ANN_ROOT}"
+      --device "${DEVICE}"
+    )
+  elif [[ "${MODEL_FAMILY}" == "edgetam" ]]; then
+    vos_program=tools/eval/run_sam2_vos_prompt_dataset.py
+    vos_args=(
+      --model-kind edgetam-trainer
+      --prompt-kind box
+      --sam2-root "${EDGETAM_ROOT}"
+      --sam2-cfg "${EDGETAM_CONFIG}"
+      --checkpoint "${STAGE1_CHECKPOINT}"
       --image-root "${IMAGE_ROOT}"
       --ann-root "${ANN_ROOT}"
       --device "${DEVICE}"
