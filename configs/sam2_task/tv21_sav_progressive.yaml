@@ -1,4 +1,4 @@
-# Progressive task-loss fine-tuning for a Stage 1 TinyViT-21M SAM2.1-L hybrid.
+# Progressive task-loss fine-tuning for a Stage 1 TinyViT SAM2.1-L hybrid.
 
 scratch:
   resolution: 1024
@@ -49,9 +49,9 @@ trainer:
     image_encoder:
       _target_: sam2_distill.models.task_finetune.Stage1StudentImageEncoder
       student_family: tinyvit
-      model_name: tiny_vit_21m_512.dist_in22k_ft_in1k
+      model_name: ${oc.env:TINYVIT_MODEL_NAME,tiny_vit_21m_512.dist_in22k_ft_in1k}
       checkpoint_path: ${oc.env:TINYVIT_CHECKPOINT}
-      adapter_mode: projection
+      adapter_mode: ${oc.env:TINYVIT_ADAPTER_MODE,projection}
       position_encoding:
         _target_: sam2.modeling.position_encoding.PositionEmbeddingSine
         num_pos_feats: 256

@@ -233,6 +233,8 @@ def export_task_checkpoint(
     stage_name: str,
     trainable_mode: str,
     source_stage1_checkpoint: str,
+    model_name: str = "tiny_vit_21m_512.dist_in22k_ft_in1k",
+    adapter_mode: str = "projection",
 ) -> dict[str, Any]:
     checkpoint = _load_checkpoint(trainer_checkpoint)
     task_state = checkpoint.get("model")
@@ -253,8 +255,8 @@ def export_task_checkpoint(
         "task_model_state": task_state,
         "args": {
             "student_family": "tinyvit",
-            "model_name": "tiny_vit_21m_512.dist_in22k_ft_in1k",
-            "adapter_mode": "projection",
+            "model_name": model_name,
+            "adapter_mode": adapter_mode,
             "task_stage": stage_name,
             "trainable_mode": trainable_mode,
             "source_stage1_checkpoint": source_stage1_checkpoint,

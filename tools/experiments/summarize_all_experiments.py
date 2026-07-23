@@ -184,6 +184,22 @@ def expected_experiments() -> list[Expected]:
         )
     rows.append(
         Expected(
+            "edgetam_fidelity_v3/E0_official_upstream",
+            "edgetam",
+            "E0_official_upstream",
+        )
+    )
+    for size in ("tv5", "tv11", "tv21"):
+        rows.append(
+            Expected(
+                f"tinyvit_max_jf_v1/{size}/main",
+                "sam2.1_task",
+                size,
+                "selected_best",
+            )
+        )
+    rows.append(
+        Expected(
             "sam31_stage1/tv21m_adapter_mse_cos025_5ep_v1",
             "sam3.1",
             "tv21m_adapter_mse_cos025_5ep_v1",

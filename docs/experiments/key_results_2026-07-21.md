@@ -75,6 +75,23 @@ the expected recovery path. The next experiment should first localize
 per-frame decay and then supervise intermediate memory tokens, object pointers,
 or attention behavior rather than relying only on final-feature MSE.
 
+The next protocol is now split into a gated fidelity ladder rather than
+another hybrid sweep. `docs/experiments/edgetam_fidelity_v3.md` first evaluates
+the unmodified released EdgeTAM checkpoint under the same SA-V evaluator
+(`E0`), then permits a zero-training TinyViT-21M encoder swap only if upstream
+fidelity passes. C2/C3 remain paused.
+
+## Planned size-specific maximum-J&F fine-tuning
+
+`docs/experiments/tinyvit_max_jf_v1.md` defines one independent four-H100 lane
+for TV5M, TV11M, and TV21M. Each lane includes its strongest existing
+checkpoint in the full-val ranking, freezes BatchNorm, uses the A02
+official-style prompt simulation, and evaluates every trained candidate on
+full SA-V val/test with W&B. TV5M/TV11M run encoder adaptation followed by
+joint and decoder-memory stages; TV21M continues from A02 at lower learning
+rates rather than duplicating completed work. Selection uses full-val J&F
+only.
+
 ## 2026-07-22 Mask Fine-Tuning Results
 
 ### Mask v2: completed
