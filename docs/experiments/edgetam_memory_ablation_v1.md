@@ -115,6 +115,9 @@ frame-count, or KD-weight sweep. Before another full SA-V run:
    then task plus image/memory KD. A learned four-to-two-layer distillation is
    preferable to truncating the first two layers.
 
+These controls are implemented in
+`docs/experiments/edgetam_memory_recovery_v2.md`.
+
 ## Decision rule
 
 Primary selection uses SA-V val J&F. Test is reported only after the val result exists. Also report image mIoU/AP and both image/video latency so a J&F gain is not accepted blindly if the compressed module regresses prompt segmentation or speed.
