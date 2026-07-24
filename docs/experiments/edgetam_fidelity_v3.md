@@ -102,6 +102,11 @@ block on C2, C3, another Perceiver LR sweep, or T8. E1-E4 remain gated;
 implement and launch each only when its predecessor identifies the next
 failure boundary.
 
+The checks subsequently passed at 65.2 and 72.1 gate J&F. The primary run
+reached 68.0 full-val J&F. This validates the local runtime/evaluator and
+unblocks the strict E1 plus behavior-transfer suite documented in
+`docs/experiments/edgetam_tinyvit21_behavior_v4.md`.
+
 W&B project: `edgetam-fidelity-v3`
 
 Run root:
