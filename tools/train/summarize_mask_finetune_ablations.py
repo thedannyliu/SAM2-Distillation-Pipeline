@@ -14,6 +14,51 @@ from typing import Any
 
 
 REGISTRY = {
+    "D1_staged_image_align_1ep": (
+        "official_behavior_curriculum",
+        "Align the transplanted TinyViT image path to the official EdgeTAM teacher before temporal tuning.",
+        "E1_a02_official_nonimage",
+    ),
+    "D2_staged_temporal_2ep": (
+        "official_behavior_curriculum",
+        "Tune only the official temporal stack with mask, memory, and object-pointer behavior targets.",
+        "D1_staged_image_align_1ep",
+    ),
+    "D3_staged_t8_refine_1ep": (
+        "official_behavior_horizon",
+        "Refine the staged temporal stack on longer eligible T8 clips.",
+        "D2_staged_temporal_2ep",
+    ),
+    "J1_joint_behavior_2ep": (
+        "official_behavior_joint",
+        "Jointly align TinyViT image and official temporal behavior from the strict transplant.",
+        "E1_a02_official_nonimage",
+    ),
+    "J2_joint_temporal_refine_1ep": (
+        "official_behavior_joint",
+        "Protect the aligned image path while refining the temporal stack.",
+        "J1_joint_behavior_2ep",
+    ),
+    "J3_joint_t8_refine_1ep": (
+        "official_behavior_horizon",
+        "Extend the joint curriculum to longer eligible T8 clips.",
+        "J2_joint_temporal_refine_1ep",
+    ),
+    "S0_scratch_temporal_task_2ep": (
+        "scratch_temporal_control",
+        "Train a randomly initialized EdgeTAM Perceiver, memory, and object-pointer stack using SA-V task loss.",
+        "E1_a02_official_nonimage",
+    ),
+    "S1_scratch_behavior_2ep": (
+        "scratch_temporal_distillation",
+        "Add official EdgeTAM temporal behavior targets after task-only scratch training.",
+        "S0_scratch_temporal_task_2ep",
+    ),
+    "S2_scratch_t8_refine_1ep": (
+        "scratch_temporal_horizon",
+        "Refine the scratch-trained temporal stack on longer eligible T8 clips.",
+        "S1_scratch_behavior_2ep",
+    ),
     "C0_coherent_m0mem_align": (
         "temporal_initialization",
         "Align a coherent official EdgeTAM temporal stack to the functional M0 TinyViT memory output.",
@@ -171,6 +216,8 @@ FIELDNAMES = [
     "lambda_img",
     "lambda_mem",
     "lambda_task",
+    "lambda_mask_logits",
+    "lambda_obj_ptr",
     "teacher_checkpoint",
     "memory_topology",
     "memory_layers",
@@ -292,6 +339,10 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         "lambda_img": os.environ.get("TASK_LAMBDA_IMG", "0"),
         "lambda_mem": os.environ.get("TASK_LAMBDA_MEM", "0"),
         "lambda_task": os.environ.get("TASK_LAMBDA_TASK", "1"),
+        "lambda_mask_logits": os.environ.get(
+            "TASK_LAMBDA_MASK_LOGITS", "0"
+        ),
+        "lambda_obj_ptr": os.environ.get("TASK_LAMBDA_OBJ_PTR", "0"),
         "teacher_checkpoint": os.environ.get("TASK_TEACHER_CHECKPOINT", ""),
         "memory_topology": os.environ.get("TASK_MEMORY_TOPOLOGY", ""),
         "memory_layers": os.environ.get("TASK_MEMORY_LAYERS", ""),

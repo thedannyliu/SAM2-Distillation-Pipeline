@@ -123,6 +123,13 @@ def _checkpoint_model_state(path: str | Path) -> dict[str, torch.Tensor]:
                 name.removeprefix("module."): value
                 for name, value in state.items()
             }
+    if checkpoint and all(
+        isinstance(value, torch.Tensor) for value in checkpoint.values()
+    ):
+        return {
+            name.removeprefix("module."): value
+            for name, value in checkpoint.items()
+        }
     raise KeyError(f"No model state in {path}")
 
 
@@ -139,11 +146,12 @@ def initialize_edgetam_memory_model(
         "official_pair",
         "current_pair",
         "official_temporal",
+        "scratch_temporal",
         "current_full",
     }:
         raise ValueError(
             "memory_initializer must be current, official_pair, current_pair, "
-            "official_temporal, or current_full"
+            "official_temporal, scratch_temporal, or current_full"
         )
     current_state = _checkpoint_model_state(previous_task_checkpoint)
     official_state = (
@@ -164,7 +172,11 @@ def initialize_edgetam_memory_model(
         )
 
     merged: dict[str, torch.Tensor] = {}
-    provenance: dict[str, int] = {"current_e2e": 0, "official_edgetam": 0}
+    provenance: dict[str, int] = {
+        "current_e2e": 0,
+        "official_edgetam": 0,
+        "random_init": 0,
+    }
     official_temporal_prefixes = (
         "memory_attention.",
         "memory_encoder.",
@@ -177,7 +189,24 @@ def initialize_edgetam_memory_model(
         "no_mem_pos_enc",
         "no_obj_ptr",
     }
+    scratch_temporal_prefixes = (
+        "memory_attention.",
+        "memory_encoder.",
+        "spatial_perceiver.",
+        "obj_ptr_proj.",
+        "obj_ptr_tpos_proj.",
+    )
+    scratch_temporal_parameters = official_temporal_parameters | {
+        "no_obj_embed_spatial",
+    }
     for key, target in model.state_dict().items():
+        use_random = (
+            memory_initializer == "scratch_temporal"
+            and (
+                key.startswith(scratch_temporal_prefixes)
+                or key in scratch_temporal_parameters
+            )
+        )
         use_official = (
             (
                 memory_initializer != "current_full"
@@ -195,9 +224,15 @@ def initialize_edgetam_memory_model(
                 )
             )
         )
-        source_name = "official_edgetam" if use_official else "current_e2e"
-        source_state = official_state if use_official else current_state
-        source = source_state.get(key)
+        if use_random:
+            source_name = "random_init"
+            source = target
+        else:
+            source_name = (
+                "official_edgetam" if use_official else "current_e2e"
+            )
+            source_state = official_state if use_official else current_state
+            source = source_state.get(key)
         if source is None:
             raise KeyError(
                 f"Missing {source_name} initializer tensor for {key}"
@@ -233,6 +268,7 @@ def export_task_checkpoint(
     stage_name: str,
     trainable_mode: str,
     source_stage1_checkpoint: str,
+    student_family: str = "tinyvit",
     model_name: str = "tiny_vit_21m_512.dist_in22k_ft_in1k",
     adapter_mode: str = "projection",
 ) -> dict[str, Any]:
@@ -254,7 +290,7 @@ def export_task_checkpoint(
         "model_state": student_state,
         "task_model_state": task_state,
         "args": {
-            "student_family": "tinyvit",
+            "student_family": student_family,
             "model_name": model_name,
             "adapter_mode": adapter_mode,
             "task_stage": stage_name,

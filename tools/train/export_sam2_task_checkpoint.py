@@ -23,6 +23,11 @@ def main() -> None:
     parser.add_argument("--trainable-mode", required=True)
     parser.add_argument("--source-stage1-checkpoint", required=True)
     parser.add_argument(
+        "--student-family",
+        choices=("tinyvit", "repvit"),
+        default="tinyvit",
+    )
+    parser.add_argument(
         "--model-name",
         default="tiny_vit_21m_512.dist_in22k_ft_in1k",
     )
@@ -38,6 +43,7 @@ def main() -> None:
         stage_name=args.stage_name,
         trainable_mode=args.trainable_mode,
         source_stage1_checkpoint=args.source_stage1_checkpoint,
+        student_family=args.student_family,
         model_name=args.model_name,
         adapter_mode=args.adapter_mode,
     )

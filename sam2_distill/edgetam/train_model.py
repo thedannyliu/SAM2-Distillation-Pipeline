@@ -57,6 +57,7 @@ class EdgeTAMTrain(SAM2Train):
             "mask_decoder_memory",
             "memory_only",
             "memory_perceiver_full",
+            "image_encoder_memory_perceiver",
             "image_encoder_mask_decoder",
             "image_encoder_mask_decoder_memory",
         }:
@@ -64,6 +65,7 @@ class EdgeTAMTrain(SAM2Train):
                 "trainable_module_mode must be one of: image_neck_only, "
                 "image_encoder_only, mask_decoder_only, "
                 "mask_decoder_memory, memory_only, memory_perceiver_full, "
+                "image_encoder_memory_perceiver, "
                 "image_encoder_mask_decoder, "
                 "image_encoder_mask_decoder_memory"
             )
@@ -81,17 +83,23 @@ class EdgeTAMTrain(SAM2Train):
             "mask_decoder_memory",
             "memory_only",
             "memory_perceiver_full",
+            "image_encoder_memory_perceiver",
         }:
             modules = [self.memory_attention, self.memory_encoder]
             if mode == "mask_decoder_memory":
                 modules.append(self.sam_mask_decoder)
-            if mode == "memory_perceiver_full":
+            if mode in {
+                "memory_perceiver_full",
+                "image_encoder_memory_perceiver",
+            }:
                 spatial_perceiver = getattr(self, "spatial_perceiver", None)
                 if not isinstance(spatial_perceiver, torch.nn.Module):
                     raise ValueError(
-                        "memory_perceiver_full requires model.spatial_perceiver"
+                        f"{mode} requires model.spatial_perceiver"
                     )
                 modules.append(spatial_perceiver)
+            if mode == "image_encoder_memory_perceiver":
+                modules.append(self.image_encoder)
             for name in ("obj_ptr_proj", "obj_ptr_tpos_proj"):
                 module = getattr(self, name, None)
                 if isinstance(module, torch.nn.Module):

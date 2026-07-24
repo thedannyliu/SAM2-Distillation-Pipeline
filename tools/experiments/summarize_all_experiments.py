@@ -189,6 +189,35 @@ def expected_experiments() -> list[Expected]:
             "E0_official_upstream",
         )
     )
+    rows.append(
+        Expected(
+            "edgetam_tinyvit21_behavior_v4/E1_a02_official_nonimage/main",
+            "edgetam",
+            "E1_a02_official_nonimage",
+            "main",
+        )
+    )
+    for variant, epochs in (
+        ("D1_staged_image_align_1ep", 1),
+        ("D2_staged_temporal_2ep", 2),
+        ("D3_staged_t8_refine_1ep", 1),
+        ("J1_joint_behavior_2ep", 2),
+        ("J2_joint_temporal_refine_1ep", 1),
+        ("J3_joint_t8_refine_1ep", 1),
+        ("S0_scratch_temporal_task_2ep", 2),
+        ("S1_scratch_behavior_2ep", 2),
+        ("S2_scratch_t8_refine_1ep", 1),
+    ):
+        rows.append(
+            Expected(
+                f"edgetam_tinyvit21_behavior_v4/{variant}/main",
+                "sam2.1_edgetam",
+                variant,
+                "main",
+                "epoch",
+                epochs,
+            )
+        )
     for size in ("tv5", "tv11", "tv21"):
         rows.append(
             Expected(
@@ -196,6 +225,38 @@ def expected_experiments() -> list[Expected]:
                 "sam2.1_task",
                 size,
                 "selected_best",
+            )
+        )
+    for size in ("tv5", "tv11", "tv21"):
+        for suffix, epochs in (
+            ("F1_decmem_frozen_2ep", 2),
+            ("F2_joint_low_1ep", 1),
+        ):
+            variant = f"{size}_{suffix}"
+            rows.append(
+                Expected(
+                    f"tinyvit_capacity_freeze_v2/{variant}",
+                    "sam2.1_task",
+                    variant,
+                    variant,
+                    "epoch",
+                    epochs,
+                )
+            )
+    for variant, epochs in (
+        ("repvit_P1_encoder_recovery_3ep", 3),
+        ("repvit_P2_joint_frozenbn_2ep", 2),
+        ("repvit_P2b_joint_trainbn_1ep", 1),
+        ("repvit_P3_decmem_t8_refine_1ep", 1),
+    ):
+        rows.append(
+            Expected(
+                f"repvit_task_finetune_v2/{variant}",
+                "sam2.1_task",
+                variant,
+                variant,
+                "epoch",
+                epochs,
             )
         )
     rows.append(

@@ -21,6 +21,8 @@ def attach_teacher_features(
     for student, teacher in zip(student_outputs, teacher_outputs):
         student["teacher_distill_F16"] = teacher["distill_F16"].detach()
         student["teacher_distill_F_M"] = teacher["distill_F_M"].detach()
+        student["teacher_pred_masks"] = teacher["pred_masks"].detach()
+        student["teacher_obj_ptr"] = teacher["obj_ptr"].detach()
 
 
 def attach_synthetic_teacher_features(
@@ -30,6 +32,8 @@ def attach_synthetic_teacher_features(
     for student in student_outputs:
         student["teacher_distill_F16"] = student["distill_F16"].detach() + offset
         student["teacher_distill_F_M"] = student["distill_F_M"].detach() + offset
+        student["teacher_pred_masks"] = student["pred_masks"].detach() + offset
+        student["teacher_obj_ptr"] = student["obj_ptr"].detach() + offset
 
 
 class TeacherFeatureCache:
