@@ -1,19 +1,43 @@
-# Key Results through 2026-07-23
+# Key Results through 2026-07-24
 
 Source: company all-experiment reports generated from
-`/group-volume/danny-dataset/sam2_distill/runs`. The latest 2026-07-23 snapshot
-contains 73 rows: 51 complete, 2 final-checkpoint incomplete, 1 finalization
-incomplete, 6 not started, 1 training incomplete, 3 validation incomplete,
-and 9 superseded historical rows. The two final-checkpoint-incomplete rows are
-completed EdgeTAM recovery training runs that intentionally stopped after
-failing the mini-val gate. Two of the validation-incomplete rows are A01 smoke
-checks rather than formal experiments. Model decisions use `sav_val`;
-`sav_test` is reported only as a held-out descriptive result.
+`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-24 21:12 UTC
+snapshot contains 107 rows: 74 complete, 3 final-checkpoint incomplete,
+1 finalization incomplete, 14 not started, 1 training incomplete,
+2 training-state unknown, 3 validation incomplete, and 9 superseded
+historical rows. The three final-checkpoint-incomplete rows are EdgeTAM
+recovery C0-C2; they completed their configured training but did not
+produce full val/test results. Two validation-incomplete rows are A01
+smoke checks rather than formal experiments. Model decisions use
+`sav_val`; `sav_test` is held-out and descriptive only.
 
 All 12 mask-v2 rows and all eight EdgeTAM-memory rows completed train -> full
-SA-V val -> full SA-V test. EdgeTAM recovery C0 and C1 completed training but
-did not proceed to full val/test. The remaining `finalization_incomplete` row
-is RepViT-M09, whose observed accuracy is not competitive.
+SA-V val -> full SA-V test. EdgeTAM recovery C0-C2 completed their configured
+training but did not proceed to full val/test. The remaining
+`finalization_incomplete` row is RepViT-M09, whose observed accuracy is not
+competitive.
+
+## 2026-07-24 Main conclusions
+
+1. TinyViT fine-tuning is near a data/model ceiling, not ineffective.
+   The best full-val J&F is 65.8/68.5/72.4 for 5M/11M/21M. Gains over
+   the strongest pre-task validation results are 1.6/1.4/1.3 points.
+2. RepViT is highly recoverable but remains behind TinyViT. Task
+   fine-tuning raises test J&F from 37.5 to 60.1 (+22.6), yet the final
+   result remains below TinyViT-5M.
+3. BatchNorm should stay frozen. RepViT train-BN loses 2.5 test J&F,
+   0.0472 mIoU, and 0.0743 AP against its frozen-BN control, confirming
+   the earlier TinyViT signal.
+4. EdgeTAM currently has two distinct incompatibilities. Strict E1
+   transplantation collapses both image and video quality (2.1 val
+   J&F), while S0 preserves image quality but leaves random temporal
+   training at only 15.6 val J&F. Tensor compatibility is not functional
+   interface compatibility, and task loss alone does not recover the
+   compressed temporal path.
+
+The highest selected TinyViT-21M result is 72.4 val J&F. Its selected
+test result is 74.7; the unselected S1 row reaches 74.8 test J&F but is
+not selected because its val J&F is lower at 72.2.
 
 ## 2026-07-24 EdgeTAM Official Fidelity and Behavior Transfer
 
@@ -45,6 +69,21 @@ The parallel backbone expansion protects each distilled TinyViT encoder
 before a low-LR joint pass, and gives the weak RepViT-M0.9 checkpoint an
 encoder-recovery curriculum plus a controlled frozen-BN/train-BN fork. See
 `docs/experiments/backbone_task_expansion_v2.md`.
+
+### Completed v4 controls
+
+| Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| official E0 full val | 0.8224 | 0.6862 | 68.0 | - | - | - |
+| `E1_a02_official_nonimage` | 0.0200 | 0.0001 | 2.1 | 0.0151 | 0.0000 | 2.4 |
+| `S0_scratch_temporal_task_2ep` | 0.8402 | 0.7165 | 15.6 | 0.8389 | 0.7190 | 13.8 |
+
+E1 proves that replacing only the official image encoder with A02
+TinyViT breaks the official prompt/mask interface even though every tensor
+loads strictly. S0 retains the healthy A02 image/prompt/mask path, so its
+strong image metrics and collapsed J&F isolate failure to learning the
+random temporal stack. D1-D3, J1-J3, and S1-S2 were not started in this
+snapshot; behavior distillation is therefore still untested.
 
 ## 2026-07-23 EdgeTAM Memory Results
 
@@ -100,19 +139,21 @@ initialization was not the dominant cause of collapse. Same-interface M0
 distillation on final memory-conditioned `F_M` is also insufficient: it
 preserves prompted-image quality while leaving temporal propagation broken.
 
-C3 is blocked because C0 failed. C2 was not started in this snapshot and
-should be retained only as an explicit negative joint-training control, not as
-the expected recovery path. The next experiment should first localize
-per-frame decay and then supervise intermediate memory tokens, object pointers,
-or attention behavior rather than relying only on final-feature MSE.
+C2 subsequently completed its configured training but, like C0/C1, did
+not produce full val/test metrics and is classified
+`final_checkpoint_incomplete`. C3 remains not started. Without C2 gate or
+full-evaluation metrics, it cannot be interpreted as recovery. The next
+experiment should first localize per-frame decay and then supervise
+intermediate memory tokens, object pointers, or attention behavior rather
+than relying only on final-feature MSE.
 
 The next protocol is now split into a gated fidelity ladder rather than
 another hybrid sweep. `docs/experiments/edgetam_fidelity_v3.md` first evaluates
 the unmodified released EdgeTAM checkpoint under the same SA-V evaluator
 (`E0`), then permits a zero-training TinyViT-21M encoder swap only if upstream
-fidelity passes. C2/C3 remain paused.
+fidelity passes. C3 remains paused.
 
-## Planned size-specific maximum-J&F fine-tuning
+## Completed size-specific maximum-J&F fine-tuning
 
 `docs/experiments/tinyvit_max_jf_v1.md` defines one independent four-H100 lane
 for TV5M, TV11M, and TV21M. Each lane includes its strongest existing
@@ -122,6 +163,29 @@ full SA-V val/test with W&B. TV5M/TV11M run encoder adaptation followed by
 joint and decoder-memory stages; TV21M continues from A02 at lower learning
 rates rather than duplicating completed work. Selection uses full-val J&F
 only.
+
+| Capacity | Selected run | val J&F | test J&F |
+| --- | --- | ---: | ---: |
+| TinyViT-5M | capacity F2 joint-low | **65.8** | 67.6 |
+| TinyViT-11M | max-J&F selected | **68.5** | 70.3 |
+| TinyViT-21M | max-J&F selected | **72.4** | 74.7 |
+
+The continued frozen-encoder branch improves the 5M selection result, but
+does not beat the existing 11M model. TV21 F1 reaches 71.2 val and 74.2
+test J&F, below the selected 72.4/74.7; TV21 F2 was not started.
+
+### RepViT task recovery
+
+| Stage | val J&F | test J&F |
+| --- | ---: | ---: |
+| distill-only | 37.1 | 37.5 |
+| P1 encoder recovery | 58.6 | 57.4 |
+| P2 frozen-BN joint | 59.7 | 59.5 |
+| P2b train-BN joint | 58.1 | 57.0 |
+| P3 T8 decoder/memory | **60.3** | **60.1** |
+
+The result supports encoder recovery followed by frozen-BN joint and
+temporal refinement. It rejects trainable BN for this data/batch regime.
 
 ## 2026-07-22 Mask Fine-Tuning Results
 
@@ -186,16 +250,16 @@ task fine-tuning on the validation objectives used for selection.
 | Run | val mIoU | val AP | val J&F | Interpretation |
 | --- | ---: | ---: | ---: | --- |
 | EdgeTAM suite M0 | **0.8405** | **0.7167** | 71.5 | strongest image metrics; uncompressed memory |
-| Task v1 stage 3 | 0.8381 | 0.7133 | 71.5 | balanced pre-M0 baseline |
-| Mask v2 A02 | 0.8374 | 0.7129 | **72.0** | strongest val tracking |
-| Mask v2 A09 | 0.8379 | 0.7137 | 70.8 | high image accuracy, temporal regression |
+| TinyViT-21M max-J&F | 0.8371 | 0.7127 | **72.4** | strongest selected validation tracking |
+| Mask v2 A02 | 0.8374 | 0.7129 | 72.0 | strongest one-pass mask-v2 tracking |
 | Mask v2 A11 | 0.8378 | 0.7143 | 71.3 | strongest mask-v2 val AP |
 
-M0 improves image metrics without improving validation tracking and is not a
-compressed EdgeTAM model. No mask-v2 setting dominates the task-v1 stage-3
-checkpoint. Prompt simulation, hard sampling, and KD move different
-objectives; the EdgeTAM result now shifts the next experiment from another
-mask-finetuning grid to temporal compatibility and memory distillation.
+M0 remains the image-metric leader but is not a compressed EdgeTAM model.
+Longer low-LR TinyViT-21M fine-tuning raises selected val J&F from A02's
+72.0 to 72.4 without improving the image objectives. Prompt simulation,
+hard sampling, and KD move different objectives; the EdgeTAM result shifts
+the next experiment from another mask-finetuning grid to temporal
+compatibility and behavior distillation.
 
 ## 2026-07-22 Historical Pipeline Status
 

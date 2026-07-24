@@ -66,6 +66,36 @@ The stages match TV5M except S1 uses `8e-7 -> 8e-8` and S2 uses
 The lower TV21M learning rates test whether the current validation leader is
 under-trained without repeating a high-LR pass that could erase it.
 
+## Results through 2026-07-24
+
+All three pipelines completed. The table preserves validation-based
+selection; a higher test value never changes the selected row.
+
+| Size | Candidate | val J&F | test J&F | Selected within v1 |
+| --- | --- | ---: | ---: | --- |
+| 5M | Stage-1 start | 64.2 | 67.1 | no |
+| 5M | S1 encoder | 65.2 | 67.8 | no |
+| 5M | S2 joint | 65.1 | **67.9** | no |
+| 5M | S3 decoder/memory | **65.3** | **67.9** | yes |
+| 11M | Stage-1 start | 67.1 | 69.5 | no |
+| 11M | S1 encoder | 67.2 | **70.5** | no |
+| 11M | S2 joint | 67.8 | **70.5** | no |
+| 11M | S3 decoder/memory | **68.5** | 70.3 | yes |
+| 21M | A02 start | 72.0 | 74.1 | no |
+| 21M | S1 continuation | 72.2 | **74.8** | no |
+| 21M | S2 low-LR continuation | 71.8 | 74.7 | no |
+| 21M | S3 decoder/memory | **72.4** | 74.7 | yes |
+
+The within-suite validation gains are +1.1, +1.4, and +0.4 J&F for
+5M/11M/21M. The smaller models benefit more because their task interface
+was less adapted initially. The 21M result confirms that continued
+fine-tuning still helps, but only modestly near the current ceiling.
+
+The separate capacity/freeze continuation later raises the 5M selected
+val result to 65.8 with a frozen-encoder decoder/memory stage followed by
+low-LR joint tuning. It does not change the 11M or 21M winners. See
+`backbone_task_expansion_v2.md`.
+
 ## Evaluation and retention
 
 Each trained candidate executes:
