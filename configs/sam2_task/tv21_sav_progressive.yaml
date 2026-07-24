@@ -48,7 +48,7 @@ trainer:
     image_encoder_activation_checkpoint: true
     image_encoder:
       _target_: sam2_distill.models.task_finetune.Stage1StudentImageEncoder
-      student_family: tinyvit
+      student_family: ${oc.env:STUDENT_FAMILY,tinyvit}
       model_name: ${oc.env:TINYVIT_MODEL_NAME,tiny_vit_21m_512.dist_in22k_ft_in1k}
       checkpoint_path: ${oc.env:TINYVIT_CHECKPOINT}
       adapter_mode: ${oc.env:TINYVIT_ADAPTER_MODE,projection}

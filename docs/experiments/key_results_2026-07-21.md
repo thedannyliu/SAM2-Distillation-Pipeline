@@ -15,6 +15,37 @@ SA-V val -> full SA-V test. EdgeTAM recovery C0 and C1 completed training but
 did not proceed to full val/test. The remaining `finalization_incomplete` row
 is RepViT-M09, whose observed accuracy is not competitive.
 
+## 2026-07-24 EdgeTAM Official Fidelity and Behavior Transfer
+
+The unmodified released EdgeTAM checkpoint passed two independent local
+32-video SA-V val gates:
+
+| Run | mIoU | AP | J&F |
+| --- | ---: | ---: | ---: |
+| official E0, primary gate | 0.8344 | 0.7229 | 65.2 |
+| official E0, seed-2 gate | 0.8456 | 0.7451 | 72.1 |
+| official E0, full val | 0.8224 | 0.6862 | 68.0 |
+
+The local evaluator is functional. C0/C1 near 31 J&F must therefore be
+attributed to the hybrid interface/behavior transfer, not a universal
+evaluation failure. The next formal suite uses a strict E1 transplant:
+A02 contributes only `image_encoder.*`; the official EdgeTAM checkpoint
+contributes every non-image tensor.
+
+The v4 suite compares staged image-then-temporal adaptation, joint
+adaptation, and a temporal-from-scratch control. In addition to task, image,
+and final memory-feature losses, v4 directly distills propagated mask logits
+and object pointers. The scratch control randomizes the Perceiver, memory,
+and object-pointer path while retaining the mature image/prompt/mask model;
+it does not mislabel a whole-model random initialization as feasible under
+SA-V-only data. See
+`docs/experiments/edgetam_tinyvit21_behavior_v4.md`.
+
+The parallel backbone expansion protects each distilled TinyViT encoder
+before a low-LR joint pass, and gives the weak RepViT-M0.9 checkpoint an
+encoder-recovery curriculum plus a controlled frozen-BN/train-BN fork. See
+`docs/experiments/backbone_task_expansion_v2.md`.
+
 ## 2026-07-23 EdgeTAM Memory Results
 
 All runs retain the TinyViT-21M image encoder and start from the selected A02

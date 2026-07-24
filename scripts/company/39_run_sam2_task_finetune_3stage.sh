@@ -19,6 +19,7 @@ SAM2_CHECKPOINT="${SAM2_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hier
 TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 TINYVIT_MODEL_NAME="${TINYVIT_MODEL_NAME:-tiny_vit_21m_512.dist_in22k_ft_in1k}"
 TINYVIT_ADAPTER_MODE="${TINYVIT_ADAPTER_MODE:-projection}"
+STUDENT_FAMILY="${STUDENT_FAMILY:-tinyvit}"
 SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_stage1_ablation_v2/4gpu_adapter_teacher/tv21_proj_sam21l_msehr_l1_025/checkpoints/best.pt}"
 CONFIG="${CONFIG:-configs/sam2_task/tv21_sav_progressive.yaml}"
 WANDB_PROJECT="${WANDB_PROJECT:-sam2-task-finetune-tv21-v1}"
@@ -102,6 +103,7 @@ export_stage_checkpoint() {
     --stage-name "${stage_name}" \
     --trainable-mode "${mode}" \
     --source-stage1-checkpoint "${SOURCE_STAGE1_CHECKPOINT}" \
+    --student-family "${STUDENT_FAMILY}" \
     --model-name "${TINYVIT_MODEL_NAME}" \
     --adapter-mode "${TINYVIT_ADAPTER_MODE}" || return 1
 }
@@ -148,6 +150,7 @@ train_stage() {
     TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT}" \
     TINYVIT_MODEL_NAME="${TINYVIT_MODEL_NAME}" \
     TINYVIT_ADAPTER_MODE="${TINYVIT_ADAPTER_MODE}" \
+    STUDENT_FAMILY="${STUDENT_FAMILY}" \
     SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT}" \
     PREVIOUS_TASK_CHECKPOINT="${previous_checkpoint}" \
     WANDB_MODE="${WANDB_MODE}" \
@@ -180,7 +183,7 @@ evaluate_stage_split() {
     evaluation_checkpoint="${stage_dir}/checkpoints/checkpoint.pt"
   fi
   MODEL_FAMILY=sam2 \
-  STUDENT_FAMILY=tinyvit \
+  STUDENT_FAMILY="${STUDENT_FAMILY}" \
   STUDENT_CHECKPOINT="${TINYVIT_CHECKPOINT}" \
   STUDENT_MODEL_NAME="${TINYVIT_MODEL_NAME}" \
   STAGE1_CHECKPOINT="${evaluation_checkpoint}" \

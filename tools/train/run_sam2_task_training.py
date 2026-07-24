@@ -59,6 +59,7 @@ def init_wandb(args: argparse.Namespace):
         dir=str(args.wandb_dir),
         config={
             "task_stage": os.environ.get("TASK_STAGE_NAME"),
+            "student_family": os.environ.get("STUDENT_FAMILY", "tinyvit"),
             "student_model_name": os.environ.get("TINYVIT_MODEL_NAME"),
             "student_adapter_mode": os.environ.get("TINYVIT_ADAPTER_MODE"),
             "trainable_mode": os.environ.get("TASK_TRAINABLE_MODE"),
@@ -86,6 +87,12 @@ def init_wandb(args: argparse.Namespace):
             "lambda_img": float(os.environ.get("TASK_LAMBDA_IMG", "0")),
             "lambda_mem": float(os.environ.get("TASK_LAMBDA_MEM", "0")),
             "lambda_task": float(os.environ.get("TASK_LAMBDA_TASK", "1")),
+            "lambda_mask_logits": float(
+                os.environ.get("TASK_LAMBDA_MASK_LOGITS", "0")
+            ),
+            "lambda_obj_ptr": float(
+                os.environ.get("TASK_LAMBDA_OBJ_PTR", "0")
+            ),
             "prompt_pt_probability": float(
                 os.environ.get("TASK_PROB_USE_POINT", "1")
             ),
@@ -151,6 +158,12 @@ def _wandb_loss_name(name: str) -> str:
         "Losses/train_all_loss_class": "train/loss_class",
         "Losses/train_all_loss_img_distill": "train/loss_img_distill",
         "Losses/train_all_loss_mem_distill": "train/loss_mem_distill",
+        "Losses/train_all_loss_mask_logit_distill": (
+            "train/loss_mask_logit_distill"
+        ),
+        "Losses/train_all_loss_obj_ptr_distill": (
+            "train/loss_obj_ptr_distill"
+        ),
     }
     return aliases.get(name, f"train/{name.replace('/', '_')}")
 
@@ -384,12 +397,26 @@ def apply_mask_ablation_overrides(config) -> None:
     lambda_task = float(os.environ.get("TASK_LAMBDA_TASK", "1"))
     lambda_img = float(os.environ.get("TASK_LAMBDA_IMG", "0"))
     lambda_mem = float(os.environ.get("TASK_LAMBDA_MEM", "0"))
-    if lambda_task != 1 or lambda_img or lambda_mem:
-        if not lambda_img and not lambda_mem:
-            raise ValueError("TASK_LAMBDA_TASK requires an image or memory KD term")
+    lambda_mask_logits = float(
+        os.environ.get("TASK_LAMBDA_MASK_LOGITS", "0")
+    )
+    lambda_obj_ptr = float(os.environ.get("TASK_LAMBDA_OBJ_PTR", "0"))
+    if (
+        lambda_task != 1
+        or lambda_img
+        or lambda_mem
+        or lambda_mask_logits
+        or lambda_obj_ptr
+    ):
+        if not any(
+            (lambda_img, lambda_mem, lambda_mask_logits, lambda_obj_ptr)
+        ):
+            raise ValueError("TASK_LAMBDA_TASK requires a KD term")
         teacher_config = os.environ.get("TASK_TEACHER_MODEL_CONFIG", "").strip()
         teacher_checkpoint = os.environ.get("TASK_TEACHER_CHECKPOINT", "").strip()
-        if (lambda_img or lambda_mem) and (
+        if any(
+            (lambda_img, lambda_mem, lambda_mask_logits, lambda_obj_ptr)
+        ) and (
             not teacher_config or not teacher_checkpoint
         ):
             raise ValueError(
@@ -411,6 +438,8 @@ def apply_mask_ablation_overrides(config) -> None:
                 "lambda_task": lambda_task,
                 "lambda_img": lambda_img,
                 "lambda_mem": lambda_mem,
+                "lambda_mask_logits": lambda_mask_logits,
+                "lambda_obj_ptr": lambda_obj_ptr,
             }
         )
 
