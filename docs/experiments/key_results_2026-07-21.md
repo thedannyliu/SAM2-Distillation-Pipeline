@@ -39,6 +39,12 @@ The highest selected TinyViT-21M result is 72.4 val J&F. Its selected
 test result is 74.7; the unselected S1 row reaches 74.8 test J&F but is
 not selected because its val J&F is lower at 72.2.
 
+The next four-node weekend block is specified in
+`docs/experiments/weekend_72h_v1.md`. It allocates separate official-transfer,
+same-interface EdgeTAM compression, TinyViT-capacity, and RepViT-localization
+lanes. Each queue exceeds 72 hours under the observed company runtime and
+retains only `last.pt` and `best.pt`.
+
 ## 2026-07-24 EdgeTAM Official Fidelity and Behavior Transfer
 
 The unmodified released EdgeTAM checkpoint passed two independent local
