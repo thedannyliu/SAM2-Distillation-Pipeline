@@ -14,6 +14,81 @@ from typing import Any
 
 
 REGISTRY = {
+    "W1_official_image_align_2ep": (
+        "weekend_official_interface",
+        "Give the strict TinyViT transplant two image/logit-alignment epochs before temporal adaptation.",
+        "E1_a02_official_nonimage",
+    ),
+    "W2a_official_logits_5ep": (
+        "weekend_official_behavior_loss",
+        "Jointly adapt image and temporal modules using official image and propagated-mask targets.",
+        "W1_official_image_align_2ep",
+    ),
+    "W2b_official_memlogits_5ep": (
+        "weekend_official_behavior_loss",
+        "Add memory-feature matching to the official image and propagated-mask targets.",
+        "W2a_official_logits_5ep",
+    ),
+    "W2c_official_full_5ep": (
+        "weekend_official_behavior_loss",
+        "Add object-pointer cosine supervision to the official image, memory, and mask targets.",
+        "W2b_official_memlogits_5ep",
+    ),
+    "W3a_official_logits_t8_3ep": (
+        "weekend_official_horizon",
+        "Test whether longer context improves the mask-logit official-transfer branch.",
+        "W2a_official_logits_5ep",
+    ),
+    "W3b_official_memlogits_t8_3ep": (
+        "weekend_official_horizon",
+        "Test longer context after official memory and mask behavior matching.",
+        "W2b_official_memlogits_5ep",
+    ),
+    "W3c_official_full_t8_3ep": (
+        "weekend_official_horizon",
+        "Test longer context after full official temporal behavior matching.",
+        "W2c_official_full_5ep",
+    ),
+    "K1a_m0_task_5ep": (
+        "weekend_same_interface_behavior_loss",
+        "Train the compressed temporal path from coherent official initialization with task loss only.",
+        "M0_sam2_mem4",
+    ),
+    "K1b_m0_logits_5ep": (
+        "weekend_same_interface_behavior_loss",
+        "Add propagated-mask distillation from the functional same-interface M0 teacher.",
+        "K1a_m0_task_5ep",
+    ),
+    "K1c_m0_memlogits_5ep": (
+        "weekend_same_interface_behavior_loss",
+        "Add final memory-feature matching to same-interface propagated-mask distillation.",
+        "K1b_m0_logits_5ep",
+    ),
+    "K1d_m0_full_5ep": (
+        "weekend_same_interface_behavior_loss",
+        "Add object-pointer supervision to the full same-interface M0 behavior objective.",
+        "K1c_m0_memlogits_5ep",
+    ),
+    "K2a_m0_task_t8_2ep": (
+        "weekend_same_interface_horizon",
+        "Measure whether task-only compressed memory benefits from longer clips.",
+        "K1a_m0_task_5ep",
+    ),
+    "K2b_m0_logits_t8_2ep": (
+        "weekend_same_interface_horizon",
+        "Extend same-interface mask-logit distillation to longer clips.",
+        "K1b_m0_logits_5ep",
+    ),
+    "K2c_m0_memlogits_t8_2ep": (
+        "weekend_same_interface_horizon",
+        "Extend same-interface memory and mask distillation to longer clips.",
+        "K1c_m0_memlogits_5ep",
+    ),
+    "K2d_m0_full_t8_2ep": (
+        "weekend_same_interface_horizon",
+        "Extend the full same-interface behavior objective to longer clips.",
+        "K1d_m0_full_5ep",
+    ),
     "D1_staged_image_align_1ep": (
         "official_behavior_curriculum",
         "Align the transplanted TinyViT image path to the official EdgeTAM teacher before temporal tuning.",

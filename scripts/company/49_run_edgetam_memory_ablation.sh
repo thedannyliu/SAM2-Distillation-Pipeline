@@ -27,6 +27,21 @@ VARIANTS=(
   S0_scratch_temporal_task_2ep
   S1_scratch_behavior_2ep
   S2_scratch_t8_refine_1ep
+  W1_official_image_align_2ep
+  W2a_official_logits_5ep
+  W2b_official_memlogits_5ep
+  W2c_official_full_5ep
+  W3a_official_logits_t8_3ep
+  W3b_official_memlogits_t8_3ep
+  W3c_official_full_t8_3ep
+  K1a_m0_task_5ep
+  K1b_m0_logits_5ep
+  K1c_m0_memlogits_5ep
+  K1d_m0_full_5ep
+  K2a_m0_task_t8_2ep
+  K2b_m0_logits_t8_2ep
+  K2c_m0_memlogits_t8_2ep
+  K2d_m0_full_t8_2ep
 )
 
 if [[ "${ACTION}" == "list" ]]; then
@@ -77,6 +92,9 @@ if [[ "${VARIANT}" == C* ]]; then
 elif [[ "${VARIANT}" == D* || "${VARIANT}" == J* || "${VARIANT}" == S* ]]; then
   DEFAULT_ABLATION_ROOT="${BEHAVIOR_ROOT}"
   DEFAULT_WANDB_PROJECT="edgetam-tinyvit21-behavior-v4"
+elif [[ "${VARIANT}" == W* || "${VARIANT}" == K* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/weekend_72h_v1/edge"
+  DEFAULT_WANDB_PROJECT="weekend-72h-edgetam-v1"
 else
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/edgetam_memory_ablation_v1"
   DEFAULT_WANDB_PROJECT="edgetam-memory-ablation-v1"
@@ -108,7 +126,7 @@ is_recovery_variant() {
 }
 
 is_behavior_variant() {
-  [[ "$1" == D* || "$1" == J* || "$1" == S* ]]
+  [[ "$1" == D* || "$1" == J* || "$1" == S* || "$1" == W* || "$1" == K* ]]
 }
 
 require_path() {
@@ -135,7 +153,10 @@ PY
 }
 
 configure_variant() {
-  if is_recovery_variant "$1"; then
+  local local_source=""
+  if [[ "$1" == W* || "$1" == K* ]]; then
+    export TASK_EXPERIMENT_SUITE=weekend_72h_v1
+  elif is_recovery_variant "$1"; then
     export TASK_EXPERIMENT_SUITE=edgetam_memory_recovery_v2
   elif is_behavior_variant "$1"; then
     export TASK_EXPERIMENT_SUITE=edgetam_tinyvit21_behavior_v4
@@ -227,7 +248,7 @@ configure_variant() {
       export EDGETAM_GATE_MAX_VIDEOS="${GATE_MAX_VIDEOS}"
       export EDGETAM_GATE_MIN_JF="${GATE_MIN_JF}"
       ;;
-    D1_*|D2_*|D3_*|J1_*|J2_*|J3_*|S0_*|S1_*|S2_*)
+    D1_*|D2_*|D3_*|J1_*|J2_*|J3_*|S0_*|S1_*|S2_*|W*|K*)
       export BASE_CHECKPOINT="${E1_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
       export TASK_TRAIN_BATCH_SIZE=1
@@ -463,6 +484,116 @@ configure_variant() {
       export TASK_LAMBDA_MEM=0.5
       export TASK_LAMBDA_MASK_LOGITS=1
       export TASK_LAMBDA_OBJ_PTR=0.1
+      ;;
+    W1_official_image_align_2ep)
+      export TASK_TRAINABLE_MODE=image_encoder_only
+      export TASK_NUM_FRAMES=2
+      export TASK_EPOCHS=2
+      export TASK_ENCODER_LR=3.0e-7
+      export TASK_ENCODER_LR_END=3.0e-8
+      export TASK_MEMORY_AUX_LR=1.0e-7
+      export TASK_MEMORY_AUX_LR_END=1.0e-8
+      export TASK_LAMBDA_IMG=1
+      export TASK_LAMBDA_MASK_LOGITS=1
+      ;;
+    W2a_official_logits_5ep|W2b_official_memlogits_5ep|W2c_official_full_5ep)
+      export BASE_CHECKPOINT="${ABLATION_ROOT}/W1_official_image_align_2ep/main/checkpoints/last.pt"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=image_encoder_memory_perceiver
+      export TASK_NUM_FRAMES=4
+      export TASK_EPOCHS=5
+      export TASK_ENCODER_LR=1.0e-7
+      export TASK_ENCODER_LR_END=1.0e-8
+      export TASK_MEMORY_LR=3.0e-7
+      export TASK_MEMORY_LR_END=3.0e-8
+      export TASK_MEMORY_AUX_LR=1.0e-7
+      export TASK_MEMORY_AUX_LR_END=1.0e-8
+      export TASK_PERCEIVER_LR=1.0e-6
+      export TASK_PERCEIVER_LR_END=1.0e-7
+      export TASK_LAMBDA_IMG=1
+      export TASK_LAMBDA_MASK_LOGITS=1
+      if [[ "$1" == W2b_* || "$1" == W2c_* ]]; then
+        export TASK_LAMBDA_MEM=0.5
+      fi
+      if [[ "$1" == W2c_* ]]; then
+        export TASK_LAMBDA_OBJ_PTR=0.1
+      fi
+      ;;
+    W3a_official_logits_t8_3ep|W3b_official_memlogits_t8_3ep|W3c_official_full_t8_3ep)
+      local_source="${1/W3/W2}"
+      local_source="${local_source/_t8_3ep/_5ep}"
+      export BASE_CHECKPOINT="${ABLATION_ROOT}/${local_source}/main/checkpoints/last.pt"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_NUM_FRAMES=8
+      export TASK_EPOCHS=3
+      export TASK_VIDEO_IDS_FILE="${HARDNESS_ROOT}/eligible_t8.txt"
+      export TASK_MEMORY_LR=1.5e-7
+      export TASK_MEMORY_LR_END=1.5e-8
+      export TASK_MEMORY_AUX_LR=5.0e-8
+      export TASK_MEMORY_AUX_LR_END=5.0e-9
+      export TASK_PERCEIVER_LR=5.0e-7
+      export TASK_PERCEIVER_LR_END=5.0e-8
+      export TASK_LAMBDA_MASK_LOGITS=1
+      if [[ "$1" == W3b_* || "$1" == W3c_* ]]; then
+        export TASK_LAMBDA_MEM=0.5
+      fi
+      if [[ "$1" == W3c_* ]]; then
+        export TASK_LAMBDA_OBJ_PTR=0.1
+      fi
+      ;;
+    K1a_m0_task_5ep|K1b_m0_logits_5ep|K1c_m0_memlogits_5ep|K1d_m0_full_5ep)
+      export BASE_CHECKPOINT="${A02_BASE_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_MEMORY_INITIALIZER=official_temporal
+      export TASK_NUM_FRAMES=4
+      export TASK_EPOCHS=5
+      export TASK_MEMORY_LR=1.0e-6
+      export TASK_MEMORY_LR_END=1.0e-7
+      export TASK_MEMORY_AUX_LR=3.0e-7
+      export TASK_MEMORY_AUX_LR_END=3.0e-8
+      export TASK_PERCEIVER_LR=3.0e-6
+      export TASK_PERCEIVER_LR_END=3.0e-7
+      export TASK_TEACHER_MODEL_CONFIG="${M0_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${M0_CHECKPOINT}"
+      if [[ "$1" == K1b_* || "$1" == K1c_* || "$1" == K1d_* ]]; then
+        export TASK_LAMBDA_MASK_LOGITS=1
+      fi
+      if [[ "$1" == K1c_* || "$1" == K1d_* ]]; then
+        export TASK_LAMBDA_MEM=0.5
+      fi
+      if [[ "$1" == K1d_* ]]; then
+        export TASK_LAMBDA_OBJ_PTR=0.1
+      fi
+      ;;
+    K2a_m0_task_t8_2ep|K2b_m0_logits_t8_2ep|K2c_m0_memlogits_t8_2ep|K2d_m0_full_t8_2ep)
+      local_source="${1/K2/K1}"
+      local_source="${local_source/_t8_2ep/_5ep}"
+      export BASE_CHECKPOINT="${ABLATION_ROOT}/${local_source}/main/checkpoints/last.pt"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_MEMORY_INITIALIZER=current_full
+      export TASK_NUM_FRAMES=8
+      export TASK_EPOCHS=2
+      export TASK_VIDEO_IDS_FILE="${HARDNESS_ROOT}/eligible_t8.txt"
+      export TASK_MEMORY_LR=5.0e-7
+      export TASK_MEMORY_LR_END=5.0e-8
+      export TASK_MEMORY_AUX_LR=1.5e-7
+      export TASK_MEMORY_AUX_LR_END=1.5e-8
+      export TASK_PERCEIVER_LR=1.5e-6
+      export TASK_PERCEIVER_LR_END=1.5e-7
+      export TASK_TEACHER_MODEL_CONFIG="${M0_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${M0_CHECKPOINT}"
+      if [[ "$1" == K2b_* || "$1" == K2c_* || "$1" == K2d_* ]]; then
+        export TASK_LAMBDA_MASK_LOGITS=1
+      fi
+      if [[ "$1" == K2c_* || "$1" == K2d_* ]]; then
+        export TASK_LAMBDA_MEM=0.5
+      fi
+      if [[ "$1" == K2d_* ]]; then
+        export TASK_LAMBDA_OBJ_PTR=0.1
+      fi
       ;;
     *)
       echo "[ERROR] Unknown EdgeTAM memory variant: $1" >&2
@@ -771,6 +902,7 @@ case "${ACTION}" in
       echo "Prompt point/box/GT: ${TASK_PROB_USE_POINT}/${TASK_PROB_USE_BOX}/${TASK_PROB_SAMPLE_GT}"
       echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
       echo "Loss task/image/memory/logits/obj: ${TASK_LAMBDA_TASK}/${TASK_LAMBDA_IMG}/${TASK_LAMBDA_MEM}/${TASK_LAMBDA_MASK_LOGITS}/${TASK_LAMBDA_OBJ_PTR}"
+      echo "Base: ${BASE_CHECKPOINT}"
       echo "Teacher: ${TASK_TEACHER_CHECKPOINT:-none}"
     fi
     ;;

@@ -259,6 +259,73 @@ def expected_experiments() -> list[Expected]:
                 epochs,
             )
         )
+    for lane, variants in {
+        "edge_official": (
+            ("W1_official_image_align_2ep", 2),
+            ("W2a_official_logits_5ep", 5),
+            ("W2b_official_memlogits_5ep", 5),
+            ("W2c_official_full_5ep", 5),
+            ("W3a_official_logits_t8_3ep", 3),
+            ("W3b_official_memlogits_t8_3ep", 3),
+            ("W3c_official_full_t8_3ep", 3),
+        ),
+        "edge_compression": (
+            ("K1a_m0_task_5ep", 5),
+            ("K1b_m0_logits_5ep", 5),
+            ("K1c_m0_memlogits_5ep", 5),
+            ("K1d_m0_full_5ep", 5),
+            ("K2a_m0_task_t8_2ep", 2),
+            ("K2b_m0_logits_t8_2ep", 2),
+            ("K2c_m0_memlogits_t8_2ep", 2),
+            ("K2d_m0_full_t8_2ep", 2),
+        ),
+    }.items():
+        for variant, epochs in variants:
+            rows.append(
+                Expected(
+                    f"weekend_72h_v1/{lane}/{variant}/main",
+                    "sam2.1_edgetam",
+                    variant,
+                    "main",
+                    "epoch",
+                    epochs,
+                )
+            )
+    for size in ("tv5", "tv11", "tv21"):
+        for suffix, epochs in (
+            ("W1_decmem_t4_3ep", 3),
+            ("W2_joint_t4_3ep", 3),
+            ("W3_selected_t8_2ep", 2),
+        ):
+            variant = f"{size}_{suffix}"
+            rows.append(
+                Expected(
+                    f"weekend_72h_v1/tinyvit/{variant}",
+                    "sam2.1_task",
+                    variant,
+                    variant,
+                    "epoch",
+                    epochs,
+                )
+            )
+    for variant, epochs in (
+        ("repvit_W1_encoder_t2_5ep", 5),
+        ("repvit_W2_decoder_t2_5ep", 5),
+        ("repvit_W3_decmem_t4_5ep", 5),
+        ("repvit_W4_joint_t4_5ep", 5),
+        ("repvit_W5_selected_t8_3ep", 3),
+        ("repvit_W6_joint_low_t4_3ep", 3),
+    ):
+        rows.append(
+            Expected(
+                f"weekend_72h_v1/repvit/{variant}",
+                "sam2.1_repvit",
+                variant,
+                variant,
+                "epoch",
+                epochs,
+            )
+        )
     rows.append(
         Expected(
             "sam31_stage1/tv21m_adapter_mse_cos025_5ep_v1",
