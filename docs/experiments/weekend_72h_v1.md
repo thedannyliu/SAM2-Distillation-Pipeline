@@ -36,6 +36,83 @@ Evaluation time is additional. The queue therefore intentionally exceeds
 72 hours per node. Completed stages are skipped, so the same foreground
 command safely resumes after interruption.
 
+## Results through 2026-07-27
+
+The 19:09 UTC all-experiment snapshot contains results for 17 of the 30
+registered weekend candidates:
+
+| Lane | Complete | Not started | Current conclusion |
+| --- | ---: | ---: | --- |
+| `edge_official` | 0/7 | 7 | no new evidence beyond E1 |
+| `edge_compression` | 2/8 | 6 | task-only control improves but remains non-viable |
+| `tinyvit` | 9/9 | 0 | complete; additional headroom is at most 0.2 val J&F |
+| `repvit` | 6/6 | 0 | complete; decoder/memory fork is the val winner |
+
+### TinyViT capacity results
+
+| Size | Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5M | W1 decoder/memory | 0.7997 | 0.6425 | **66.0** | 0.8025 | 0.6552 | 67.6 |
+| 5M | W2 joint | **0.8000** | **0.6436** | 65.8 | **0.8028** | **0.6559** | 67.8 |
+| 5M | W3 selected T8 | 0.7996 | 0.6429 | 65.4 | 0.8027 | 0.6539 | **67.9** |
+| 11M | W1 decoder/memory | 0.8141 | 0.6717 | **68.6** | 0.8161 | 0.6791 | 70.5 |
+| 11M | W2 joint | **0.8142** | 0.6717 | 68.0 | **0.8163** | 0.6802 | **70.6** |
+| 11M | W3 selected T8 | 0.8140 | **0.6718** | 68.2 | 0.8160 | **0.6803** | 69.7 |
+| 21M | W1 decoder/memory | 0.8372 | 0.7130 | 71.7 | 0.8357 | **0.7166** | 74.5 |
+| 21M | W2 joint | 0.8373 | 0.7131 | 71.5 | 0.8354 | 0.7165 | 74.4 |
+| 21M | W3 selected T8 | **0.8374** | **0.7132** | **72.0** | **0.8357** | **0.7166** | **74.8** |
+
+Validation-based conclusions:
+
+- 5M improves from 65.8 to 66.0 val J&F. W1 is selected even though W3 has
+  the higher descriptive test result.
+- 11M improves from 68.5 to 68.6. W1 is selected; W2's 70.6 test J&F cannot
+  override its lower 68.0 val result.
+- None of the 21M candidates beats the existing 72.4-val model. W3 reaches
+  74.8 test J&F, but its 72.0 val result does not replace the existing
+  checkpoint.
+- The ordered gains over the pre-weekend winners are only +0.2/+0.1/0.0 for
+  5M/11M/21M. More epochs and T8 context therefore confirm saturation rather
+  than revealing a hidden large fine-tuning gain.
+
+### RepViT localization results
+
+| Run | Scope | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| W1 | encoder | 0.7610 | 0.5777 | 60.9 | 0.7590 | 0.5774 | 60.2 |
+| W2 | mask decoder | 0.7596 | 0.5738 | 60.4 | 0.7578 | 0.5755 | 59.2 |
+| W3 | decoder + memory | 0.7596 | 0.5733 | **61.4** | 0.7581 | 0.5762 | 60.0 |
+| W4 | joint | 0.7613 | 0.5780 | 60.9 | **0.7605** | **0.5789** | 60.4 |
+| W5 | selected W3, T8 | 0.7598 | 0.5740 | 60.4 | 0.7580 | 0.5766 | 60.9 |
+| W6 | W5, joint low LR | **0.7616** | **0.5781** | 60.9 | 0.7597 | 0.5775 | **61.1** |
+
+W3 is the formal winner because it reaches 61.4 val J&F, +1.1 over P3.
+The subsystem comparison points to temporal decoder/memory adaptation rather
+than image-only or mask-decoder-only adaptation. W5 then loses 1.0 val J&F;
+W6 recovers only to 60.9. Its 61.1 test result is descriptive and does not
+replace W3. RepViT's val-selected result remains 4.6 points behind the new
+TinyViT-5M winner.
+
+### Same-interface EdgeTAM compression results
+
+| Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| K1a task-only T4/5ep | 0.8404 | **0.7165** | 38.7 | 0.8389 | 0.7190 | 39.0 |
+| K2a task-only T8/2ep | **0.8404** | 0.7160 | **42.1** | **0.8389** | **0.7190** | **40.0** |
+
+K2a adds 3.4 val and 1.0 test J&F over K1a while preserving image metrics,
+so longer temporal exposure helps this coherent task-only branch. It still
+trails the M0 four-layer reference by 29.4 val and 34.3 test J&F, and trails
+the simple M1 two-layer truncation by 11.2/16.1. It therefore fails the
+pre-registered 60-J&F viability threshold.
+
+K1a is 23.1 val J&F above the two-epoch scratch S0 control, but this is not
+a clean initialization ablation: K1a also has five rather than two T4
+epochs. The only controlled new conclusion is K1a -> K2a. K1b-K1d and
+K2b-K2d remain not started, so same-interface mask-logit, memory-feature,
+and object-pointer behavior supervision are still the highest-value missing
+experiments. All W1-W3 official-transfer runs also remain not started.
+
 ## Node 1: official EdgeTAM behavior transfer
 
 The strict E1 transplant had 0.0200 val mIoU and 2.1 J&F. This lane first

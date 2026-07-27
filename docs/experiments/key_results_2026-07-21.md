@@ -1,9 +1,9 @@
-# Key Results through 2026-07-24
+# Key Results through 2026-07-27
 
 Source: company all-experiment reports generated from
-`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-24 21:12 UTC
-snapshot contains 107 rows: 74 complete, 3 final-checkpoint incomplete,
-1 finalization incomplete, 14 not started, 1 training incomplete,
+`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-27 19:09 UTC
+snapshot contains 137 rows: 92 complete, 3 final-checkpoint incomplete,
+1 finalization incomplete, 26 not started, 1 training incomplete,
 2 training-state unknown, 3 validation incomplete, and 9 superseded
 historical rows. The three final-checkpoint-incomplete rows are EdgeTAM
 recovery C0-C2; they completed their configured training but did not
@@ -17,33 +17,62 @@ training but did not proceed to full val/test. The remaining
 `finalization_incomplete` row is RepViT-M09, whose observed accuracy is not
 competitive.
 
-## 2026-07-24 Main conclusions
+## 2026-07-27 Main conclusions
 
 1. TinyViT fine-tuning is near a data/model ceiling, not ineffective.
-   The best full-val J&F is 65.8/68.5/72.4 for 5M/11M/21M. Gains over
-   the strongest pre-task validation results are 1.6/1.4/1.3 points.
+   The best full-val J&F is now 66.0/68.6/72.4 for 5M/11M/21M. Weekend
+   continuation adds only 0.2/0.1/0.0 over the previous winners, confirming
+   saturation under the current data and objective.
 2. RepViT is highly recoverable but remains behind TinyViT. Task
-   fine-tuning raises test J&F from 37.5 to 60.1 (+22.6), yet the final
-   result remains below TinyViT-5M.
+   fine-tuning raises val J&F from 37.1 to a val-selected 61.4 (+24.3).
+   Decoder/memory adaptation is the best controlled fork, but the result
+   remains 4.6 points below TinyViT-5M.
 3. BatchNorm should stay frozen. RepViT train-BN loses 2.5 test J&F,
    0.0472 mIoU, and 0.0743 AP against its frozen-BN control, confirming
    the earlier TinyViT signal.
-4. EdgeTAM currently has two distinct incompatibilities. Strict E1
-   transplantation collapses both image and video quality (2.1 val
-   J&F), while S0 preserves image quality but leaves random temporal
-   training at only 15.6 val J&F. Tensor compatibility is not functional
-   interface compatibility, and task loss alone does not recover the
-   compressed temporal path.
+4. Coherent task-only EdgeTAM compression is learnable but not yet viable.
+   K1a reaches 38.7 val J&F and its T8 continuation K2a reaches 42.1 while
+   preserving image metrics. This remains 29.4 points behind M0 and below
+   the pre-registered 60-J&F threshold; behavior-loss forks are still
+   unstarted.
 
 The highest selected TinyViT-21M result is 72.4 val J&F. Its selected
 test result is 74.7; the unselected S1 row reaches 74.8 test J&F but is
 not selected because its val J&F is lower at 72.2.
 
-The next four-node weekend block is specified in
-`docs/experiments/weekend_72h_v1.md`. It allocates separate official-transfer,
-same-interface EdgeTAM compression, TinyViT-capacity, and RepViT-localization
-lanes. Each queue exceeds 72 hours under the observed company runtime and
-retains only `last.pt` and `best.pt`.
+The four-node weekend block and its partial results are specified in
+`docs/experiments/weekend_72h_v1.md`. TinyViT and RepViT completed; only the
+task-only K branch completed on EdgeTAM. The official-transfer lane and the
+same-interface behavior-loss branches remain outstanding.
+
+## 2026-07-27 Weekend Results
+
+### Current val-selected backbone frontier
+
+| Backbone | Selected run | val mIoU | val AP | val J&F | test J&F |
+| --- | --- | ---: | ---: | ---: | ---: |
+| TinyViT-5M | weekend W1 decoder/memory | 0.7997 | 0.6425 | **66.0** | 67.6 |
+| TinyViT-11M | weekend W1 decoder/memory | 0.8141 | 0.6717 | **68.6** | 70.5 |
+| TinyViT-21M | pre-weekend max-J&F winner | 0.8371 | 0.7127 | **72.4** | 74.7 |
+| RepViT-M0.9 | weekend W3 decoder/memory | 0.7596 | 0.5733 | **61.4** | 60.0 |
+
+The weekend TinyViT gains are +0.2/+0.1/0.0 val J&F. T8 continuations have
+higher test values in several cases but do not win on validation. The formal
+RepViT result is W3 at 61.4 val J&F; W6's 61.1 test J&F does not supersede
+W3 because its val J&F is only 60.9.
+
+### EdgeTAM task-only compression control
+
+| Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| K1a T4 task-only, 5 epochs | 0.8404 | 0.7165 | 38.7 | 0.8389 | 0.7190 | 39.0 |
+| K2a T8 task-only, 2 epochs | 0.8404 | 0.7160 | **42.1** | 0.8389 | 0.7190 | **40.0** |
+
+K2a improves over K1a by 3.4 val and 1.0 test J&F without damaging image
+quality. It still trails M0 by 29.4/34.3 val/test J&F and M1 by 11.2/16.1.
+K1b-K1d and K2b-K2d are required before concluding whether same-interface
+behavior distillation can close the remaining gap. W1-W3 official-transfer
+experiments are also not started.
 
 ## 2026-07-24 EdgeTAM Official Fidelity and Behavior Transfer
 
@@ -172,13 +201,14 @@ only.
 
 | Capacity | Selected run | val J&F | test J&F |
 | --- | --- | ---: | ---: |
-| TinyViT-5M | capacity F2 joint-low | **65.8** | 67.6 |
-| TinyViT-11M | max-J&F selected | **68.5** | 70.3 |
+| TinyViT-5M | weekend W1 decoder/memory | **66.0** | 67.6 |
+| TinyViT-11M | weekend W1 decoder/memory | **68.6** | 70.5 |
 | TinyViT-21M | max-J&F selected | **72.4** | 74.7 |
 
-The continued frozen-encoder branch improves the 5M selection result, but
-does not beat the existing 11M model. TV21 F1 reaches 71.2 val and 74.2
-test J&F, below the selected 72.4/74.7; TV21 F2 was not started.
+The weekend continuation raises the validation-selected 5M and 11M results
+by only 0.2 and 0.1 J&F, respectively. None of the three 21M weekend
+candidates beats the existing 72.4-val selection. TV21 F2 is now complete
+at 71.7 val and 74.4 test J&F, also below the selected 72.4/74.7.
 
 ### RepViT task recovery
 
@@ -188,10 +218,15 @@ test J&F, below the selected 72.4/74.7; TV21 F2 was not started.
 | P1 encoder recovery | 58.6 | 57.4 |
 | P2 frozen-BN joint | 59.7 | 59.5 |
 | P2b train-BN joint | 58.1 | 57.0 |
-| P3 T8 decoder/memory | **60.3** | **60.1** |
+| P3 T8 decoder/memory | 60.3 | 60.1 |
+| Weekend W3 decoder/memory | **61.4** | 60.0 |
+| Weekend W6 joint-low | 60.9 | **61.1** |
 
 The result supports encoder recovery followed by frozen-BN joint and
-temporal refinement. It rejects trainable BN for this data/batch regime.
+temporal refinement. W3 is the formal validation-selected winner, improving
+P3 by 1.1 val J&F. W6 has the largest observed test J&F but is not selected
+because it reaches only 60.9 on validation. The lane continues to reject
+trainable BN for this data/batch regime.
 
 ## 2026-07-22 Mask Fine-Tuning Results
 
