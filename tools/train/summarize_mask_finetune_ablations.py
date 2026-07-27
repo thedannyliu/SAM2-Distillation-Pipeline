@@ -14,6 +14,21 @@ from typing import Any
 
 
 REGISTRY = {
+    "Q0_official_identity_t8_1ep": (
+        "official_checkpoint_identity",
+        "Fine-tune the exact released RepViT-M1 EdgeTAM graph at very low temporal learning rates to test trainer-induced drift.",
+        "E0_official_upstream",
+    ),
+    "Q1_tinyvit_overfit16_t8_500ep": (
+        "tiny_subset_overfit",
+        "Test whether the TinyViT-21M EdgeTAM temporal path can fit a fixed 16-video T8 subset before spending more full-data compute.",
+        "A02_e2e_t4_official_prompt",
+    ),
+    "Q2_tinyvit_paper_scaled_sav_t8_5ep": (
+        "paper_scaled_available_data",
+        "Apply paper-ratio mask losses, T8 correction prompting, B+ distillation, and batch-scaled learning rates on the available SA-V training split.",
+        "A02_e2e_t4_official_prompt",
+    ),
     "W1_official_image_align_2ep": (
         "weekend_official_interface",
         "Give the strict TinyViT transplant two image/logit-alignment epochs before temporal adaptation.",

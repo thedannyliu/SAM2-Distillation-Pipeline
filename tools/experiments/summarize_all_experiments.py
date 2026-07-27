@@ -182,6 +182,21 @@ def expected_experiments() -> list[Expected]:
                 epochs,
             )
         )
+    for variant, epochs in (
+        ("Q0_official_identity_t8_1ep", 1),
+        ("Q1_tinyvit_overfit16_t8_500ep", 500),
+        ("Q2_tinyvit_paper_scaled_sav_t8_5ep", 5),
+    ):
+        rows.append(
+            Expected(
+                f"edgetam_recipe_diagnostics_v5/{variant}/main",
+                "edgetam_recipe_diagnostics_v5",
+                variant,
+                "main",
+                "epoch",
+                epochs,
+            )
+        )
     rows.append(
         Expected(
             "edgetam_fidelity_v3/E0_official_upstream",

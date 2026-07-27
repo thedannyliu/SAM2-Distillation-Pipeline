@@ -124,6 +124,15 @@ def init_wandb(args: argparse.Namespace):
                 os.environ.get("TASK_MEMORY_AUX_LR", "0")
             ),
             "perceiver_lr": float(os.environ.get("TASK_PERCEIVER_LR", "0")),
+            "loss_mask_weight": float(
+                os.environ.get("TASK_LOSS_MASK_WEIGHT", "20")
+            ),
+            "loss_dice_weight": float(
+                os.environ.get("TASK_LOSS_DICE_WEIGHT", "1")
+            ),
+            "weight_decay": float(
+                os.environ.get("TASK_WEIGHT_DECAY", "0.05")
+            ),
         },
     )
     run_file.write_text(
@@ -394,6 +403,26 @@ def apply_mask_ablation_overrides(config) -> None:
     for key, value in prompt_values.items():
         model[key] = value
 
+    task_loss = config.trainer.loss.all
+    task_loss.weight_dict.loss_mask = float(
+        os.environ.get(
+            "TASK_LOSS_MASK_WEIGHT",
+            task_loss.weight_dict.loss_mask,
+        )
+    )
+    task_loss.weight_dict.loss_dice = float(
+        os.environ.get(
+            "TASK_LOSS_DICE_WEIGHT",
+            task_loss.weight_dict.loss_dice,
+        )
+    )
+    config.trainer.optim.options.weight_decay[0].scheduler.value = float(
+        os.environ.get(
+            "TASK_WEIGHT_DECAY",
+            config.trainer.optim.options.weight_decay[0].scheduler.value,
+        )
+    )
+
     lambda_task = float(os.environ.get("TASK_LAMBDA_TASK", "1"))
     lambda_img = float(os.environ.get("TASK_LAMBDA_IMG", "0"))
     lambda_mem = float(os.environ.get("TASK_LAMBDA_MEM", "0"))
@@ -442,6 +471,29 @@ def apply_mask_ablation_overrides(config) -> None:
                 "lambda_obj_ptr": lambda_obj_ptr,
             }
         )
+
+
+def apply_official_edgetam_model(config) -> None:
+    """Replace the TinyViT model with the exact official EdgeTAM model graph."""
+    if os.environ.get("TASK_OFFICIAL_EDGETAM_MODEL", "0") != "1":
+        return
+
+    from omegaconf import OmegaConf
+
+    official_config = Path(os.environ["OFFICIAL_EDGETAM_CONFIG"])
+    if not official_config.is_file():
+        raise FileNotFoundError(
+            f"Official EdgeTAM config does not exist: {official_config}"
+        )
+    official_model = OmegaConf.load(official_config).model
+    official_model._target_ = "sam2_distill.edgetam.train_model.EdgeTAMTrain"
+    official_model.trainable_module_mode = os.environ["TASK_TRAINABLE_MODE"]
+    official_model.freeze_batchnorm = (
+        os.environ.get("TASK_FREEZE_BATCHNORM", "true").lower() == "true"
+    )
+    official_model.image_encoder_forward_batch_size = 1
+    official_model.image_encoder_activation_checkpoint = True
+    config.trainer.model = official_model
 
 
 def apply_edgetam_memory_overrides(config) -> None:
@@ -606,6 +658,7 @@ def main() -> None:
 
     register_omegaconf_resolvers()
     config = OmegaConf.load(args.config)
+    apply_official_edgetam_model(config)
     apply_mask_ablation_overrides(config)
     apply_edgetam_memory_overrides(config)
     resolved_config = Path(os.environ["TASK_RUN_DIR"]) / "resolved_config.yaml"

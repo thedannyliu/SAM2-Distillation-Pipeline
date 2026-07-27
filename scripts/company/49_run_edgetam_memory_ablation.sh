@@ -42,6 +42,9 @@ VARIANTS=(
   K2b_m0_logits_t8_2ep
   K2c_m0_memlogits_t8_2ep
   K2d_m0_full_t8_2ep
+  Q0_official_identity_t8_1ep
+  Q1_tinyvit_overfit16_t8_500ep
+  Q2_tinyvit_paper_scaled_sav_t8_5ep
 )
 
 if [[ "${ACTION}" == "list" ]]; then
@@ -75,6 +78,8 @@ EDGETAM_REQUIRED_COMMIT="${EDGETAM_REQUIRED_COMMIT:-7711e012a30a2402c4eaab637bdb
 EDGETAM_CHECKPOINT="${EDGETAM_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/edgetam/edgetam.pt}"
 SAM2_MODEL_CONFIG="${SAM2_MODEL_CONFIG:-${SAM2_TRAINING_ROOT}/sam2/configs/sam2.1/sam2.1_hiera_l.yaml}"
 SAM2_CHECKPOINT="${SAM2_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt}"
+SAM2_BPLUS_MODEL_CONFIG="${SAM2_BPLUS_MODEL_CONFIG:-${SAM2_TRAINING_ROOT}/sam2/configs/sam2.1/sam2.1_hiera_b+.yaml}"
+SAM2_BPLUS_CHECKPOINT="${SAM2_BPLUS_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_base_plus.pt}"
 TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_stage1_ablation_v2/4gpu_adapter_teacher/tv21_proj_sam21l_msehr_l1_025/checkpoints/best.pt}"
 A02_BASE_CHECKPOINT="${A02_BASE_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/A02_e2e_t4_official_prompt/main/checkpoints/checkpoint.pt}"
@@ -92,6 +97,9 @@ if [[ "${VARIANT}" == C* ]]; then
 elif [[ "${VARIANT}" == D* || "${VARIANT}" == J* || "${VARIANT}" == S* ]]; then
   DEFAULT_ABLATION_ROOT="${BEHAVIOR_ROOT}"
   DEFAULT_WANDB_PROJECT="edgetam-tinyvit21-behavior-v4"
+elif [[ "${VARIANT}" == Q* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/edgetam_recipe_diagnostics_v5"
+  DEFAULT_WANDB_PROJECT="edgetam-recipe-diagnostics-v5"
 elif [[ "${VARIANT}" == W* || "${VARIANT}" == K* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/weekend_72h_v1/edge"
   DEFAULT_WANDB_PROJECT="weekend-72h-edgetam-v1"
@@ -126,7 +134,7 @@ is_recovery_variant() {
 }
 
 is_behavior_variant() {
-  [[ "$1" == D* || "$1" == J* || "$1" == S* || "$1" == W* || "$1" == K* ]]
+  [[ "$1" == D* || "$1" == J* || "$1" == S* || "$1" == W* || "$1" == K* || "$1" == Q* ]]
 }
 
 require_path() {
@@ -154,7 +162,9 @@ PY
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == W* || "$1" == K* ]]; then
+  if [[ "$1" == Q* ]]; then
+    export TASK_EXPERIMENT_SUITE=edgetam_recipe_diagnostics_v5
+  elif [[ "$1" == W* || "$1" == K* ]]; then
     export TASK_EXPERIMENT_SUITE=weekend_72h_v1
   elif is_recovery_variant "$1"; then
     export TASK_EXPERIMENT_SUITE=edgetam_memory_recovery_v2
@@ -211,6 +221,11 @@ configure_variant() {
   export TASK_TEACHER_MODEL_CONFIG=""
   export TASK_TEACHER_CHECKPOINT=""
   export TASK_MEMORY_LAYOUT=legacy
+  export TASK_OFFICIAL_EDGETAM_MODEL=0
+  export STUDENT_FAMILY=tinyvit
+  export TASK_LOSS_MASK_WEIGHT=20
+  export TASK_LOSS_DICE_WEIGHT=1
+  export TASK_WEIGHT_DECAY=0.05
 
   case "$1" in
     R0_*|R1_*|R2_*|R3_*)
@@ -248,7 +263,7 @@ configure_variant() {
       export EDGETAM_GATE_MAX_VIDEOS="${GATE_MAX_VIDEOS}"
       export EDGETAM_GATE_MIN_JF="${GATE_MIN_JF}"
       ;;
-    D1_*|D2_*|D3_*|J1_*|J2_*|J3_*|S0_*|S1_*|S2_*|W*|K*)
+    D1_*|D2_*|D3_*|J1_*|J2_*|J3_*|S0_*|S1_*|S2_*|W*|K*|Q*)
       export BASE_CHECKPOINT="${E1_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
       export TASK_TRAIN_BATCH_SIZE=1
@@ -595,6 +610,74 @@ configure_variant() {
         export TASK_LAMBDA_OBJ_PTR=0.1
       fi
       ;;
+    Q0_official_identity_t8_1ep)
+      export BASE_CHECKPOINT="${EDGETAM_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_OFFICIAL_EDGETAM_MODEL=1
+      export STUDENT_FAMILY=repvit
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_MEMORY_INITIALIZER=current_full
+      export TASK_NUM_FRAMES=8
+      export TASK_EPOCHS=1
+      export TASK_VIDEO_IDS_FILE="${HARDNESS_ROOT}/eligible_t8.txt"
+      export TASK_MEMORY_LR=1.0e-7
+      export TASK_MEMORY_LR_END=1.0e-8
+      export TASK_MEMORY_AUX_LR=3.0e-8
+      export TASK_MEMORY_AUX_LR_END=3.0e-9
+      export TASK_PERCEIVER_LR=3.0e-7
+      export TASK_PERCEIVER_LR_END=3.0e-8
+      export TASK_TEACHER_MODEL_CONFIG=""
+      export TASK_TEACHER_CHECKPOINT=""
+      ;;
+    Q1_tinyvit_overfit16_t8_500ep)
+      export BASE_CHECKPOINT="${A02_BASE_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_MEMORY_INITIALIZER=official_temporal
+      export TASK_NUM_FRAMES=8
+      export TASK_EPOCHS=500
+      export TASK_VIDEO_IDS_FILE="${ABLATION_ROOT}/overfit16_train_ids.txt"
+      export TASK_MEMORY_LR=3.0e-6
+      export TASK_MEMORY_LR_END=3.0e-7
+      export TASK_MEMORY_AUX_LR=1.0e-6
+      export TASK_MEMORY_AUX_LR_END=1.0e-7
+      export TASK_PERCEIVER_LR=1.0e-5
+      export TASK_PERCEIVER_LR_END=1.0e-6
+      export TASK_LAMBDA_MEM=0.5
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_LAMBDA_OBJ_PTR=0.1
+      ;;
+    Q2_tinyvit_paper_scaled_sav_t8_5ep)
+      export BASE_CHECKPOINT="${A02_BASE_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=image_encoder_mask_decoder_memory
+      export TASK_MEMORY_INITIALIZER=official_temporal
+      export TASK_NUM_FRAMES=8
+      export TASK_EPOCHS=5
+      export TASK_VIDEO_IDS_FILE="${HARDNESS_ROOT}/eligible_t8.txt"
+      export TASK_MAX_NUM_OBJECTS=3
+      export TASK_ENCODER_LR=9.375e-7
+      export TASK_ENCODER_LR_END=9.375e-8
+      export TASK_MEMORY_LR=4.6875e-6
+      export TASK_MEMORY_LR_END=4.6875e-7
+      export TASK_MEMORY_AUX_LR=4.6875e-6
+      export TASK_MEMORY_AUX_LR_END=4.6875e-7
+      export TASK_PERCEIVER_LR=4.6875e-6
+      export TASK_PERCEIVER_LR_END=4.6875e-7
+      export TASK_PROB_USE_POINT=0.5
+      export TASK_PROB_USE_BOX=0.5
+      export TASK_PROB_SAMPLE_GT=0.1
+      export TASK_NUM_FRAMES_TO_CORRECT=2
+      export TASK_RANDOM_CORRECTION_FRAMES=true
+      export TASK_NUM_CORRECTION_POINTS=7
+      export TASK_LAMBDA_IMG=1
+      export TASK_LAMBDA_MEM=1
+      export TASK_TEACHER_MODEL_CONFIG="${SAM2_BPLUS_MODEL_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${SAM2_BPLUS_CHECKPOINT}"
+      export TASK_LOSS_MASK_WEIGHT=1
+      export TASK_LOSS_DICE_WEIGHT=20
+      export TASK_WEIGHT_DECAY=0.1
+      ;;
     *)
       echo "[ERROR] Unknown EdgeTAM memory variant: $1" >&2
       return 2
@@ -683,6 +766,9 @@ validate_common_paths() {
   if [[ "${TASK_MEMORY_TOPOLOGY}" == "edgetam_hybrid2" ]]; then
     require_path "${EDGETAM_CHECKPOINT}" || return 1
   fi
+  if [[ "${TASK_OFFICIAL_EDGETAM_MODEL}" == "1" ]]; then
+    require_path "${OFFICIAL_EDGETAM_CONFIG}" || return 1
+  fi
   if [[ "${TASK_LAMBDA_IMG}" != "0" || \
         "${TASK_LAMBDA_MEM}" != "0" || \
         "${TASK_LAMBDA_MASK_LOGITS}" != "0" || \
@@ -696,6 +782,16 @@ validate_common_paths() {
   if [[ "${VARIANT}" == "C3_coherent_m0mem_staged" ]]; then
     require_passed_gate \
       "${ABLATION_ROOT}/C0_coherent_m0mem_align/main/gate_status.json" || return 1
+  fi
+}
+
+ensure_variant_inputs() {
+  if [[ "${VARIANT}" == "Q1_tinyvit_overfit16_t8_500ep" ]]; then
+    mkdir -p "${ABLATION_ROOT}"
+    python tools/experiments/sample_video_gate.py \
+      --input "${HARDNESS_ROOT}/eligible_t8.txt" \
+      --output "${TASK_VIDEO_IDS_FILE}" \
+      --count 16
   fi
 }
 
@@ -913,7 +1009,7 @@ case "${ACTION}" in
     else
       configure_variant "${VARIANT}" || STATUS="$?"
       if [[ "${STATUS}" -eq 0 ]]; then
-        acquire_lock && ensure_edgetam_checkpoint && validate_common_paths && audit_inputs && \
+        acquire_lock && ensure_edgetam_checkpoint && ensure_variant_inputs && validate_common_paths && audit_inputs && \
           record_summary "${ABLATION_ROOT}/${VARIANT}" "${ABLATION_ROOT}/${VARIANT}/main" && \
           train_variant "${VARIANT}"
         STATUS="$?"
