@@ -55,7 +55,7 @@ def init_wandb(args: argparse.Namespace):
         project=args.wandb_project,
         name=args.wandb_name,
         id=run_id,
-        resume="must" if run_id else None,
+        resume="allow" if run_id else None,
         dir=str(args.wandb_dir),
         config={
             "task_stage": os.environ.get("TASK_STAGE_NAME"),
