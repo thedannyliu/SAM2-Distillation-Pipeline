@@ -7,10 +7,12 @@ while TinyViT-21M models trained through the local task pipeline collapse to
 roughly 10--42 J&F? These experiments separate three hypotheses: trainer drift,
 an unlearnable temporal path, and insufficiently faithful training choices.
 
-All rows use four H100 GPUs, W&B, frozen BatchNorm, deterministic seed
-`250107256`, and the same full SA-V box-prompt val and test benchmarks used by
-the existing experiment report. Each pipeline runs train -> val -> test and
-retains only `last.pt` and `best.pt`.
+All rows use four H100 GPUs, W&B, frozen BatchNorm, and the same full SA-V
+box-prompt val and test benchmarks used by the existing experiment report.
+Q0 and Q2 use seed `250107256`; Q1 uses seed `2501072` because the upstream
+SAM2 trainer multiplies the seed by `max_epochs=500` and NumPy requires the
+result to fit in 32 bits. Each pipeline runs train -> val -> test and retains
+only `last.pt` and `best.pt`.
 
 ## Experiments
 
