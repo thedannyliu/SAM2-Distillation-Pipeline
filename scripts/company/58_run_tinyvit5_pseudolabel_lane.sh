@@ -51,6 +51,7 @@ WANDB_MODE="${WANDB_MODE:-online}"
 TASK_NUM_WORKERS="${TASK_NUM_WORKERS:-8}"
 PRINT_EVERY="${PRINT_EVERY:-300}"
 LOG_EVERY="${LOG_EVERY:-30}"
+PSEUDO_REFINE_MIN_VAL_JF="${PSEUDO_REFINE_MIN_VAL_JF:-66.5}"
 
 MODEL_NAME="tiny_vit_5m_224.dist_in22k_ft_in1k"
 ADAPTER_MODE="residual_dwconv"
@@ -99,6 +100,7 @@ describe_lane() {
   echo "  ${PSEUDO025_NAME}: GT + SAM2.1-L soft masks (weight 0.25), T4, 3 epochs"
   echo "  ${PSEUDO050_NAME}: GT + SAM2.1-L soft masks (weight 0.50), T4, 3 epochs"
   echo "  ${REFINE_NAME}: val-selected pseudo branch, T8, 2 epochs"
+  echo "  Refine gate: val J&F >= ${PSEUDO_REFINE_MIN_VAL_JF}"
 }
 
 normalize_checkpoints() {
@@ -329,11 +331,17 @@ if [[ "${#PSEUDO_CANDIDATES[@]}" -gt 0 ]]; then
     if [[ "${SELECTED}" == "${PSEUDO050_NAME}" ]]; then
       REFINE_PSEUDO_WEIGHT=0.50
     fi
-    run_stage \
-      "${REFINE_NAME}" "${SELECTED_DIR}/checkpoints/last.pt" \
-      2 8 5.0e-8 5.0e-9 1.5e-7 1.5e-8 \
-      "${REFINE_PSEUDO_WEIGHT}" "${ELIGIBLE_T8}" || \
-        record_failure "${REFINE_NAME}" "$?"
+    if python tools/experiments/check_task_metric_gate.py \
+      --metrics "${SELECTED_DIR}/sav_val_box_benchmark/metrics.csv" \
+      --min-jf "${PSEUDO_REFINE_MIN_VAL_JF}"; then
+      run_stage \
+        "${REFINE_NAME}" "${SELECTED_DIR}/checkpoints/last.pt" \
+        2 8 5.0e-8 5.0e-9 1.5e-7 1.5e-8 \
+        "${REFINE_PSEUDO_WEIGHT}" "${ELIGIBLE_T8}" || \
+          record_failure "${REFINE_NAME}" "$?"
+    else
+      echo "[SKIP] ${REFINE_NAME}: selected pseudo branch failed refine gate."
+    fi
   else
     record_failure pseudo_selection "${SELECT_STATUS}"
   fi

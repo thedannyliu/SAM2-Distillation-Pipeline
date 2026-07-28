@@ -54,6 +54,9 @@ EDGE_FOLLOWUP_MODE="${EDGE_FOLLOWUP_MODE:-full}"
 TASK_NUM_WORKERS="${TASK_NUM_WORKERS:-8}"
 PRINT_EVERY="${PRINT_EVERY:-300}"
 LOG_EVERY="${LOG_EVERY:-30}"
+EDGE_K2_MIN_VAL_JF="${EDGE_K2_MIN_VAL_JF:-57.0}"
+EDGE_K2_MIN_VAL_MIOU="${EDGE_K2_MIN_VAL_MIOU:-0.8355}"
+EDGE_K2_MIN_VAL_AP="${EDGE_K2_MIN_VAL_AP:-0.7117}"
 FAILED=()
 COMPLETED_CANDIDATES=()
 
@@ -124,6 +127,9 @@ describe_lane() {
         echo "Budget: 36 T4-equivalent SA-V epochs plus eight full val/test evaluations"
       fi
       echo "Question: which same-interface M0 behavior target makes 4-to-2 memory compression learnable?"
+      if [[ "${EDGE_FOLLOWUP_MODE}" == "core" ]]; then
+        echo "K2 gate: parent val J&F/mIoU/AP >= ${EDGE_K2_MIN_VAL_JF}/${EDGE_K2_MIN_VAL_MIOU}/${EDGE_K2_MIN_VAL_AP}"
+      fi
       printf '  %s\n' "${EDGE_COMPRESSION_VARIANTS[@]}"
       ;;
     tinyvit)
@@ -189,7 +195,7 @@ normalize_checkpoints() {
 
 run_edge_lane() {
   local -a variants=()
-  local variant log status
+  local variant log status parent metrics
   if [[ "${LANE}" == "edge_official" ]]; then
     variants=("${EDGE_OFFICIAL_VARIANTS[@]}")
   else
@@ -197,6 +203,24 @@ run_edge_lane() {
   fi
   mkdir -p "${LOG_ROOT}" "${RUN_ROOT}"
   for variant in "${variants[@]}"; do
+    parent=""
+    if [[ "${EDGE_FOLLOWUP_MODE}" == "core" ]]; then
+      case "${variant}" in
+        K2b_m0_logits_t8_2ep) parent=K1b_m0_logits_5ep ;;
+        K2c_m0_memlogits_t8_2ep) parent=K1c_m0_memlogits_5ep ;;
+      esac
+    fi
+    if [[ -n "${parent}" ]]; then
+      metrics="${RUN_ROOT}/${parent}/main/sav_val_box_benchmark/metrics.csv"
+      if ! python tools/experiments/check_task_metric_gate.py \
+        --metrics "${metrics}" \
+        --min-jf "${EDGE_K2_MIN_VAL_JF}" \
+        --min-miou "${EDGE_K2_MIN_VAL_MIOU}" \
+        --min-ap "${EDGE_K2_MIN_VAL_AP}"; then
+        echo "[SKIP] ${variant}: ${parent} failed or lacks the K2 continuation gate."
+        continue
+      fi
+    fi
     log="${LOG_ROOT}/${variant}_$(date +%Y%m%d_%H%M%S).log"
     echo
     echo "================================================================"
