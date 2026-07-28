@@ -324,6 +324,22 @@ def expected_experiments() -> list[Expected]:
                 )
             )
     for variant, epochs in (
+        ("tv5_PL0_gt_t4_3ep", 3),
+        ("tv5_PL1_sam21l_soft025_t4_3ep", 3),
+        ("tv5_PL2_sam21l_soft050_t4_3ep", 3),
+        ("tv5_PL3_selected_t8_2ep", 2),
+    ):
+        rows.append(
+            Expected(
+                f"tinyvit5_pseudolabel_v1/{variant}",
+                "sam2.1_task",
+                variant,
+                variant,
+                "epoch",
+                epochs,
+            )
+        )
+    for variant, epochs in (
         ("repvit_W1_encoder_t2_5ep", 5),
         ("repvit_W2_decoder_t2_5ep", 5),
         ("repvit_W3_decmem_t4_5ep", 5),

@@ -50,6 +50,7 @@ RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/weekend_72h_v1/${LANE}}"
 LOG_ROOT="${LOG_ROOT:-/user-volume/weekend_72h_logs/${LANE}}"
 WANDB_MODE="${WANDB_MODE:-online}"
 WANDB_PROJECT="${WANDB_PROJECT:-weekend-72h-${LANE}-v1}"
+EDGE_FOLLOWUP_MODE="${EDGE_FOLLOWUP_MODE:-full}"
 TASK_NUM_WORKERS="${TASK_NUM_WORKERS:-8}"
 PRINT_EVERY="${PRINT_EVERY:-300}"
 LOG_EVERY="${LOG_EVERY:-30}"
@@ -75,6 +76,28 @@ EDGE_COMPRESSION_VARIANTS=(
   K2c_m0_memlogits_t8_2ep
   K2d_m0_full_t8_2ep
 )
+case "${EDGE_FOLLOWUP_MODE}" in
+  full) ;;
+  core)
+    EDGE_OFFICIAL_VARIANTS=(
+      W1_official_image_align_2ep
+      W2a_official_logits_5ep
+      W2b_official_memlogits_5ep
+      W3a_official_logits_t8_3ep
+      W3b_official_memlogits_t8_3ep
+    )
+    EDGE_COMPRESSION_VARIANTS=(
+      K1b_m0_logits_5ep
+      K1c_m0_memlogits_5ep
+      K2b_m0_logits_t8_2ep
+      K2c_m0_memlogits_t8_2ep
+    )
+    ;;
+  *)
+    echo "[ERROR] EDGE_FOLLOWUP_MODE must be full or core" >&2
+    return 2 2>/dev/null || exit 2
+    ;;
+esac
 
 describe_lane() {
   echo "Weekend lane: ${LANE}"
@@ -83,14 +106,23 @@ describe_lane() {
   echo "Tracking: W&B ${WANDB_PROJECT}; mode ${WANDB_MODE}"
   echo "Retention: only last.pt and best.pt are physical task checkpoints"
   echo "Run root: ${RUN_ROOT}"
+  echo "EdgeTAM follow-up mode: ${EDGE_FOLLOWUP_MODE}"
   case "${LANE}" in
     edge_official)
-      echo "Budget: 34 T4-equivalent SA-V epochs plus seven full val/test evaluations"
+      if [[ "${EDGE_FOLLOWUP_MODE}" == "core" ]]; then
+        echo "Budget: 24 T4-equivalent SA-V epochs plus five full val/test evaluations"
+      else
+        echo "Budget: 34 T4-equivalent SA-V epochs plus seven full val/test evaluations"
+      fi
       echo "Question: can image alignment plus official temporal behavior targets repair the strict transplant?"
       printf '  %s\n' "${EDGE_OFFICIAL_VARIANTS[@]}"
       ;;
     edge_compression)
-      echo "Budget: 36 T4-equivalent SA-V epochs plus eight full val/test evaluations"
+      if [[ "${EDGE_FOLLOWUP_MODE}" == "core" ]]; then
+        echo "Budget: 18 T4-equivalent SA-V epochs plus four full val/test evaluations"
+      else
+        echo "Budget: 36 T4-equivalent SA-V epochs plus eight full val/test evaluations"
+      fi
       echo "Question: which same-interface M0 behavior target makes 4-to-2 memory compression learnable?"
       printf '  %s\n' "${EDGE_COMPRESSION_VARIANTS[@]}"
       ;;

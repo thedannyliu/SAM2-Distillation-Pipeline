@@ -1,9 +1,9 @@
-# Key Results through 2026-07-27
+# Key Results through 2026-07-28
 
 Source: company all-experiment reports generated from
-`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-27 19:09 UTC
-snapshot contains 137 rows: 92 complete, 3 final-checkpoint incomplete,
-1 finalization incomplete, 26 not started, 1 training incomplete,
+`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-28 03:42 UTC
+snapshot contains 140 rows: 94 complete, 3 final-checkpoint incomplete,
+1 finalization incomplete, 27 not started, 1 training incomplete,
 2 training-state unknown, 3 validation incomplete, and 9 superseded
 historical rows. The three final-checkpoint-incomplete rows are EdgeTAM
 recovery C0-C2; they completed their configured training but did not
@@ -16,6 +16,37 @@ SA-V val -> full SA-V test. EdgeTAM recovery C0-C2 completed their configured
 training but did not proceed to full val/test. The remaining
 `finalization_incomplete` row is RepViT-M09, whose observed accuracy is not
 competitive.
+
+## 2026-07-28 EdgeTAM Recipe Diagnostics
+
+| Run | Model | val mIoU | val AP | val J&F | test J&F |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Q0 official identity | released RepViT-M1 EdgeTAM, low-LR temporal epoch | 0.8224 | 0.6864 | **68.3** | **69.5** |
+| Q1 overfit16 | TinyViT-21M + official temporal stack, 2k subset updates | 0.8404 | 0.7166 | 15.5 | 15.5 |
+
+Q0 rules out a universal trainer/checkpoint/evaluator failure: the exact
+official model remains at the released checkpoint's 68.0-val-J&F level after
+local training. Q1 retains excellent prompted-image metrics but does not
+generalize temporal behavior from its fixed 16-video training subset. The
+full-val result does not establish whether Q1 memorized its training videos;
+that requires its W&B loss curves or a train-subset VOS measurement.
+
+Q2 has no completed checkpoint in this snapshot. Its initial launch failed
+before an optimizer step on an optional teacher-output assumption that is now
+fixed, so it is not negative evidence about the paper-scaled recipe.
+
+Together with E1, M2, and R0-R3, these controls identify the encoder-to-memory
+representation contract as the primary unresolved EdgeTAM variable. With two
+available nodes, the next formal block is:
+
+- same-TinyViT-interface EdgeTAM compression: K1b/c and K2b/c;
+- TinyViT-5M continuation: matched GT-only versus SAM2.1-L soft pseudo-mask
+  weights 0.25/0.50, followed by a val-selected T8 refinement.
+
+The first lane tests whether behavior transfer becomes learnable after
+removing the RepViT/TinyViT interface boundary. The second asks whether the
+5M model's current 66.0 val J&F is a supervision ceiling rather than a capacity
+ceiling. The official-interface W curriculum remains documented and deferred.
 
 ## 2026-07-27 Main conclusions
 
