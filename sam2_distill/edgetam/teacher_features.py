@@ -19,10 +19,14 @@ def attach_teacher_features(
         )
 
     for student, teacher in zip(student_outputs, teacher_outputs):
-        student["teacher_distill_F16"] = teacher["distill_F16"].detach()
-        student["teacher_distill_F_M"] = teacher["distill_F_M"].detach()
-        student["teacher_pred_masks"] = teacher["pred_masks"].detach()
-        student["teacher_obj_ptr"] = teacher["obj_ptr"].detach()
+        for student_key, teacher_key in (
+            ("teacher_distill_F16", "distill_F16"),
+            ("teacher_distill_F_M", "distill_F_M"),
+            ("teacher_pred_masks", "pred_masks"),
+            ("teacher_obj_ptr", "obj_ptr"),
+        ):
+            if teacher_key in teacher:
+                student[student_key] = teacher[teacher_key].detach()
 
 
 def attach_synthetic_teacher_features(
