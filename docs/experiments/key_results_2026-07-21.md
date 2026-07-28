@@ -1,21 +1,43 @@
 # Key Results through 2026-07-28
 
 Source: company all-experiment reports generated from
-`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-28 03:42 UTC
-snapshot contains 140 rows: 94 complete, 3 final-checkpoint incomplete,
-1 finalization incomplete, 27 not started, 1 training incomplete,
-2 training-state unknown, 3 validation incomplete, and 9 superseded
-historical rows. The three final-checkpoint-incomplete rows are EdgeTAM
-recovery C0-C2; they completed their configured training but did not
-produce full val/test results. Two validation-incomplete rows are A01
-smoke checks rather than formal experiments. Model decisions use
-`sav_val`; `sav_test` is held-out and descriptive only.
+`/group-volume/danny-dataset/sam2_distill/runs`. The 2026-07-28 18:30 UTC
+snapshot contains 144 rows: 96 complete, 3 final-checkpoint incomplete,
+1 finalization incomplete, 28 not started, 1 training failed,
+1 training incomplete, 2 training-state unknown, 3 validation incomplete,
+and 9 superseded historical rows. The three final-checkpoint-incomplete rows
+are EdgeTAM recovery C0-C2; they completed their configured training but did
+not produce full val/test results. Two validation-incomplete rows are A01
+smoke checks rather than formal experiments. Model decisions use `sav_val`;
+`sav_test` is held-out and descriptive only.
 
 All 12 mask-v2 rows and all eight EdgeTAM-memory rows completed train -> full
 SA-V val -> full SA-V test. EdgeTAM recovery C0-C2 completed their configured
 training but did not proceed to full val/test. The remaining
 `finalization_incomplete` row is RepViT-M09, whose observed accuracy is not
 competitive.
+
+## 2026-07-28 TinyViT-5M Pseudo-Mask Interim Results
+
+All rows start from the validation-selected
+`tv5_W1_decmem_t4_3ep` checkpoint (0.7997 mIoU, 0.6425 AP, 66.0 J&F on
+validation; 0.8025, 0.6552, 67.6 on test).
+
+| Run | Objective | Status | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tv5_PL0_gt_t4_3ep` | matched GT-only E2E continuation | complete | **0.8004** | **0.6446** | **66.0** | 0.8031 | 0.6570 | 67.3 |
+| `tv5_PL1_sam21l_soft025_t4_3ep` | GT + 0.25 SAM2.1-L soft masks | complete | 0.7998 | 0.6441 | 65.9 | 0.8031 | **0.6571** | **68.1** |
+| `tv5_PL2_sam21l_soft050_t4_3ep` | GT + 0.50 SAM2.1-L soft masks | not started | - | - | - | - | - | - |
+| `tv5_PL3_selected_t8_2ep` | val-selected pseudo branch, T8 | not started | - | - | - | - | - | - |
+
+PL0 leaves validation J&F exactly at 66.0, so three additional E2E epochs do
+not break the current validation ceiling. PL1 is 0.1 lower on validation J&F,
+0.0006 lower on validation mIoU, and 0.0005 lower on validation AP than PL0.
+Its 0.8-point test-J&F advantage cannot be used for selection. The 0.25
+pseudo-mask result is therefore neutral-to-slightly-negative under the
+pre-registered validation rule, not an improvement. PL2 is still needed to
+test loss strength; PL3 cannot establish a pseudo-label benefit unless its
+selected T4 source first beats PL0 on validation.
 
 ## 2026-07-28 EdgeTAM Recipe Diagnostics
 
@@ -31,9 +53,10 @@ generalize temporal behavior from its fixed 16-video training subset. The
 full-val result does not establish whether Q1 memorized its training videos;
 that requires its W&B loss curves or a train-subset VOS measurement.
 
-Q2 has no completed checkpoint in this snapshot. Its initial launch failed
-before an optimizer step on an optional teacher-output assumption that is now
-fixed, so it is not negative evidence about the paper-scaled recipe.
+Q2 now reports `training_failed` at 80% checkpoint progress, with no full
+val/test metrics. The earlier startup bug was fixed, so this is a later
+failure; its final traceback must be inspected before deciding whether to
+resume the fifth epoch. It is not yet evidence about the paper-scaled recipe.
 
 Together with E1, M2, and R0-R3, these controls identify the encoder-to-memory
 representation contract as the primary unresolved EdgeTAM variable. With two
