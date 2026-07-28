@@ -82,3 +82,16 @@ The same-interface behavior targets have not started:
 The deferred official-interface rows W1, W2a/b/c, and W3a/b/c are also all
 `not_started`. No new EdgeTAM conclusion should be drawn from this snapshot;
 the latest causal results remain the task-only K1a/K2a controls and Q0/Q1.
+
+### 2026-07-28 18:40 UTC launch failure
+
+K1b and K1c stopped before their first optimizer step. Each stage had already
+written a local W&B run ID, but the corresponding remote run had never been
+initialized. The retry used `resume="must"`, which requires the remote run to
+exist. K2b and K2c then failed only because their K1 checkpoints were absent.
+These are orchestration failures and contain no research result.
+
+The task trainer now uses `resume="allow"` when a run ID is available. It
+continues the same ID when the remote run exists and initializes that ID when
+only the local record exists. Rerunning the core lane will retry K1b/K1c in
+their existing directories and then unlock K2b/K2c.
