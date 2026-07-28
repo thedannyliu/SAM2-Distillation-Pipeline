@@ -63,6 +63,10 @@ The existing weekend lane driver exposes the focused subset through
 EDGE_FOLLOWUP_MODE=core scripts/company/57_run_weekend_72h_lane.sh edge_compression describe
 ```
 
+In `core` mode, `K2b` and `K2c` are conditional continuations. Their matching
+`K1` parent must reach val `J&F >= 57.0`, `mIoU >= 0.8355`, and `AP >= 0.7117`;
+otherwise the T8 child is skipped without failing the lane.
+
 Outputs remain under:
 
 - `runs/weekend_72h_v1/edge_compression`
