@@ -63,6 +63,10 @@ scripts/company/58_run_tinyvit5_pseudolabel_lane.sh describe
 scripts/company/58_run_tinyvit5_pseudolabel_lane.sh run
 ```
 
+The lane only starts `PL3` when the val-selected pseudo branch reaches
+`val J&F >= 66.5`. This prevents a longer-clip continuation when neither
+pseudo-label weight improves enough to justify it.
+
 ## 2026-07-28 18:30 UTC Status
 
 Source report:
