@@ -63,3 +63,38 @@ scripts/company/49_run_edgetam_memory_ablation.sh describe Q0_official_identity_
 scripts/company/49_run_edgetam_memory_ablation.sh describe Q1_tinyvit_overfit16_t8_500ep
 scripts/company/49_run_edgetam_memory_ablation.sh describe Q2_tinyvit_paper_scaled_sav_t8_5ep
 ```
+
+## 2026-07-28 Results
+
+| Run | val mIoU | val AP | val J&F | test mIoU | test AP | test J&F | Status |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `Q0_official_identity_t8_1ep` | 0.8224 | 0.6864 | **68.3** | 0.8272 | 0.6990 | **69.5** | complete |
+| `Q1_tinyvit_overfit16_t8_500ep` | 0.8404 | 0.7166 | 15.5 | 0.8389 | 0.7189 | 15.5 | complete |
+| `Q2_tinyvit_paper_scaled_sav_t8_5ep` | - | - | - | - | - | - | no completed checkpoint |
+
+Q0 is the decisive pipeline control. The released RepViT-M1 EdgeTAM graph
+retains the unmodified checkpoint's 68.0 full-val J&F after one epoch through
+the local trainer, reaching 68.3. Checkpoint loading, training orchestration,
+and the local evaluator therefore do not inherently destroy EdgeTAM temporal
+behavior.
+
+Q1 preserves image metrics but produces only 15.5 J&F on held-out full val and
+test. This does not by itself say whether the 16 training videos were
+memorized: the formal evaluator does not evaluate that train subset. The W&B
+task, memory, and mask-logit curves or a train-subset VOS evaluation are needed
+for that claim. It does show that 2,000 small-subset updates do not create
+generalizable temporal behavior.
+
+The initial Q2 launch failed before an optimizer step because a disabled
+object-pointer target was still attached unconditionally. That implementation
+bug is fixed, but this snapshot contains no Q2 checkpoint or metrics, so Q2
+must not be interpreted as a negative recipe result.
+
+The evidence narrows the research question from generic trainer fidelity to
+the representation contract between the image encoder and compressed temporal
+memory. The active EdgeTAM compute block therefore uses the same-interface M0
+teacher, removing the RepViT/TinyViT representation boundary
+(`K1b/c`, `K2b/c`). The exact-official W curriculum remains documented but is
+deferred while the other available node tests whether SAM2.1-L pseudo masks
+improve the strongest TinyViT-5M model. Object-pointer forks are excluded
+because the active teacher path does not reliably emit `obj_ptr`.
