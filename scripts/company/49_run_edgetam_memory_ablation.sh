@@ -632,6 +632,7 @@ configure_variant() {
     Q1_tinyvit_overfit16_t8_500ep)
       export BASE_CHECKPOINT="${A02_BASE_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_SEED=2501072
       export TASK_TRAINABLE_MODE=memory_perceiver_full
       export TASK_MEMORY_INITIALIZER=official_temporal
       export TASK_NUM_FRAMES=8
@@ -822,6 +823,7 @@ train_variant() {
     SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT}" \
     EDGETAM_ROOT="${EDGETAM_ROOT}" \
     EDGETAM_CHECKPOINT="${EDGETAM_CHECKPOINT}" \
+    OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG}" \
     TASK_RUN_DIR="${run_dir}" \
     TASK_STAGE_NAME="${name}" \
     TASK_MANIFEST="${MANIFEST}" \
