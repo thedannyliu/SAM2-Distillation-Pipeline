@@ -67,3 +67,18 @@ Outputs remain under:
 
 - `runs/weekend_72h_v1/edge_compression`
 - W&B project `weekend-72h-edge_compression-v1`
+
+## 2026-07-28 18:30 UTC Status
+
+The same-interface behavior targets have not started:
+
+| Run | Status | Progress | val J&F | test J&F |
+|---|---|---:|---:|---:|
+| `K1b_m0_logits_5ep` | not started | 0% | - | - |
+| `K1c_m0_memlogits_5ep` | not started | 0% | - | - |
+| `K2b_m0_logits_t8_2ep` | not started | 0% | - | - |
+| `K2c_m0_memlogits_t8_2ep` | not started | 0% | - | - |
+
+The deferred official-interface rows W1, W2a/b/c, and W3a/b/c are also all
+`not_started`. No new EdgeTAM conclusion should be drawn from this snapshot;
+the latest causal results remain the task-only K1a/K2a controls and Q0/Q1.

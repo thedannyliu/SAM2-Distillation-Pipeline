@@ -62,3 +62,33 @@ Driver:
 scripts/company/58_run_tinyvit5_pseudolabel_lane.sh describe
 scripts/company/58_run_tinyvit5_pseudolabel_lane.sh run
 ```
+
+## 2026-07-28 18:30 UTC Status
+
+Source report:
+`/user-volume/all_experiment_report_20260728/all_experiments_20260728.csv`.
+
+| Run | Status | Progress | val mIoU | val AP | val image s | val J&F | val video s |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `tv5_PL0_gt_t4_3ep` | complete | 100% | **0.8004** | **0.6446** | 0.0376 | **66.0** | 29.9622 |
+| `tv5_PL1_sam21l_soft025_t4_3ep` | complete | 100% | 0.7998 | 0.6441 | **0.0326** | 65.9 | **29.6724** |
+| `tv5_PL2_sam21l_soft050_t4_3ep` | not started | 0% | - | - | - | - | - |
+| `tv5_PL3_selected_t8_2ep` | not started | 0% | - | - | - | - | - |
+
+| Run | test mIoU | test AP | test image s | test J&F | test video s |
+|---|---:|---:|---:|---:|---:|
+| `tv5_PL0_gt_t4_3ep` | **0.8031** | 0.6570 | 0.0346 | 67.3 | 31.1594 |
+| `tv5_PL1_sam21l_soft025_t4_3ep` | **0.8031** | **0.6571** | **0.0333** | **68.1** | **31.1025** |
+| `tv5_PL2_sam21l_soft050_t4_3ep` | - | - | - | - | - |
+| `tv5_PL3_selected_t8_2ep` | - | - | - | - | - |
+
+Relative to the matched PL0 control, PL1 changes validation
+mIoU/AP/J&F by -0.0006/-0.0005/-0.1 and test mIoU/AP/J&F by
+0.0000/+0.0001/+0.8. Because selection is validation-only, the test gain is
+descriptive and PL1 does not currently pass the teacher-benefit criterion.
+PL0 also matches the starting checkpoint's 66.0 validation J&F, strengthening
+the evidence that ordinary extra E2E iterations are saturated.
+
+The next valid observation is PL2 versus PL0. PL3 may still characterize T8
+continuation, but it can only support the pseudo-mask hypothesis if the
+validation-selected pseudo source beats PL0.

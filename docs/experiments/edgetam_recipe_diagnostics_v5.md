@@ -70,7 +70,7 @@ scripts/company/49_run_edgetam_memory_ablation.sh describe Q2_tinyvit_paper_scal
 |---|---:|---:|---:|---:|---:|---:|---|
 | `Q0_official_identity_t8_1ep` | 0.8224 | 0.6864 | **68.3** | 0.8272 | 0.6990 | **69.5** | complete |
 | `Q1_tinyvit_overfit16_t8_500ep` | 0.8404 | 0.7166 | 15.5 | 0.8389 | 0.7189 | 15.5 | complete |
-| `Q2_tinyvit_paper_scaled_sav_t8_5ep` | - | - | - | - | - | - | no completed checkpoint |
+| `Q2_tinyvit_paper_scaled_sav_t8_5ep` | - | - | - | - | - | - | training failed at 80% |
 
 Q0 is the decisive pipeline control. The released RepViT-M1 EdgeTAM graph
 retains the unmodified checkpoint's 68.0 full-val J&F after one epoch through
@@ -87,8 +87,11 @@ generalizable temporal behavior.
 
 The initial Q2 launch failed before an optimizer step because a disabled
 object-pointer target was still attached unconditionally. That implementation
-bug is fixed, but this snapshot contains no Q2 checkpoint or metrics, so Q2
-must not be interpreted as a negative recipe result.
+bug was fixed and the later run reached 80% checkpoint progress, but the
+2026-07-28 18:30 UTC report classifies it as `training_failed`. It has no
+full val/test metrics. The failure occurred later than the repaired startup
+path; the final traceback and `training_status.json` are required before
+resuming. Q2 must not yet be interpreted as a negative recipe result.
 
 The evidence narrows the research question from generic trainer fidelity to
 the representation contract between the image encoder and compressed temporal
