@@ -646,7 +646,7 @@ configure_variant() {
       export TASK_PERCEIVER_LR_END=1.0e-6
       export TASK_LAMBDA_MEM=0.5
       export TASK_LAMBDA_MASK_LOGITS=1
-      export TASK_LAMBDA_OBJ_PTR=0.1
+      export TASK_LAMBDA_OBJ_PTR=0
       ;;
     Q2_tinyvit_paper_scaled_sav_t8_5ep)
       export BASE_CHECKPOINT="${A02_BASE_CHECKPOINT}"
