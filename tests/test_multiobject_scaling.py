@@ -38,6 +38,7 @@ from sam2_distill.models.sam2_object_buckets import (
 )
 from sam2_distill.models.sam2_object_slots import (
     LearnedObjectSlotDecoder,
+    ObjectSlotModelMixin,
     SharedSlotMemoryAttention,
 )
 
@@ -403,6 +404,72 @@ def test_learned_slot_decoder_runs_one_transformer_per_bucket():
     assert scores.shape == (8, 1)
     assert slot_decoder.slot_token_embed.grad is not None
     assert slot_decoder.slot_spatial_scale.grad is not None
+
+
+class FrozenSAMHead(torch.nn.Module):
+    def _forward_sam_heads(self, backbone_features, *args, **kwargs):
+        batch = backbone_features.shape[0]
+        masks = torch.ones(batch, 1, 2, 2)
+        scores = torch.ones(batch, 1)
+        pointers = torch.ones(batch, 4)
+        return masks, masks, scores, masks, masks, pointers, scores
+
+
+class FrozenObjectSlotModel(ObjectSlotModelMixin, FrozenSAMHead):
+    def __init__(self):
+        super().__init__()
+        self.hidden_dim = 4
+        self._init_object_slots(
+            object_slot_count=4,
+            object_slot_min_objects=4,
+        )
+
+
+def test_prompt_fallback_keeps_frozen_slot_training_loss_differentiable():
+    model = FrozenObjectSlotModel().train()
+
+    outputs = model._forward_sam_heads(
+        torch.ones(2, 4, 2, 2),
+        point_inputs={
+            "point_coords": torch.ones(2, 1, 2),
+            "point_labels": torch.ones(2, 1),
+        },
+    )
+    outputs[3].sum().backward()
+
+    assert all(
+        parameter.grad is not None
+        and torch.count_nonzero(parameter.grad) == 0
+        for parameter in model.object_slot_decoder.parameters()
+    )
+
+
+class RaisingSlotDecoder(torch.nn.Module):
+    min_objects = 4
+
+    def forward(self, *args, **kwargs):
+        raise RuntimeError("slot decoder called")
+
+
+class FakePromptEncoder:
+    @staticmethod
+    def get_dense_pe():
+        return torch.ones(1, 4, 2, 2)
+
+
+def test_slot_training_uses_small_object_batches_but_eval_does_not():
+    model = FrozenObjectSlotModel()
+    model.object_slot_decoder = RaisingSlotDecoder()
+    model.sam_mask_decoder = torch.nn.Identity()
+    model.sam_prompt_encoder = FakePromptEncoder()
+    features = torch.ones(2, 4, 2, 2)
+
+    model.eval()
+    model._forward_sam_heads(features)
+
+    model.train()
+    with pytest.raises(RuntimeError, match="slot decoder called"):
+        model._forward_sam_heads(features)
 
 
 def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):

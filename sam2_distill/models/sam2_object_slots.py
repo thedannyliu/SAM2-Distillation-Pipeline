@@ -312,6 +312,16 @@ class ObjectSlotModelMixin:
 
     object_slot_decoder: LearnedObjectSlotDecoder | None
 
+    def _object_slot_training_anchor(self) -> torch.Tensor | None:
+        if not self.training or self.object_slot_decoder is None:
+            return None
+        terms = [
+            parameter.sum() * 0
+            for parameter in self.parameters()
+            if parameter.requires_grad
+        ]
+        return sum(terms) if terms else None
+
     def _init_object_slots(
         self,
         object_slot_count: int,
@@ -338,18 +348,30 @@ class ObjectSlotModelMixin:
         slots = self.object_slot_decoder
         if (
             slots is None
-            or backbone_features.shape[0] < slots.min_objects
+            or (
+                not self.training
+                and backbone_features.shape[0] < slots.min_objects
+            )
             or point_inputs is not None
             or mask_inputs is not None
             or multimask_output
         ):
-            return super()._forward_sam_heads(
+            outputs = super()._forward_sam_heads(
                 backbone_features,
                 point_inputs,
                 mask_inputs,
                 high_res_features,
                 multimask_output,
             )
+            training_anchor = self._object_slot_training_anchor()
+            if training_anchor is not None:
+                outputs = tuple(
+                    output + training_anchor
+                    if isinstance(output, torch.Tensor)
+                    else output
+                    for output in outputs
+                )
+            return outputs
 
         (
             low_res_multimasks,
@@ -377,6 +399,9 @@ class ObjectSlotModelMixin:
             align_corners=False,
         )
         low_res_masks = low_res_multimasks
+        training_anchor = self._object_slot_training_anchor()
+        if training_anchor is not None:
+            low_res_masks = low_res_masks + training_anchor
         high_res_masks = high_res_multimasks
         sam_output_token = sam_output_tokens[:, 0]
         obj_ptr = self.obj_ptr_proj(sam_output_token)
