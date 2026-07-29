@@ -70,6 +70,7 @@ class SharedSlotMemoryAttention(nn.Module):
         curr_pos: torch.Tensor | None,
         memory_pos: torch.Tensor | None,
         num_obj_ptr_tokens: int,
+        num_spatial_mem: int,
     ) -> torch.Tensor:
         output = curr
         if self.pos_enc_at_input and curr_pos is not None:
@@ -82,12 +83,19 @@ class SharedSlotMemoryAttention(nn.Module):
             if memory_pos is not None:
                 memory_pos = memory_pos.transpose(0, 1)
         for layer in self.layers:
+            layer_kwargs = {
+                "num_k_exclude_rope": num_obj_ptr_tokens,
+            }
+            if type(
+                getattr(layer, "cross_attn_image", None)
+            ).__name__ == "RoPEAttentionv2":
+                layer_kwargs["rope_k_repeat"] = num_spatial_mem
             output = layer(
                 tgt=output,
                 memory=memory,
                 pos=memory_pos,
                 query_pos=curr_pos,
-                num_k_exclude_rope=num_obj_ptr_tokens,
+                **layer_kwargs,
             )
         output = self.norm(output)
         return output.transpose(0, 1) if self.batch_first else output
@@ -131,6 +139,7 @@ class SharedSlotMemoryAttention(nn.Module):
         curr_pos: torch.Tensor | list[torch.Tensor] | None = None,
         memory_pos: torch.Tensor | None = None,
         num_obj_ptr_tokens: int = 0,
+        num_spatial_mem: int = -1,
     ) -> torch.Tensor:
         if isinstance(curr, list):
             if not isinstance(curr_pos, list) or len(curr) != 1 or len(curr_pos) != 1:
@@ -141,7 +150,12 @@ class SharedSlotMemoryAttention(nn.Module):
             raise ValueError("current features and memory must share object batch")
         if object_count < self.min_objects:
             return self._run_attention(
-                curr, memory, curr_pos, memory_pos, num_obj_ptr_tokens
+                curr,
+                memory,
+                curr_pos,
+                memory_pos,
+                num_obj_ptr_tokens,
+                num_spatial_mem,
             )
 
         bucket_count = math.ceil(object_count / self.slot_count)
@@ -164,6 +178,7 @@ class SharedSlotMemoryAttention(nn.Module):
             curr_pos_bucketed,
             memory_pos_bucketed,
             num_obj_ptr_tokens,
+            num_spatial_mem,
         )
         return output.repeat_interleave(self.slot_count, dim=1)[
             :, :object_count

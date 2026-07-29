@@ -1,5 +1,6 @@
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -271,6 +272,21 @@ class FakeMemoryAttentionLayer(torch.nn.Module):
         return tgt + memory.mean(dim=1, keepdim=True)
 
 
+class RoPEAttentionv2:
+    pass
+
+
+class FakeV2MemoryAttentionLayer(FakeMemoryAttentionLayer):
+    def __init__(self):
+        super().__init__()
+        self.cross_attn_image = RoPEAttentionv2()
+        self.rope_k_repeats = []
+
+    def forward(self, *, rope_k_repeat, **kwargs):
+        self.rope_k_repeats.append(rope_k_repeat)
+        return super().forward(**kwargs)
+
+
 def test_shared_slot_memory_attention_reduces_object_batch():
     module = SharedSlotMemoryAttention(
         d_model=4,
@@ -293,6 +309,28 @@ def test_shared_slot_memory_attention_reduces_object_batch():
     assert torch.equal(output[:, 0], output[:, 1])
     assert torch.equal(output[:, 4], output[:, 7])
     assert module.slot_memory_scale.grad is not None
+
+
+def test_shared_slot_memory_attention_forwards_edgetam_spatial_memory_count():
+    module = SharedSlotMemoryAttention(
+        d_model=4,
+        pos_enc_at_input=False,
+        layer=FakeV2MemoryAttentionLayer(),
+        num_layers=1,
+        batch_first=True,
+        slot_count=4,
+        min_objects=4,
+        memory_dim=4,
+    )
+
+    output = module(
+        torch.randn(3, 8, 4),
+        torch.randn(5, 8, 4),
+        num_spatial_mem=3,
+    )
+
+    assert output.shape == (3, 8, 4)
+    assert module.layers[0].rope_k_repeats == [3]
 
 
 def test_shared_slot_memory_attention_keeps_small_batch_legacy_path():
@@ -565,3 +603,37 @@ def test_bucket_adapter_rejects_unsynchronized_history():
 
     with pytest.raises(RuntimeError, match="synchronized object histories"):
         merge_object_output_dicts([first, second])
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected_losses"),
+    [
+        ("MX1_slot4_decoder_kd_3ep", "1/0/0/1/0"),
+        ("MX2_slot8_decoder_kd_3ep", "1/0/0/1/0"),
+        ("MX3_slot4_sharedkv_kd_3ep", "1/0/0.25/1/0"),
+        ("MX4_slot8_sharedkv_kd_3ep", "1/0/0.25/1/0"),
+    ],
+)
+def test_object_slot_variants_do_not_require_missing_teacher_pointer(
+    variant,
+    expected_losses,
+):
+    repo_root = Path(__file__).resolve().parents[1]
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "describe",
+            variant,
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert (
+        f"Loss task/image/memory/logits/obj: {expected_losses}"
+        in result.stdout
+    )
