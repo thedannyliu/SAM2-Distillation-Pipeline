@@ -16,6 +16,7 @@ from sam2_distill.edgetam.teacher_features import (
     TeacherFeatureCache,
     attach_synthetic_teacher_features,
     attach_teacher_features,
+    extract_teacher_model_state,
 )
 from training.model.sam2 import SAM2Train
 
@@ -450,7 +451,7 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         checkpoint = torch.load(
             Path(checkpoint_path), map_location="cpu", weights_only=True
         )
-        state = checkpoint.get("model", checkpoint)
+        state = extract_teacher_model_state(checkpoint)
         teacher.load_state_dict(state, strict=True)
         teacher.eval()
         for parameter in teacher.parameters():

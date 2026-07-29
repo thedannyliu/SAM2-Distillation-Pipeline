@@ -9,6 +9,36 @@ import torch
 from torch.nn import functional as F
 
 
+def extract_teacher_model_state(
+    checkpoint: dict[str, Any],
+) -> dict[str, torch.Tensor]:
+    """Extract a full task-model state dict from supported checkpoint schemas."""
+    for key in ("model", "task_model_state", "model_state", "state_dict"):
+        state = checkpoint.get(key)
+        if (
+            isinstance(state, dict)
+            and state
+            and all(isinstance(value, torch.Tensor) for value in state.values())
+        ):
+            return {
+                name.removeprefix("module."): value
+                for name, value in state.items()
+            }
+
+    if checkpoint and all(
+        isinstance(value, torch.Tensor) for value in checkpoint.values()
+    ):
+        return {
+            name.removeprefix("module."): value
+            for name, value in checkpoint.items()
+        }
+
+    raise KeyError(
+        "teacher checkpoint does not contain a tensor state dict under "
+        "'model', 'task_model_state', 'model_state', or 'state_dict'"
+    )
+
+
 def attach_teacher_features(
     student_outputs: list[dict],
     teacher_outputs: list[dict],
