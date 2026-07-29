@@ -210,10 +210,18 @@ remains a final held-out report.
 
 | Run | Val J&F | Test J&F | N=1 FPS | N=8 FPS | N=8 latency / N=1 | Peak MB at N=8 | Decision |
 |---|---:|---:|---:|---:|---:|---:|---|
-| MO0 standard4 task | pending | pending | pending | pending | pending | pending | control |
-| MO1 standard2 task | pending | pending | pending | pending | pending | pending | pending |
-| MO2 standard2 + logits | pending | pending | pending | pending | pending | pending | pending |
-| MO3 standard2 + memory/logits | pending | pending | pending | pending | pending | pending | pending |
+| MO0 standard4 task | 69.4 | 72.4 | 57.1 | 24.2 | 2.36x | 12551 | quality control |
+| MO1 standard2 task | 56.9 | 58.5 | 65.3 | 34.3 | 1.90x | 12515 | reject: -13.9 test J&F |
+| MO2 standard2 + logits | 57.1 | 58.5 | 68.9 | 35.0 | 1.97x | 12482 | reject: KD did not recover quality |
+| MO3 standard2 + memory/logits | 56.9 | 58.4 | 65.9 | 35.2 | 1.87x | 12515 | reject: KD did not recover quality |
+
+The two-layer path improved N=8 FPS by up to 45.6%, but lost 14.0 test J&F
+and barely changed peak memory. This localizes useful compute in the
+per-object memory path while rejecting depth reduction as the multiplex
+solution. All four runs completed train, validation, test, and latency
+measurement. The latency smoke cohort contained one video and two repetitions
+per object count, so these numbers motivate architecture work but are not a
+publication-scale statistical result.
 
 The central table is:
 
@@ -303,6 +311,7 @@ Default outputs:
 <sam2_distill>/runs/sam2_multiobject_scaling_v1/
   density_audit_n16/
     cohort.txt
+    cohort_prompts.csv
     per_video.csv
     summary.json
   tv21_best/point_n1-2-4-8-16/
@@ -349,6 +358,98 @@ frames and mix 1/2/4/8/16-object examples, otherwise a model may improve dense
 scenes while regressing the dominant one-object case. MX1 is the minimum
 credible implementation target; distillation is a recovery objective, not
 the source of the speedup.
+
+## MO-MX1 implementation status
+
+The first capacity-bounded inference implementation is now in
+`sam2_distill/models/sam2_object_buckets.py`. The unmodified SAM2 predictor
+executes one `_run_single_frame_inference(batch_size=1)` call per object and
+per propagated frame. The adapter instead:
+
+1. partitions object indices into ordered buckets of capacity `C`;
+2. concatenates synchronized per-object conditioning and memory histories
+   along the batch dimension;
+3. runs one tracker step with `batch_size <= C`;
+4. slices the compact output back into the original per-object state; and
+5. preserves the original object-ID order at the output.
+
+This is intentionally an inference-first MX1. It does not change weights and
+therefore needs no new training dataset. It currently requires every object
+in a bucket to be prompted before propagation with synchronized frame
+histories. Late object insertion, mixed conditioning frames, static padding,
+and `torch.compile` bucket specialization remain gated on the company GPU
+correctness/latency comparison.
+
+Run the existing legacy control first:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+EXECUTION_MODE=legacy \
+OBJECT_COUNTS=1,2,4,8 \
+MAX_VIDEOS=16 \
+SKIP_DONE=0 \
+scripts/company/59_run_sam2_multiobject_scaling.sh tv21 2>&1 | \
+tee /user-volume/sam2_multiobject_scaling_logs/tv21_legacy.log
+echo "Legacy status: ${PIPESTATUS[0]}"
+```
+
+Then run capacity four on the same checkpoint and cohort:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+EXECUTION_MODE=bucket \
+BUCKET_SIZE=4 \
+OBJECT_COUNTS=1,2,4,8 \
+MAX_VIDEOS=16 \
+SKIP_DONE=0 \
+scripts/company/59_run_sam2_multiobject_scaling.sh tv21 2>&1 | \
+tee /user-volume/sam2_multiobject_scaling_logs/tv21_bucket4.log
+echo "Bucket-4 status: ${PIPESTATUS[0]}"
+```
+
+The bucket run writes to `point_n1-2-4-8_bucket4`, so it cannot overwrite the
+legacy result. By default it also compares the first four propagated frames
+against legacy execution and records binary-mask agreement in `summary.json`.
+Promote MX1 only if `bucket_verification.pass=true` and N=4 or N=8 propagation
+is measurably faster.
+
+## Company data handling for bucket work
+
+No raw SA-V video, annotation, teacher cache, or pseudo-label copy is required
+for MX1. Bucketization changes execution layout, not supervision. Keep the
+existing raw data in the data lake and generate only small deterministic
+indexes under the run directory:
+
+```text
+/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1/
+  density_audit_n8/
+    cohort.txt
+    cohort_prompts.csv
+    per_video.csv
+    summary.json
+```
+
+`cohort_prompts.csv` fixes the video, common prompt frame, and sorted object
+IDs. This prevents a legacy/bucket comparison from silently selecting
+different objects. The index is metadata; do not duplicate images into
+`/user-volume` or `/group-volume`.
+
+The current SA-V validation layout is sufficient for a correctness smoke
+test, but the completed run found only one qualifying dense-eight validation
+video. Before making a research claim, curate a larger fixed validation
+cohort and a locked test cohort with:
+
+- at least 30 videos per object-count stratum if available;
+- persistent IDs across at least four annotated frames;
+- balanced 1/2/4/8-object examples;
+- explicit occlusion/reappearance cases; and
+- no video overlap between train, validation, and test.
+
+Training data needs further processing only when MX2 changes the model
+architecture, such as shared projected memory K/V or learned object-slot
+attention. At that point use the existing dense SA-V selector, but record
+per-sample object IDs and bucket assignment in the manifest rather than
+copying any media.
 
 ## Result table
 
