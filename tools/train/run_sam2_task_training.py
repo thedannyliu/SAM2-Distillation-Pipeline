@@ -59,6 +59,7 @@ def init_wandb(args: argparse.Namespace):
         dir=str(args.wandb_dir),
         config={
             "task_stage": os.environ.get("TASK_STAGE_NAME"),
+            "experiment_suite": os.environ.get("TASK_EXPERIMENT_SUITE", ""),
             "student_family": os.environ.get("STUDENT_FAMILY", "tinyvit"),
             "student_model_name": os.environ.get("TINYVIT_MODEL_NAME"),
             "student_adapter_mode": os.environ.get("TINYVIT_ADAPTER_MODE"),
@@ -76,6 +77,9 @@ def init_wandb(args: argparse.Namespace):
             ),
             "train_batch_size_per_gpu": int(
                 os.environ.get("TASK_TRAIN_BATCH_SIZE", "1")
+            ),
+            "max_num_objects": int(
+                os.environ.get("TASK_MAX_NUM_OBJECTS", "2")
             ),
             "video_ids_file": os.environ.get("TASK_VIDEO_IDS_FILE", ""),
             "lr_warmup_fraction": float(

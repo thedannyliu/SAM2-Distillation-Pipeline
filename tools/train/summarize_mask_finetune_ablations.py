@@ -14,6 +14,26 @@ from typing import Any
 
 
 REGISTRY = {
+    "MO0_mem4_task_dense8_5ep": (
+        "multiobject_memory_depth_control",
+        "Continue the selected four-layer SAM2 temporal path on dense eight-object clips with task loss only.",
+        "",
+    ),
+    "MO1_mem2_task_dense8_5ep": (
+        "multiobject_memory_depth",
+        "Reduce memory attention from four to two layers to measure the direct latency-quality tradeoff.",
+        "MO0_mem4_task_dense8_5ep",
+    ),
+    "MO2_mem2_logits_dense8_5ep": (
+        "multiobject_behavior_distillation",
+        "Recover the two-layer model with propagated-mask logits from the selected four-layer teacher.",
+        "MO1_mem2_task_dense8_5ep",
+    ),
+    "MO3_mem2_memlogits_dense8_5ep": (
+        "multiobject_behavior_distillation",
+        "Add memory-feature matching to two-layer mask-logit distillation on dense clips.",
+        "MO2_mem2_logits_dense8_5ep",
+    ),
     "Q0_official_identity_t8_1ep": (
         "official_checkpoint_identity",
         "Fine-tune the exact released RepViT-M1 EdgeTAM graph at very low temporal learning rates to test trainer-induced drift.",
@@ -287,6 +307,7 @@ FIELDNAMES = [
     "train_samples",
     "epochs",
     "num_frames",
+    "max_num_objects",
     "batch_per_gpu",
     "world_size",
     "global_batch",
@@ -334,6 +355,12 @@ FIELDNAMES = [
     "test_F",
     "test_image_seconds",
     "test_vos_seconds_per_video",
+    "latency_n1_fps",
+    "latency_n8_fps",
+    "latency_n8_relative",
+    "latency_n8_peak_mb",
+    "latency_gate_pass",
+    "latency_metrics_path",
     "val_J&F_delta",
     "val_mIoU_delta",
     "val_AP_delta",
@@ -412,6 +439,7 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         "train_samples": count_train_samples(video_ids_file, manifest),
         "epochs": os.environ.get("TASK_EPOCHS", "1"),
         "num_frames": os.environ.get("TASK_NUM_FRAMES", ""),
+        "max_num_objects": os.environ.get("TASK_MAX_NUM_OBJECTS", ""),
         "batch_per_gpu": batch,
         "world_size": world_size,
         "global_batch": batch * world_size,
@@ -467,6 +495,23 @@ def add_split_metrics(row: dict[str, Any], split: str, path: Path) -> None:
     row[f"{split}_metrics_path"] = str(path)
 
 
+def add_multiobject_latency(row: dict[str, Any], path: Path) -> None:
+    if not path.is_file():
+        return
+    with path.open(encoding="utf-8", newline="") as handle:
+        by_count = {
+            int(item["object_count"]): item for item in csv.DictReader(handle)
+        }
+    one = by_count.get(1, {})
+    eight = by_count.get(8, {})
+    row["latency_n1_fps"] = one.get("median_propagation_fps", "")
+    row["latency_n8_fps"] = eight.get("median_propagation_fps", "")
+    row["latency_n8_relative"] = eight.get("relative_latency_vs_1", "")
+    row["latency_n8_peak_mb"] = eight.get("median_peak_memory_mb", "")
+    row["latency_gate_pass"] = eight.get("target_pass", "")
+    row["latency_metrics_path"] = str(path)
+
+
 def checkpoint_updates(stage_dir: Path) -> str:
     path = stage_dir / "checkpoints/checkpoint.pt"
     if not path.is_file():
@@ -509,6 +554,10 @@ def build_row(metadata: dict[str, Any]) -> dict[str, Any]:
     )
     add_split_metrics(
         row, "test", stage_dir / "sav_test_box_benchmark/metrics.csv"
+    )
+    add_multiobject_latency(
+        row,
+        stage_dir / "multiobject_latency/point_n1-2-4-8/aggregate.csv",
     )
     if row["status"] == "complete" and (
         not row["val_J&F"] or not row["test_J&F"]
@@ -613,7 +662,9 @@ def legacy_rows(root: Path) -> list[dict[str, Any]]:
 def scan(root: Path, legacy_roots: list[Path], central_csv: Path) -> None:
     rows = []
     for metadata_path in sorted(root.glob("*/experiment.json")):
-        rows.append(build_row(read_json(metadata_path)))
+        row = build_row(read_json(metadata_path))
+        write_csv(metadata_path.parent / "summary.csv", [row])
+        rows.append(row)
     for legacy_root in legacy_roots:
         rows.extend(legacy_rows(legacy_root))
     rows = list(
