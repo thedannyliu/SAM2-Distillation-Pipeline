@@ -413,6 +413,38 @@ against legacy execution and records binary-mask agreement in `summary.json`.
 Promote MX1 only if `bucket_verification.pass=true` and N=4 or N=8 propagation
 is measurably faster.
 
+### Result consolidation
+
+After both runs finish, generate one matched comparison instead of copying
+values by hand:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+MULTIOBJ_RUN_ROOT=/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1
+python tools/benchmark/summarize_sam2_object_buckets.py \
+  --legacy-dir "${MULTIOBJ_RUN_ROOT}/tv21_best/point_n1-2-4-8" \
+  --bucket-dir "${MULTIOBJ_RUN_ROOT}/tv21_best/point_n1-2-4-8_bucket4" \
+  --out-dir "${MULTIOBJ_RUN_ROOT}/comparisons/tv21_bucket4_vs_legacy" 2>&1 | \
+tee /user-volume/sam2_multiobject_scaling_logs/tv21_bucket4_comparison.log
+echo "Comparison status: ${PIPESTATUS[0]}"
+```
+
+The comparison directory contains:
+
+```text
+comparison.csv  # one row per object count, suitable for later aggregation
+comparison.md   # human-readable table for the experiment record
+summary.json    # decision, gates, lineage checks, and raw rows
+```
+
+The automatic decision is `promote` only when the checkpoint/prompt/video
+lineage matches, sample counts match, legacy and bucket modes are correctly
+identified, binary masks agree, and the bucket-capacity row is both faster
+and under its relative-latency target. Otherwise `failed_checks` explains the
+rejection. This decision applies only to MX1 execution equivalence and
+latency; a later trainable MX2 must additionally pass full validation quality
+before promotion.
+
 ## Company data handling for bucket work
 
 No raw SA-V video, annotation, teacher cache, or pseudo-label copy is required
