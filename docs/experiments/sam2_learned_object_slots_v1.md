@@ -83,9 +83,12 @@ separates mask-decoder savings from memory-attention savings.
 ## Four independent 4×H100 experiments
 
 All lanes use the same dense-eight-object SA-V cohort, global batch four,
-four-frame clips, three epochs, bf16, the same seed, task loss, propagated-mask
-logit KD, and object-pointer KD from the selected TinyViT-21M teacher. They
-resume in the same checkpoint/TensorBoard/W&B directories after interruption.
+four-frame clips, three epochs, bf16, the same seed, task loss, and
+propagated-mask logit KD from the selected TinyViT-21M teacher. Object-pointer
+KD is disabled because the current teacher-output contract does not expose
+`teacher_obj_ptr` on every sampled path. Shared-K/V lanes additionally use
+memory-feature KD. Runs resume in the same checkpoint/TensorBoard/W&B
+directories after interruption.
 
 | Node | Variant | Slot capacity | Shared memory K/V | Trainable tensors | Question |
 |---:|---|---:|---|---|---|

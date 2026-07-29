@@ -355,7 +355,7 @@ configure_variant() {
       export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
       export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export TASK_LAMBDA_MASK_LOGITS=1
-      export TASK_LAMBDA_OBJ_PTR=0.1
+      export TASK_LAMBDA_OBJ_PTR=0
       ;;
     MX2_slot8_decoder_kd_3ep)
       export TASK_EPOCHS=3
@@ -369,7 +369,7 @@ configure_variant() {
       export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
       export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export TASK_LAMBDA_MASK_LOGITS=1
-      export TASK_LAMBDA_OBJ_PTR=0.1
+      export TASK_LAMBDA_OBJ_PTR=0
       ;;
     MX3_slot4_sharedkv_kd_3ep)
       export TASK_EPOCHS=3
@@ -386,7 +386,7 @@ configure_variant() {
       export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export TASK_LAMBDA_MEM=0.25
       export TASK_LAMBDA_MASK_LOGITS=1
-      export TASK_LAMBDA_OBJ_PTR=0.1
+      export TASK_LAMBDA_OBJ_PTR=0
       ;;
     MX4_slot8_sharedkv_kd_3ep)
       export TASK_EPOCHS=3
@@ -403,7 +403,7 @@ configure_variant() {
       export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export TASK_LAMBDA_MEM=0.25
       export TASK_LAMBDA_MASK_LOGITS=1
-      export TASK_LAMBDA_OBJ_PTR=0.1
+      export TASK_LAMBDA_OBJ_PTR=0
       ;;
     MO0_mem4_task_dense8_5ep)
       export TASK_MEMORY_TOPOLOGY=standard4
