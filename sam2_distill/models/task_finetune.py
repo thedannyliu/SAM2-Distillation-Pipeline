@@ -262,6 +262,51 @@ def initialize_edgetam_memory_model(
     return model
 
 
+def initialize_object_slot_model(
+    model: nn.Module,
+    previous_task_checkpoint: str,
+) -> nn.Module:
+    """Load the selected SAM2 task model and initialize only new slot tensors."""
+
+    source_state = _checkpoint_model_state(previous_task_checkpoint)
+    new_prefixes = (
+        "object_slot_decoder.",
+        "memory_attention.slot_memory_scale",
+    )
+    merged: dict[str, torch.Tensor] = {}
+    copied = 0
+    initialized = 0
+    for key, target in model.state_dict().items():
+        source = source_state.get(key)
+        if source is None:
+            if not key.startswith(new_prefixes):
+                raise KeyError(f"Missing selected-checkpoint tensor for {key}")
+            source = target
+            initialized += 1
+        else:
+            copied += 1
+        if tuple(source.shape) != tuple(target.shape):
+            raise ValueError(
+                f"Object-slot initializer shape mismatch for {key}: "
+                f"{tuple(source.shape)} != {tuple(target.shape)}"
+            )
+        merged[key] = source
+    model.load_state_dict(merged, strict=True)
+
+    run_dir = os.environ.get("TASK_RUN_DIR", "").strip()
+    if run_dir and int(os.environ.get("RANK", "0")) == 0:
+        summary = {
+            "status": "pass",
+            "previous_task_checkpoint": str(previous_task_checkpoint),
+            "copied_tensors": copied,
+            "new_slot_tensors": initialized,
+        }
+        path = Path(run_dir) / "initialization_summary.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return model
+
+
 def export_task_checkpoint(
     trainer_checkpoint: str | Path,
     output_path: str | Path,

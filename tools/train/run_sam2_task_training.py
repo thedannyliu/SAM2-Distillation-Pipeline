@@ -111,6 +111,15 @@ def init_wandb(args: argparse.Namespace):
                 "TASK_MEMORY_INITIALIZER", ""
             ),
             "memory_layout": os.environ.get("TASK_MEMORY_LAYOUT", "legacy"),
+            "object_slot_mode": os.environ.get(
+                "TASK_OBJECT_SLOT_MODE", "none"
+            ),
+            "object_slot_count": int(
+                os.environ.get("TASK_OBJECT_SLOT_COUNT", "0")
+            ),
+            "object_slot_min_objects": int(
+                os.environ.get("TASK_OBJECT_SLOT_MIN_OBJECTS", "4")
+            ),
             "teacher_checkpoint": os.environ.get(
                 "TASK_TEACHER_CHECKPOINT", ""
             ),
@@ -645,6 +654,51 @@ def apply_edgetam_memory_overrides(config) -> None:
     )
 
 
+def apply_object_slot_overrides(config) -> None:
+    """Enable learned slot decoding and optional bucket-shared memory K/V."""
+
+    mode = os.environ.get("TASK_OBJECT_SLOT_MODE", "none")
+    if mode == "none":
+        return
+    if mode not in {"decoder", "shared_kv"}:
+        raise ValueError(
+            "TASK_OBJECT_SLOT_MODE must be none, decoder, or shared_kv"
+        )
+
+    from omegaconf import OmegaConf
+
+    slot_count = int(os.environ.get("TASK_OBJECT_SLOT_COUNT", "8"))
+    min_objects = int(
+        os.environ.get("TASK_OBJECT_SLOT_MIN_OBJECTS", "4")
+    )
+    if slot_count < 1 or min_objects < 1:
+        raise ValueError("Object slot count and minimum must be positive")
+    model = config.trainer.model
+    model.object_slot_count = slot_count
+    model.object_slot_min_objects = min_objects
+    if mode == "shared_kv":
+        model.memory_attention._target_ = (
+            "sam2_distill.models.sam2_object_slots."
+            "SharedSlotMemoryAttention"
+        )
+        model.memory_attention.slot_count = slot_count
+        model.memory_attention.min_objects = min_objects
+        model.memory_attention.memory_dim = 64
+
+    config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(
+        {
+            "_target_": (
+                "sam2_distill.models.task_finetune."
+                "initialize_object_slot_model"
+            ),
+            "_partial_": True,
+            "previous_task_checkpoint": os.environ[
+                "PREVIOUS_TASK_CHECKPOINT"
+            ],
+        }
+    )
+
+
 def main() -> None:
     args = parse_args()
     sam2_root = Path(os.environ["SAM2_TRAINING_ROOT"])
@@ -665,6 +719,7 @@ def main() -> None:
     apply_official_edgetam_model(config)
     apply_mask_ablation_overrides(config)
     apply_edgetam_memory_overrides(config)
+    apply_object_slot_overrides(config)
     resolved_config = Path(os.environ["TASK_RUN_DIR"]) / "resolved_config.yaml"
     if int(os.environ.get("RANK", "0")) == 0:
         resolved_config.parent.mkdir(parents=True, exist_ok=True)

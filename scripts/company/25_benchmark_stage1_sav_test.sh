@@ -38,6 +38,9 @@ CLEAN_PREDICTIONS="${CLEAN_PREDICTIONS:-1}"
 SKIP_DONE="${SKIP_DONE:-1}"
 DEVICE="${DEVICE:-cuda}"
 EVAL_GPUS="${EVAL_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}"
+VOS_EXECUTION_MODE="${VOS_EXECUTION_MODE:-legacy}"
+VOS_BUCKET_SIZE="${VOS_BUCKET_SIZE:-8}"
+VOS_BUCKET_MIN_OBJECTS="${VOS_BUCKET_MIN_OBJECTS:-4}"
 
 required_paths=("${STAGE1_CHECKPOINT}" "${IMAGE_ROOT}" "${ANN_ROOT}" "${VIDEO_LIST_FILE}")
 if [[ "${MODEL_FAMILY}" == "sam2" ]]; then
@@ -233,6 +236,13 @@ if [[ "${SKIP_DONE}" != "1" || ! -f "${vos_out}/eval_summary.json" ]]; then
     )
   fi
   vos_args+=(--video-list-file "${VIDEO_LIST_FILE}" --max-videos "${MAX_VIDEOS}")
+  if [[ "${MODEL_FAMILY}" != "sam31" ]]; then
+    vos_args+=(
+      --execution-mode "${VOS_EXECUTION_MODE}"
+      --bucket-size "${VOS_BUCKET_SIZE}"
+      --bucket-min-objects "${VOS_BUCKET_MIN_OBJECTS}"
+    )
+  fi
   vos_pids=()
   vos_merge_args=()
   for shard_index in "${!eval_gpus[@]}"; do

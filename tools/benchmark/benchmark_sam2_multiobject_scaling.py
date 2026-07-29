@@ -575,6 +575,9 @@ def main() -> None:
         "warmup_videos": args.warmup_videos,
         "aggregate": aggregate,
         "bucket_verification": verification,
+        "bucket_execution_stats": getattr(
+            predictor, "execution_stats", None
+        ),
         "latency_target_pass": bool(gate_rows)
         and all(int(row["target_pass"]) == 1 for row in gate_rows),
         "wandb_run_id": run.id if run is not None else None,

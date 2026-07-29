@@ -6,6 +6,10 @@ cd "${REPO_ROOT}" || return 1 2>/dev/null || exit 1
 ACTION="${1:-list}"
 VARIANT="${2:-}"
 VARIANTS=(
+  MX1_slot4_decoder_kd_3ep
+  MX2_slot8_decoder_kd_3ep
+  MX3_slot4_sharedkv_kd_3ep
+  MX4_slot8_sharedkv_kd_3ep
   MO0_mem4_task_dense8_5ep
   MO1_mem2_task_dense8_5ep
   MO2_mem2_logits_dense8_5ep
@@ -98,7 +102,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == MO* ]]; then
+if [[ "${VARIANT}" == MX* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v1"
+  DEFAULT_WANDB_PROJECT="sam2-object-slots-v1"
+elif [[ "${VARIANT}" == MO* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_multiobject_training_v1"
   DEFAULT_WANDB_PROJECT="sam2-multiobject-training-v1"
 elif [[ "${VARIANT}" == C* ]]; then
@@ -172,7 +179,9 @@ PY
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == MO* ]]; then
+  if [[ "$1" == MX* ]]; then
+    export TASK_EXPERIMENT_SUITE=sam2_object_slots_v1
+  elif [[ "$1" == MO* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_multiobject_training_v1
   elif [[ "$1" == Q* ]]; then
     export TASK_EXPERIMENT_SUITE=edgetam_recipe_diagnostics_v5
@@ -233,6 +242,9 @@ configure_variant() {
   export TASK_TEACHER_MODEL_CONFIG=""
   export TASK_TEACHER_CHECKPOINT=""
   export TASK_MEMORY_LAYOUT=legacy
+  export TASK_OBJECT_SLOT_MODE=none
+  export TASK_OBJECT_SLOT_COUNT=0
+  export TASK_OBJECT_SLOT_MIN_OBJECTS=4
   export TASK_OFFICIAL_EDGETAM_MODEL=0
   export STUDENT_FAMILY=tinyvit
   export TASK_LOSS_MASK_WEIGHT=20
@@ -240,7 +252,7 @@ configure_variant() {
   export TASK_WEIGHT_DECAY=0.05
 
   case "$1" in
-    MO*)
+    MO*|MX*)
       export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
       export TASK_TRAIN_BATCH_SIZE=1
@@ -331,6 +343,68 @@ configure_variant() {
   esac
 
   case "$1" in
+    MX1_slot4_decoder_kd_3ep)
+      export TASK_EPOCHS=3
+      export TASK_TRAINABLE_MODE=object_slot_decoder
+      export TASK_MEMORY_AUX_LR=3.0e-5
+      export TASK_MEMORY_AUX_LR_END=3.0e-6
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_OBJECT_SLOT_MODE=decoder
+      export TASK_OBJECT_SLOT_COUNT=4
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_LAMBDA_OBJ_PTR=0.1
+      ;;
+    MX2_slot8_decoder_kd_3ep)
+      export TASK_EPOCHS=3
+      export TASK_TRAINABLE_MODE=object_slot_decoder
+      export TASK_MEMORY_AUX_LR=3.0e-5
+      export TASK_MEMORY_AUX_LR_END=3.0e-6
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_OBJECT_SLOT_MODE=decoder
+      export TASK_OBJECT_SLOT_COUNT=8
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_LAMBDA_OBJ_PTR=0.1
+      ;;
+    MX3_slot4_sharedkv_kd_3ep)
+      export TASK_EPOCHS=3
+      export TASK_TRAINABLE_MODE=object_slot_shared_kv
+      export TASK_MEMORY_LR=1.0e-5
+      export TASK_MEMORY_LR_END=1.0e-6
+      export TASK_MEMORY_AUX_LR=1.0e-5
+      export TASK_MEMORY_AUX_LR_END=1.0e-6
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_OBJECT_SLOT_MODE=shared_kv
+      export TASK_OBJECT_SLOT_COUNT=4
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MEM=0.25
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_LAMBDA_OBJ_PTR=0.1
+      ;;
+    MX4_slot8_sharedkv_kd_3ep)
+      export TASK_EPOCHS=3
+      export TASK_TRAINABLE_MODE=object_slot_shared_kv
+      export TASK_MEMORY_LR=1.0e-5
+      export TASK_MEMORY_LR_END=1.0e-6
+      export TASK_MEMORY_AUX_LR=1.0e-5
+      export TASK_MEMORY_AUX_LR_END=1.0e-6
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_OBJECT_SLOT_MODE=shared_kv
+      export TASK_OBJECT_SLOT_COUNT=8
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MEM=0.25
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_LAMBDA_OBJ_PTR=0.1
+      ;;
     MO0_mem4_task_dense8_5ep)
       export TASK_MEMORY_TOPOLOGY=standard4
       export TASK_MEMORY_LAYERS=4
@@ -852,7 +926,7 @@ validate_common_paths() {
 }
 
 ensure_variant_inputs() {
-  if [[ "${VARIANT}" == MO* ]]; then
+  if [[ "${VARIANT}" == MO* || "${VARIANT}" == MX* ]]; then
     local cohort_root="${ABLATION_ROOT}/cohorts"
     mkdir -p "${cohort_root}"
     exec 7>"${cohort_root}/.dense8.lock" || return 1

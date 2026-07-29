@@ -52,6 +52,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-videos", type=int, default=0)
     parser.add_argument("--num-shards", type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument(
+        "--execution-mode",
+        choices=("legacy", "bucket"),
+        default="legacy",
+    )
+    parser.add_argument("--bucket-size", type=int, default=8)
+    parser.add_argument("--bucket-min-objects", type=int, default=4)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -171,7 +178,13 @@ def build_edgetam_trainer_predictor(
     patch_edgetam_perceiver_view()
     cfg = OmegaConf.load(args.sam2_cfg)
     model_cfg = cfg.model if "model" in cfg else cfg.trainer.model
-    model_cfg._target_ = "sam2.sam2_video_predictor.SAM2VideoPredictor"
+    if int(model_cfg.get("object_slot_count", 0)) > 0:
+        model_cfg._target_ = (
+            "sam2_distill.models.sam2_object_slot_predictor."
+            "SAM2ObjectSlotVideoPredictor"
+        )
+    else:
+        model_cfg._target_ = "sam2.sam2_video_predictor.SAM2VideoPredictor"
     for key in (
         "freeze_batchnorm",
         "image_encoder_activation_checkpoint",
@@ -377,6 +390,16 @@ def main() -> None:
         raise SystemExit("CUDA requested but not available")
 
     predictor, load_summary = build_predictor(args, device)
+    if args.execution_mode == "bucket":
+        from sam2_distill.models.sam2_object_buckets import (
+            SAM2ObjectBucketAdapter,
+        )
+
+        predictor = SAM2ObjectBucketAdapter(
+            predictor,
+            bucket_size=args.bucket_size,
+            min_bucket_objects=args.bucket_min_objects,
+        )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     selected_videos = video_names(
         args.image_root,
@@ -396,6 +419,15 @@ def main() -> None:
         "prompt_kind": args.prompt_kind,
         "sam2_cfg": args.sam2_cfg,
         "checkpoint": str(args.checkpoint),
+        "execution_mode": args.execution_mode,
+        "bucket_size": (
+            args.bucket_size if args.execution_mode == "bucket" else None
+        ),
+        "bucket_min_objects": (
+            args.bucket_min_objects
+            if args.execution_mode == "bucket"
+            else None
+        ),
         "image_root": str(args.image_root),
         "ann_root": str(args.ann_root),
         "prediction_root": str(args.out_dir),
@@ -405,6 +437,9 @@ def main() -> None:
         "sec_per_video": elapsed / max(len(passed), 1),
         "num_prediction_pngs": sum(int(row.get("prediction_pngs", 0)) for row in passed),
         "load": load_summary,
+        "bucket_execution_stats": getattr(
+            predictor, "execution_stats", None
+        ),
         "video_summaries": video_summaries,
     }
     (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
