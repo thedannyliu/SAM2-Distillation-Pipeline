@@ -38,11 +38,18 @@ constant latency.
 SAM3.1 is evidence that the object-axis computation can be reorganized:
 the official release reports multiplex tracking for many objects, and the
 implementation groups objects into fixed-capacity buckets while sharing image
-features. We use the idea as an architecture reference, not as a claim that
-SAM3.1 weights or its semantic detector can be copied into this student:
+features. Its `MultiplexState` keeps fixed slot assignments and precomputed
+mux/demux mappings, while the tracker stores memory directly in bucket space
+with batch equal to the number of buckets rather than rebuilding per-object
+history. The release also attributes speed to fewer CPU–GPU synchronizations,
+batched postprocessing, and improved `torch.compile` fusion. We use these as
+architecture references, not as a claim that SAM3.1 weights or its semantic
+detector can be copied into this student:
 
 - [SAM3.1 release notes](https://github.com/facebookresearch/sam3/blob/main/RELEASE_SAM3p1.md)
 - [Official multiplex base implementation](https://github.com/facebookresearch/sam3/blob/main/sam3/model/sam3_multiplex_base.py)
+- [Official multiplex state/controller](https://github.com/facebookresearch/sam3/blob/main/sam3/model/multiplex_utils.py)
+- [Official bucket-space tracker](https://github.com/facebookresearch/sam3/blob/main/sam3/model/video_tracking_multiplex.py)
 
 ## v1 hypotheses
 
@@ -359,59 +366,81 @@ scenes while regressing the dominant one-object case. MX1 is the minimum
 credible implementation target; distillation is a recovery objective, not
 the source of the speedup.
 
-## MO-MX1 implementation status
+## MO-MX1 and MO-MX1.1 implementation status
 
-The first capacity-bounded inference implementation is now in
-`sam2_distill/models/sam2_object_buckets.py`. The unmodified SAM2 predictor
-executes one `_run_single_frame_inference(batch_size=1)` call per object and
-per propagated frame. The adapter instead:
+The first MO-MX1 prototype batched synchronized objects but rebuilt the full
+history from per-object state on every frame. Its company H100 result rejected
+that implementation:
 
-1. partitions object indices into ordered buckets of capacity `C`;
-2. concatenates synchronized per-object conditioning and memory histories
-   along the batch dimension;
-3. runs one tracker step with `batch_size <= C`;
-4. slices the compact output back into the original per-object state; and
-5. preserves the original object-ID order at the output.
+| Objects | Legacy FPS | MX1 FPS | FPS change | Extra peak MB |
+|---:|---:|---:|---:|---:|
+| 1 | 72.86 | 35.82 | -50.8% | +1269 |
+| 2 | 45.89 | 35.49 | -22.7% | +2715 |
+| 4 | 27.24 | 28.54 | +4.8% | +5607 |
+| 8 | 14.15 | 15.71 | +11.0% | +5655 |
 
-This is intentionally an inference-first MX1. It does not change weights and
-therefore needs no new training dataset. It currently requires every object
-in a bucket to be prompted before propagation with synchronized frame
-histories. Late object insertion, mixed conditioning frames, static padding,
-and `torch.compile` bucket specialization remain gated on the company GPU
-correctness/latency comparison.
+Binary-mask agreement was 0.9999888, indicating a small batched floating-point
+boundary difference rather than evidence of a large semantic regression.
+However, the per-frame history repacking caused the large fixed cost and
+allocation peak.
+
+MO-MX1.1 keeps the parts of SAM3.1's state lifecycle that can be represented by
+the unmodified SAM2 tracker:
+
+1. partition ordered object IDs into fixed-capacity buckets once per
+   propagation call;
+2. pack each synchronized conditioning history once;
+3. keep one persistent batched history per bucket and append new frame outputs
+   in place;
+4. expose per-object tensor views without copying the batched storage;
+5. use exact legacy execution below four objects, the measured MX1 break-even;
+6. retain bit-exact agreement as a diagnostic, but gate numerical equivalence
+   on global agreement >= 0.9999 and every mask IoU >= 0.999.
+
+This does not yet reproduce SAM3.1's learned object-slot mask decoder, where
+the expensive tracker batch is the number of buckets rather than the number of
+objects. It is the minimum inference-only experiment that removes the measured
+MX1 orchestration bug. Static padding, compiled fixed shapes, late object
+insertion, and object-slot training remain gated on this result.
 
 Run the existing legacy control first:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
+RUN_ROOT=/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1 \
+WANDB_PROJECT=sam2-multiobject-bucket-mx1p-v1 \
 EXECUTION_MODE=legacy \
 OBJECT_COUNTS=1,2,4,8 \
 MAX_VIDEOS=16 \
 SKIP_DONE=0 \
 scripts/company/59_run_sam2_multiobject_scaling.sh tv21 2>&1 | \
-tee /user-volume/sam2_multiobject_scaling_logs/tv21_legacy.log
+tee /user-volume/sam2_multiobject_scaling_logs/mx1p_tv21_legacy.log
 echo "Legacy status: ${PIPESTATUS[0]}"
 ```
 
-Then run capacity four on the same checkpoint and cohort:
+Then run persistent capacity four on the same checkpoint and cohort:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
+RUN_ROOT=/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1 \
+WANDB_PROJECT=sam2-multiobject-bucket-mx1p-v1 \
 EXECUTION_MODE=bucket \
 BUCKET_SIZE=4 \
+BUCKET_MIN_OBJECTS=4 \
+VERIFY_BUCKET_FRAMES=8 \
 OBJECT_COUNTS=1,2,4,8 \
 MAX_VIDEOS=16 \
 SKIP_DONE=0 \
 scripts/company/59_run_sam2_multiobject_scaling.sh tv21 2>&1 | \
-tee /user-volume/sam2_multiobject_scaling_logs/tv21_bucket4.log
-echo "Bucket-4 status: ${PIPESTATUS[0]}"
+tee /user-volume/sam2_multiobject_scaling_logs/mx1p_tv21_bucket4.log
+echo "Persistent bucket-4 status: ${PIPESTATUS[0]}"
 ```
 
-The bucket run writes to `point_n1-2-4-8_bucket4`, so it cannot overwrite the
-legacy result. By default it also compares the first four propagated frames
-against legacy execution and records binary-mask agreement in `summary.json`.
-Promote MX1 only if `bucket_verification.pass=true` and N=4 or N=8 propagation
-is measurably faster.
+The new bucket run writes to
+`point_n1-2-4-8_bucket4_persistent_m4`, so it preserves both the legacy result
+and the rejected MX1 directory. Promote MO-MX1.1 only if correctness passes,
+N=1/2 reproduce legacy performance, N=4/8 improve, and the large MX1 memory
+delta is materially reduced.
 
 ### Result consolidation
 
@@ -420,13 +449,14 @@ values by hand:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-MULTIOBJ_RUN_ROOT=/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1
+MULTIOBJ_RUN_ROOT=/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1
 python tools/benchmark/summarize_sam2_object_buckets.py \
   --legacy-dir "${MULTIOBJ_RUN_ROOT}/tv21_best/point_n1-2-4-8" \
-  --bucket-dir "${MULTIOBJ_RUN_ROOT}/tv21_best/point_n1-2-4-8_bucket4" \
-  --out-dir "${MULTIOBJ_RUN_ROOT}/comparisons/tv21_bucket4_vs_legacy" 2>&1 | \
-tee /user-volume/sam2_multiobject_scaling_logs/tv21_bucket4_comparison.log
+  --bucket-dir "${MULTIOBJ_RUN_ROOT}/tv21_best/point_n1-2-4-8_bucket4_persistent_m4" \
+  --out-dir "${MULTIOBJ_RUN_ROOT}/comparisons/tv21_bucket4_persistent_vs_legacy" 2>&1 | \
+tee /user-volume/sam2_multiobject_scaling_logs/mx1p_tv21_comparison.log
 echo "Comparison status: ${PIPESTATUS[0]}"
+cat "${MULTIOBJ_RUN_ROOT}/comparisons/tv21_bucket4_persistent_vs_legacy/comparison.md"
 ```
 
 The comparison directory contains:
@@ -439,11 +469,12 @@ summary.json    # decision, gates, lineage checks, and raw rows
 
 The automatic decision is `promote` only when the checkpoint/prompt/video
 lineage matches, sample counts match, legacy and bucket modes are correctly
-identified, binary masks agree, and the bucket-capacity row is both faster
-and under its relative-latency target. Otherwise `failed_checks` explains the
-rejection. This decision applies only to MX1 execution equivalence and
-latency; a later trainable MX2 must additionally pass full validation quality
-before promotion.
+identified, the numerical mask-equivalence gate passes, and the
+bucket-capacity row is both faster and under its relative-latency target.
+Bit-exact equality remains in the report but is not required because batched
+GPU kernels can change rounding order. This decision applies only to MX1.1
+execution equivalence and latency; a later trainable MX2 must additionally
+pass full validation quality before promotion.
 
 ## Company data handling for bucket work
 
