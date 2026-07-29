@@ -6,6 +6,10 @@ cd "${REPO_ROOT}" || return 1 2>/dev/null || exit 1
 ACTION="${1:-list}"
 VARIANT="${2:-}"
 VARIANTS=(
+  MO0_mem4_task_dense8_5ep
+  MO1_mem2_task_dense8_5ep
+  MO2_mem2_logits_dense8_5ep
+  MO3_mem2_memlogits_dense8_5ep
   M0_sam2_mem4
   M1_sam2_mem2
   M2a_edgetam_hybrid2_official
@@ -82,6 +86,9 @@ SAM2_BPLUS_MODEL_CONFIG="${SAM2_BPLUS_MODEL_CONFIG:-${SAM2_TRAINING_ROOT}/sam2/c
 SAM2_BPLUS_CHECKPOINT="${SAM2_BPLUS_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_base_plus.pt}"
 TINYVIT_CHECKPOINT="${TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors}"
 SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_stage1_ablation_v2/4gpu_adapter_teacher/tv21_proj_sam21l_msehr_l1_025/checkpoints/best.pt}"
+BEST_TV21_RUN="${BEST_TV21_RUN:-${SAM2D_ROOT}/runs/tinyvit_max_jf_v1/tv21/main}"
+BEST_TV21_CHECKPOINT="${BEST_TV21_CHECKPOINT:-${BEST_TV21_RUN}/checkpoints/best.pt}"
+BEST_TV21_CONFIG="${BEST_TV21_CONFIG:-${BEST_TV21_RUN}/resolved_config.yaml}"
 A02_BASE_CHECKPOINT="${A02_BASE_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/A02_e2e_t4_official_prompt/main/checkpoints/checkpoint.pt}"
 BASE_CHECKPOINT="${BASE_CHECKPOINT:-${A02_BASE_CHECKPOINT}}"
 M0_RUN_DIR="${M0_RUN_DIR:-${SAM2D_ROOT}/runs/edgetam_memory_ablation_v1/M0_sam2_mem4/main}"
@@ -91,7 +98,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == C* ]]; then
+if [[ "${VARIANT}" == MO* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_multiobject_training_v1"
+  DEFAULT_WANDB_PROJECT="sam2-multiobject-training-v1"
+elif [[ "${VARIANT}" == C* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/edgetam_memory_recovery_v2"
   DEFAULT_WANDB_PROJECT="edgetam-memory-recovery-v2"
 elif [[ "${VARIANT}" == D* || "${VARIANT}" == J* || "${VARIANT}" == S* ]]; then
@@ -162,7 +172,9 @@ PY
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == Q* ]]; then
+  if [[ "$1" == MO* ]]; then
+    export TASK_EXPERIMENT_SUITE=sam2_multiobject_training_v1
+  elif [[ "$1" == Q* ]]; then
     export TASK_EXPERIMENT_SUITE=edgetam_recipe_diagnostics_v5
   elif [[ "$1" == W* || "$1" == K* ]]; then
     export TASK_EXPERIMENT_SUITE=weekend_72h_v1
@@ -228,6 +240,36 @@ configure_variant() {
   export TASK_WEIGHT_DECAY=0.05
 
   case "$1" in
+    MO*)
+      export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAIN_BATCH_SIZE=1
+      export TASK_MAX_NUM_OBJECTS=8
+      export TASK_TRAINABLE_MODE=mask_decoder_memory
+      export TASK_MEMORY_INITIALIZER=current
+      export TASK_MEMORY_LAYOUT=legacy
+      export TASK_NUM_FRAMES=4
+      export TASK_EPOCHS=5
+      export TASK_MEMORY_LR=5.0e-7
+      export TASK_MEMORY_LR_END=5.0e-8
+      export TASK_MEMORY_AUX_LR=2.5e-7
+      export TASK_MEMORY_AUX_LR_END=2.5e-8
+      export TASK_LR_WARMUP_FRACTION=0.05
+      export TASK_PROB_USE_POINT=0.5
+      export TASK_PROB_USE_BOX=0.5
+      export TASK_PROB_SAMPLE_GT=0.1
+      export TASK_NUM_FRAMES_TO_CORRECT=1
+      export TASK_RANDOM_CORRECTION_FRAMES=false
+      export TASK_NUM_CORRECTION_POINTS=0
+      export TASK_VIDEO_IDS_FILE="${ABLATION_ROOT}/cohorts/dense8_train_ids.txt"
+      export TASK_TEACHER_MODEL_CONFIG=""
+      export TASK_TEACHER_CHECKPOINT=""
+      export TASK_LAMBDA_TASK=1
+      export TASK_LAMBDA_IMG=0
+      export TASK_LAMBDA_MEM=0
+      export TASK_LAMBDA_MASK_LOGITS=0
+      export TASK_LAMBDA_OBJ_PTR=0
+      ;;
     R0_*|R1_*|R2_*|R3_*)
       export TASK_TRAIN_BATCH_SIZE=1
       export TASK_MAX_NUM_OBJECTS=3
@@ -289,6 +331,29 @@ configure_variant() {
   esac
 
   case "$1" in
+    MO0_mem4_task_dense8_5ep)
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      ;;
+    MO1_mem2_task_dense8_5ep)
+      export TASK_MEMORY_TOPOLOGY=standard2
+      export TASK_MEMORY_LAYERS=2
+      ;;
+    MO2_mem2_logits_dense8_5ep)
+      export TASK_MEMORY_TOPOLOGY=standard2
+      export TASK_MEMORY_LAYERS=2
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MASK_LOGITS=1
+      ;;
+    MO3_mem2_memlogits_dense8_5ep)
+      export TASK_MEMORY_TOPOLOGY=standard2
+      export TASK_MEMORY_LAYERS=2
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_LAMBDA_MEM=0.5
+      ;;
     M0_sam2_mem4)
       export TASK_MEMORY_TOPOLOGY=standard4
       export TASK_MEMORY_LAYERS=4
@@ -787,6 +852,25 @@ validate_common_paths() {
 }
 
 ensure_variant_inputs() {
+  if [[ "${VARIANT}" == MO* ]]; then
+    local cohort_root="${ABLATION_ROOT}/cohorts"
+    mkdir -p "${cohort_root}"
+    exec 7>"${cohort_root}/.dense8.lock" || return 1
+    flock 7 || return 1
+    if [[ ! -s "${TASK_VIDEO_IDS_FILE}" ]]; then
+      python tools/data/select_sav_dense_training_videos.py \
+        --manifest "${MANIFEST}" \
+        --sav-root "${SAV_ROOT}" \
+        --output-video-ids "${TASK_VIDEO_IDS_FILE}" \
+        --out-csv "${cohort_root}/dense8_index.csv" \
+        --out-summary "${cohort_root}/dense8_summary.json" \
+        --min-objects 8 \
+        --min-dense-frames 4 \
+        --target-samples "${MO_TRAIN_SAMPLES:-50337}" \
+        --seed "${TASK_SEED}" || return 1
+    fi
+    flock -u 7
+  fi
   if [[ "${VARIANT}" == "Q1_tinyvit_overfit16_t8_500ep" ]]; then
     mkdir -p "${ABLATION_ROOT}"
     python tools/experiments/sample_video_gate.py \
@@ -996,6 +1080,7 @@ case "${ACTION}" in
       echo "Topology/layers: ${TASK_MEMORY_TOPOLOGY}/${TASK_MEMORY_LAYERS}"
       echo "Initializer/layout: ${TASK_MEMORY_INITIALIZER}/${TASK_MEMORY_LAYOUT}"
       echo "Trainable mode: ${TASK_TRAINABLE_MODE}"
+      echo "Epochs/max objects: ${TASK_EPOCHS}/${TASK_MAX_NUM_OBJECTS}"
       echo "T/global batch: ${TASK_NUM_FRAMES}/$((TASK_TRAIN_BATCH_SIZE * NPROC))"
       echo "Prompt point/box/GT: ${TASK_PROB_USE_POINT}/${TASK_PROB_USE_BOX}/${TASK_PROB_SAMPLE_GT}"
       echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
