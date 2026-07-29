@@ -11,6 +11,7 @@ from PIL import Image
 
 from tools.benchmark.benchmark_sam2_multiobject_scaling import (
     aggregate_rows,
+    binary_mask_metrics,
     parse_object_counts,
 )
 from tools.data.audit_vos_object_density import (
@@ -277,9 +278,21 @@ class FakeBucketPredictor:
 
     def __init__(self):
         self.batch_sizes = []
+        self.output_dict_ids = []
+        self.legacy_calls = 0
 
     def propagate_in_video_preflight(self, inference_state):
         return None
+
+    def propagate_in_video(self, inference_state, **kwargs):
+        self.legacy_calls += 1
+        masks = torch.cat(
+            [
+                output["cond_frame_outputs"][0]["pred_masks"]
+                for output in inference_state["output_dict_per_obj"].values()
+            ]
+        )
+        yield 0, inference_state["obj_ids"], masks
 
     def _run_single_frame_inference(
         self,
@@ -290,6 +303,7 @@ class FakeBucketPredictor:
         **kwargs,
     ):
         self.batch_sizes.append(batch_size)
+        self.output_dict_ids.append(id(output_dict))
         values = output_dict["cond_frame_outputs"][0]["obj_ptr"] + frame_idx
         output = compact_output(0.0)
         output = {
@@ -324,12 +338,53 @@ def test_bucket_adapter_runs_one_tracker_call_per_bucket():
     frames = list(adapter.propagate_in_video(state))
 
     assert predictor.batch_sizes == [4, 1, 4, 1]
+    assert predictor.output_dict_ids[0] == predictor.output_dict_ids[2]
+    assert predictor.output_dict_ids[1] == predictor.output_dict_ids[3]
+    assert predictor.output_dict_ids[0] != predictor.output_dict_ids[1]
     assert [frame_idx for frame_idx, _, _ in frames] == [0, 1, 2]
     assert frames[-1][2][:, 0, 0, 0].tolist() == [2.0, 3.0, 4.0, 5.0, 6.0]
     assert (
         state["output_dict_per_obj"][4]["non_cond_frame_outputs"][2]["obj_ptr"].item()
         == 6.0
     )
+
+
+def test_bucket_adapter_uses_legacy_fast_path_below_threshold():
+    predictor = FakeBucketPredictor()
+    adapter = SAM2ObjectBucketAdapter(
+        predictor,
+        bucket_size=4,
+        min_bucket_objects=4,
+    )
+    state = {
+        "obj_ids": ["a", "b"],
+        "num_frames": 1,
+        "device": torch.device("cpu"),
+        "output_dict_per_obj": {
+            index: object_output(float(index)) for index in range(2)
+        },
+        "frames_tracked_per_obj": {index: {} for index in range(2)},
+    }
+
+    frames = list(adapter.propagate_in_video(state))
+
+    assert predictor.legacy_calls == 1
+    assert predictor.batch_sizes == []
+    assert frames[0][1] == ["a", "b"]
+
+
+def test_binary_mask_metrics_exposes_small_boundary_difference():
+    reference = torch.zeros((2, 1, 100, 100), dtype=torch.bool)
+    reference[:, :, 10:90, 10:90] = True
+    candidate = reference.clone()
+    candidate[0, 0, 10, 10] = False
+
+    metrics = binary_mask_metrics(reference, candidate)
+
+    assert metrics["mismatched_pixels"] == 1
+    assert metrics["total_pixels"] == 20000
+    assert min(metrics["mask_ious"]) == pytest.approx(6399 / 6400)
+    assert max(metrics["mismatch_fractions"]) == pytest.approx(0.0001)
 
 
 def test_bucket_adapter_rejects_unsynchronized_history():
