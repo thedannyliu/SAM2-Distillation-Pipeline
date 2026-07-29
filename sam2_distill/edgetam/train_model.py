@@ -18,13 +18,14 @@ from sam2_distill.edgetam.teacher_features import (
     attach_teacher_features,
     extract_teacher_model_state,
 )
+from sam2_distill.models.sam2_object_slots import ObjectSlotModelMixin
 from training.model.sam2 import SAM2Train
 
 
 patch_edgetam_perceiver_view()
 
 
-class EdgeTAMTrain(SAM2Train):
+class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
     """SAM2Train variant that exposes features needed for EdgeTAM distillation."""
 
     def __init__(
@@ -34,6 +35,8 @@ class EdgeTAMTrain(SAM2Train):
         image_encoder_activation_checkpoint: bool = False,
         trainable_module_mode: str | None = None,
         freeze_batchnorm: bool = False,
+        object_slot_count: int = 0,
+        object_slot_min_objects: int = 4,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -43,6 +46,10 @@ class EdgeTAMTrain(SAM2Train):
         self.freeze_batchnorm = freeze_batchnorm
         self._frozen_eval_modules: list[torch.nn.Module] = []
         self.trainable_parameter_summary = None
+        self._init_object_slots(
+            object_slot_count=object_slot_count,
+            object_slot_min_objects=object_slot_min_objects,
+        )
         if trainable_module_mode is not None:
             self._apply_trainable_module_mode(trainable_module_mode)
         if self.freeze_batchnorm:
@@ -61,6 +68,8 @@ class EdgeTAMTrain(SAM2Train):
             "image_encoder_memory_perceiver",
             "image_encoder_mask_decoder",
             "image_encoder_mask_decoder_memory",
+            "object_slot_decoder",
+            "object_slot_shared_kv",
         }:
             raise ValueError(
                 "trainable_module_mode must be one of: image_neck_only, "
@@ -68,7 +77,8 @@ class EdgeTAMTrain(SAM2Train):
                 "mask_decoder_memory, memory_only, memory_perceiver_full, "
                 "image_encoder_memory_perceiver, "
                 "image_encoder_mask_decoder, "
-                "image_encoder_mask_decoder_memory"
+                "image_encoder_mask_decoder_memory, object_slot_decoder, "
+                "object_slot_shared_kv"
             )
 
         for param in self.parameters():
@@ -78,6 +88,20 @@ class EdgeTAMTrain(SAM2Train):
             modules = [self.image_encoder.neck]
         elif mode == "image_encoder_only":
             modules = [self.image_encoder]
+        elif mode in {"object_slot_decoder", "object_slot_shared_kv"}:
+            if self.object_slot_decoder is None:
+                raise ValueError(f"{mode} requires object_slot_count > 0")
+            modules = [self.object_slot_decoder]
+            if mode == "object_slot_shared_kv":
+                slot_memory_scale = getattr(
+                    self.memory_attention, "slot_memory_scale", None
+                )
+                if not isinstance(slot_memory_scale, torch.nn.Parameter):
+                    raise ValueError(
+                        "object_slot_shared_kv requires "
+                        "SharedSlotMemoryAttention"
+                    )
+                slot_memory_scale.requires_grad = True
         elif mode == "mask_decoder_only":
             modules = [self.sam_mask_decoder]
         elif mode in {
@@ -135,6 +159,7 @@ class EdgeTAMTrain(SAM2Train):
             self.memory_attention,
             self.memory_encoder,
             getattr(self, "spatial_perceiver", None),
+            self.object_slot_decoder,
         ]
         self._frozen_eval_modules = [
             module

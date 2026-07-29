@@ -26,11 +26,18 @@ from tools.data.select_sav_dense_training_videos import (
 from tools.train.summarize_mask_finetune_ablations import (
     add_multiobject_latency,
 )
-from sam2_distill.models.task_finetune import initialize_edgetam_memory_model
+from sam2_distill.models.task_finetune import (
+    initialize_edgetam_memory_model,
+    initialize_object_slot_model,
+)
 from sam2_distill.models.sam2_object_buckets import (
     SAM2ObjectBucketAdapter,
     merge_object_output_dicts,
     split_bucket_output,
+)
+from sam2_distill.models.sam2_object_slots import (
+    LearnedObjectSlotDecoder,
+    SharedSlotMemoryAttention,
 )
 
 
@@ -246,6 +253,139 @@ def test_two_layer_memory_initializes_from_four_layer_checkpoint(tmp_path):
     )
 
 
+class FakeMemoryAttentionLayer(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.batch_sizes = []
+
+    def forward(
+        self,
+        *,
+        tgt,
+        memory,
+        pos,
+        query_pos,
+        num_k_exclude_rope,
+    ):
+        self.batch_sizes.append(tgt.shape[0])
+        return tgt + memory.mean(dim=1, keepdim=True)
+
+
+def test_shared_slot_memory_attention_reduces_object_batch():
+    module = SharedSlotMemoryAttention(
+        d_model=4,
+        pos_enc_at_input=False,
+        layer=FakeMemoryAttentionLayer(),
+        num_layers=1,
+        batch_first=True,
+        slot_count=4,
+        min_objects=4,
+        memory_dim=4,
+    )
+    curr = torch.randn(3, 8, 4)
+    memory = torch.randn(5, 8, 4)
+
+    output = module(curr, memory)
+    output.sum().backward()
+
+    assert output.shape == curr.shape
+    assert module.layers[0].batch_sizes == [2]
+    assert torch.equal(output[:, 0], output[:, 1])
+    assert torch.equal(output[:, 4], output[:, 7])
+    assert module.slot_memory_scale.grad is not None
+
+
+def test_shared_slot_memory_attention_keeps_small_batch_legacy_path():
+    module = SharedSlotMemoryAttention(
+        d_model=4,
+        pos_enc_at_input=False,
+        layer=FakeMemoryAttentionLayer(),
+        num_layers=1,
+        batch_first=True,
+        slot_count=4,
+        min_objects=4,
+        memory_dim=4,
+    )
+
+    output = module(torch.randn(3, 2, 4), torch.randn(5, 2, 4))
+
+    assert output.shape == (3, 2, 4)
+    assert module.layers[0].batch_sizes == [2]
+
+
+class FakeMaskTransformer(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.batch_sizes = []
+
+    def forward(self, image, image_pe, tokens):
+        self.batch_sizes.append(image.shape[0])
+        return tokens, image.flatten(2).transpose(1, 2)
+
+
+class FakeMaskDecoder(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        hidden_dim = 4
+        self.pred_obj_scores = True
+        self.use_high_res_features = False
+        self.obj_score_token = torch.nn.Embedding(1, hidden_dim)
+        self.iou_token = torch.nn.Embedding(1, hidden_dim)
+        self.mask_tokens = torch.nn.Embedding(4, hidden_dim)
+        self.transformer = FakeMaskTransformer()
+        self.output_upscaling = torch.nn.Identity()
+        self.output_hypernetworks_mlps = torch.nn.ModuleList(
+            [torch.nn.Linear(hidden_dim, hidden_dim)]
+        )
+        self.iou_prediction_head = torch.nn.Linear(hidden_dim, 4)
+        self.pred_obj_score_head = torch.nn.Linear(hidden_dim, 1)
+
+
+def test_learned_slot_decoder_runs_one_transformer_per_bucket():
+    slot_decoder = LearnedObjectSlotDecoder(
+        slot_count=4,
+        hidden_dim=4,
+        min_objects=4,
+    )
+    decoder = FakeMaskDecoder()
+    image_embeddings = torch.randn(8, 4, 2, 2, requires_grad=True)
+
+    masks, ious, tokens, scores = slot_decoder(
+        decoder,
+        image_embeddings,
+        torch.randn(1, 4, 2, 2),
+        None,
+    )
+    masks.sum().backward()
+
+    assert decoder.transformer.batch_sizes == [2]
+    assert masks.shape == (8, 1, 2, 2)
+    assert ious.shape == (8, 1)
+    assert tokens.shape == (8, 1, 4)
+    assert scores.shape == (8, 1)
+    assert slot_decoder.slot_token_embed.grad is not None
+    assert slot_decoder.slot_spatial_scale.grad is not None
+
+
+def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
+    source = torch.nn.Module()
+    source.projection = torch.nn.Linear(2, 2, bias=False)
+    target = torch.nn.Module()
+    target.projection = torch.nn.Linear(2, 2, bias=False)
+    target.object_slot_decoder = torch.nn.Linear(2, 2, bias=False)
+    with torch.no_grad():
+        source.projection.weight.fill_(3)
+        target.projection.weight.zero_()
+        target.object_slot_decoder.weight.fill_(7)
+    checkpoint = tmp_path / "selected.pt"
+    torch.save({"model": source.state_dict()}, checkpoint)
+
+    initialize_object_slot_model(target, str(checkpoint))
+
+    assert torch.equal(target.projection.weight, source.projection.weight)
+    assert torch.all(target.object_slot_decoder.weight == 7)
+
+
 def compact_output(value: float) -> dict:
     tensor = torch.tensor([[value]])
     return {
@@ -371,6 +511,37 @@ def test_bucket_adapter_uses_legacy_fast_path_below_threshold():
     assert predictor.legacy_calls == 1
     assert predictor.batch_sizes == []
     assert frames[0][1] == ["a", "b"]
+
+
+def test_bucket_adapter_falls_back_for_unsynchronized_prompt_histories():
+    predictor = FakeBucketPredictor()
+    adapter = SAM2ObjectBucketAdapter(
+        predictor,
+        bucket_size=4,
+        min_bucket_objects=2,
+    )
+    outputs = {
+        index: object_output(float(index)) for index in range(2)
+    }
+    outputs[1]["cond_frame_outputs"][1] = compact_output(1.0)
+    state = {
+        "obj_ids": ["a", "b"],
+        "num_frames": 1,
+        "device": torch.device("cpu"),
+        "output_dict_per_obj": outputs,
+        "frames_tracked_per_obj": {index: {} for index in range(2)},
+    }
+
+    frames = list(adapter.propagate_in_video(state))
+
+    assert predictor.legacy_calls == 1
+    assert predictor.batch_sizes == []
+    assert frames[0][1] == ["a", "b"]
+    assert adapter.execution_stats == {
+        "bucket_sessions": 0,
+        "legacy_small_sessions": 0,
+        "legacy_unsynchronized_sessions": 1,
+    }
 
 
 def test_binary_mask_metrics_exposes_small_boundary_difference():

@@ -134,6 +134,11 @@ class SAM2ObjectBucketAdapter:
         self.predictor = predictor
         self.bucket_size = bucket_size
         self.min_bucket_objects = min_bucket_objects
+        self.execution_stats = {
+            "bucket_sessions": 0,
+            "legacy_small_sessions": 0,
+            "legacy_unsynchronized_sessions": 0,
+        }
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.predictor, name)
@@ -155,6 +160,7 @@ class SAM2ObjectBucketAdapter:
         if object_count == 0:
             raise RuntimeError("No objects are registered in the inference state")
         if object_count < self.min_bucket_objects:
+            self.execution_stats["legacy_small_sessions"] += 1
             yield from self.predictor.propagate_in_video(
                 inference_state,
                 start_frame_idx=start_frame_idx,
@@ -165,6 +171,23 @@ class SAM2ObjectBucketAdapter:
 
         self.predictor.propagate_in_video_preflight(inference_state)
         output_dicts = inference_state["output_dict_per_obj"]
+        for output_key in _OUTPUT_KEYS:
+            frame_sets = [
+                set(output[output_key]) for output in output_dicts.values()
+            ]
+            if any(
+                frame_set != frame_sets[0]
+                for frame_set in frame_sets[1:]
+            ):
+                self.execution_stats["legacy_unsynchronized_sessions"] += 1
+                yield from self.predictor.propagate_in_video(
+                    inference_state,
+                    start_frame_idx=start_frame_idx,
+                    max_frame_num_to_track=max_frame_num_to_track,
+                    reverse=reverse,
+                )
+                return
+        self.execution_stats["bucket_sessions"] += 1
         buckets = []
         for object_indices in self._bucket_indices(object_count):
             bucket_outputs = [output_dicts[index] for index in object_indices]

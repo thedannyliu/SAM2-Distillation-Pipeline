@@ -14,6 +14,26 @@ from typing import Any
 
 
 REGISTRY = {
+    "MX1_slot4_decoder_kd_3ep": (
+        "learned_object_slot_capacity",
+        "Decode four synchronized object tracks with one shared SAM2 mask-decoder call while preserving the selected four-layer memory path.",
+        "tv21_best",
+    ),
+    "MX2_slot8_decoder_kd_3ep": (
+        "learned_object_slot_capacity",
+        "Decode eight synchronized object tracks with one shared SAM2 mask-decoder call while preserving the selected four-layer memory path.",
+        "tv21_best",
+    ),
+    "MX3_slot4_sharedkv_kd_3ep": (
+        "shared_memory_kv",
+        "Add four-way learned memory superposition so one memory-attention K/V path and one mask decoder serve each object bucket.",
+        "MX1_slot4_decoder_kd_3ep",
+    ),
+    "MX4_slot8_sharedkv_kd_3ep": (
+        "shared_memory_kv",
+        "Add eight-way learned memory superposition so one memory-attention K/V path and one mask decoder serve each object bucket.",
+        "MX2_slot8_decoder_kd_3ep",
+    ),
     "MO0_mem4_task_dense8_5ep": (
         "multiobject_memory_depth_control",
         "Continue the selected four-layer SAM2 temporal path on dense eight-object clips with task loss only.",
@@ -312,6 +332,9 @@ FIELDNAMES = [
     "world_size",
     "global_batch",
     "trainable_mode",
+    "object_slot_mode",
+    "object_slot_count",
+    "object_slot_min_objects",
     "total_parameters",
     "trainable_parameters",
     "encoder_lr",
@@ -444,6 +467,11 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         "world_size": world_size,
         "global_batch": batch * world_size,
         "trainable_mode": os.environ.get("TASK_TRAINABLE_MODE", ""),
+        "object_slot_mode": os.environ.get("TASK_OBJECT_SLOT_MODE", "none"),
+        "object_slot_count": os.environ.get("TASK_OBJECT_SLOT_COUNT", "0"),
+        "object_slot_min_objects": os.environ.get(
+            "TASK_OBJECT_SLOT_MIN_OBJECTS", "4"
+        ),
         "encoder_lr": os.environ.get("TASK_ENCODER_LR", ""),
         "encoder_lr_end": os.environ.get("TASK_ENCODER_LR_END", ""),
         "head_lr": os.environ.get("TASK_HEAD_LR", ""),
