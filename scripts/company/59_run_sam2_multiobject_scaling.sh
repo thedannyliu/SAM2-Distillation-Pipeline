@@ -79,6 +79,7 @@ WANDB_MODE="${WANDB_MODE:-online}"
 SKIP_DONE="${SKIP_DONE:-1}"
 EXECUTION_MODE="${EXECUTION_MODE:-legacy}"
 BUCKET_SIZE="${BUCKET_SIZE:-4}"
+BUCKET_MIN_OBJECTS="${BUCKET_MIN_OBJECTS:-4}"
 VERIFY_BUCKET_FRAMES="${VERIFY_BUCKET_FRAMES:-4}"
 AUDIT_ROOT="${AUDIT_ROOT:-${RUN_ROOT}/density_audit_n${MAX_OBJECTS}}"
 COHORT_FILE="${COHORT_FILE:-${AUDIT_ROOT}/cohort.txt}"
@@ -99,6 +100,10 @@ case "${EXECUTION_MODE}" in
 esac
 if [[ "${BUCKET_SIZE}" -lt 1 ]]; then
   echo "[ERROR] BUCKET_SIZE must be positive: ${BUCKET_SIZE}" >&2
+  return 2 2>/dev/null || exit 2
+fi
+if [[ "${BUCKET_MIN_OBJECTS}" -lt 1 ]]; then
+  echo "[ERROR] BUCKET_MIN_OBJECTS must be positive: ${BUCKET_MIN_OBJECTS}" >&2
   return 2 2>/dev/null || exit 2
 fi
 if [[ "${VERIFY_BUCKET_FRAMES}" -lt 0 ]]; then
@@ -137,7 +142,8 @@ describe_lane() {
   echo "Cohort: ${MAX_VIDEOS} videos with >= ${MAX_OBJECTS} non-empty masks on one shared frame"
   echo "Measurement: ${REPETITIONS} repetitions; ${WARMUP_VIDEOS} warmup video(s)"
   echo "Prompt: ${PROMPT_KIND}"
-  echo "Execution: ${EXECUTION_MODE}; bucket capacity ${BUCKET_SIZE}"
+  echo "Execution: ${EXECUTION_MODE}; bucket capacity ${BUCKET_SIZE}; bucket minimum ${BUCKET_MIN_OBJECTS}"
+  echo "Bucket implementation: persistent history with legacy fast path"
   echo "Bucket correctness frames: ${VERIFY_BUCKET_FRAMES}"
   echo "GPU: visible device ${GPU}; one isolated GPU is intentional for latency validity"
   echo "TinyViT-21M task checkpoint: ${TV21_CHECKPOINT}"
@@ -180,7 +186,7 @@ run_benchmark() {
   local count_tag="${OBJECT_COUNTS//,/-}"
   local execution_tag=""
   if [[ "${EXECUTION_MODE}" == "bucket" ]]; then
-    execution_tag="_bucket${BUCKET_SIZE}"
+    execution_tag="_bucket${BUCKET_SIZE}_persistent_m${BUCKET_MIN_OBJECTS}"
   fi
   local out_dir="${RUN_ROOT}/${model}/${PROMPT_KIND}_n${count_tag}${execution_tag}"
   local log
@@ -236,9 +242,10 @@ run_benchmark() {
       --device cuda \
       --execution-mode "${EXECUTION_MODE}" \
       --bucket-size "${BUCKET_SIZE}" \
+      --bucket-min-objects "${BUCKET_MIN_OBJECTS}" \
       --verify-bucket-frames "${VERIFY_BUCKET_FRAMES}" \
       --wandb-project "${WANDB_PROJECT}" \
-      --wandb-name "${model}_${SPLIT}_${PROMPT_KIND}_${EXECUTION_MODE}${BUCKET_SIZE}" \
+      --wandb-name "${model}_${SPLIT}_${PROMPT_KIND}_${EXECUTION_MODE}${BUCKET_SIZE}_m${BUCKET_MIN_OBJECTS}" \
       --wandb-mode "${WANDB_MODE}" 2>&1 | tee "${log}"
   local status="${PIPESTATUS[0]}"
   echo "${model} benchmark status: ${status}"

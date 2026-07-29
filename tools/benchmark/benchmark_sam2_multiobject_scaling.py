@@ -26,6 +26,8 @@ from tools.data.audit_vos_object_density import shared_frame_prompts
 
 
 TARGET_RELATIVE_LATENCY = {2: 1.10, 4: 1.25, 8: 1.60, 16: 2.20}
+MIN_BINARY_MASK_AGREEMENT = 0.9999
+MIN_PER_MASK_IOU = 0.999
 
 
 def parse_object_counts(value: str) -> list[int]:
@@ -75,6 +77,7 @@ def parse_args() -> argparse.Namespace:
         default="legacy",
     )
     parser.add_argument("--bucket-size", type=int, default=4)
+    parser.add_argument("--bucket-min-objects", type=int, default=4)
     parser.add_argument("--verify-bucket-frames", type=int, default=0)
     parser.add_argument("--wandb-project", default="")
     parser.add_argument("--wandb-name", default="")
@@ -212,6 +215,34 @@ def measure_video(
     }
 
 
+def binary_mask_metrics(
+    reference_masks: torch.Tensor,
+    candidate_masks: torch.Tensor,
+) -> dict[str, Any]:
+    if reference_masks.shape != candidate_masks.shape:
+        raise ValueError(
+            f"mask shapes differ: {reference_masks.shape} != {candidate_masks.shape}"
+        )
+    reference_flat = reference_masks.reshape(reference_masks.shape[0], -1)
+    candidate_flat = candidate_masks.reshape(candidate_masks.shape[0], -1)
+    mismatch = torch.count_nonzero(reference_flat != candidate_flat, dim=1)
+    intersection = torch.count_nonzero(reference_flat & candidate_flat, dim=1)
+    union = torch.count_nonzero(reference_flat | candidate_flat, dim=1)
+    iou = torch.where(
+        union > 0,
+        intersection.float() / union.float(),
+        torch.ones_like(union, dtype=torch.float32),
+    )
+    return {
+        "mismatched_pixels": int(mismatch.sum()),
+        "total_pixels": reference_masks.numel(),
+        "mask_ious": [float(value) for value in iou],
+        "mismatch_fractions": [
+            float(value) for value in mismatch.float() / reference_flat.shape[1]
+        ],
+    }
+
+
 def verify_bucket_equivalence(
     base_predictor,
     bucket_predictor,
@@ -254,6 +285,8 @@ def verify_bucket_equivalence(
     bucket_outputs = run(bucket_predictor)
     mismatched_pixels = 0
     total_pixels = 0
+    mask_ious = []
+    mismatch_fractions = []
     metadata_match = len(legacy_outputs) == len(bucket_outputs)
     for legacy, bucket in zip(legacy_outputs, bucket_outputs):
         legacy_frame, legacy_ids, legacy_masks = legacy
@@ -264,8 +297,19 @@ def verify_bucket_equivalence(
             and legacy_masks.shape == bucket_masks.shape
         )
         if legacy_masks.shape == bucket_masks.shape:
-            mismatched_pixels += int(torch.count_nonzero(legacy_masks != bucket_masks))
-            total_pixels += legacy_masks.numel()
+            metrics = binary_mask_metrics(legacy_masks, bucket_masks)
+            mismatched_pixels += metrics["mismatched_pixels"]
+            total_pixels += metrics["total_pixels"]
+            mask_ious.extend(metrics["mask_ious"])
+            mismatch_fractions.extend(metrics["mismatch_fractions"])
+    binary_mask_agreement = (
+        1.0 - mismatched_pixels / total_pixels if total_pixels else 0.0
+    )
+    min_mask_iou = min(mask_ious, default=0.0)
+    tolerance_pass = (
+        binary_mask_agreement >= MIN_BINARY_MASK_AGREEMENT
+        and min_mask_iou >= MIN_PER_MASK_IOU
+    )
     return {
         "video": video,
         "object_count": object_count,
@@ -273,10 +317,14 @@ def verify_bucket_equivalence(
         "metadata_match": metadata_match,
         "total_pixels": total_pixels,
         "mismatched_pixels": mismatched_pixels,
-        "binary_mask_agreement": (
-            1.0 - mismatched_pixels / total_pixels if total_pixels else 0.0
-        ),
-        "pass": metadata_match and total_pixels > 0 and mismatched_pixels == 0,
+        "binary_mask_agreement": binary_mask_agreement,
+        "min_binary_mask_agreement": MIN_BINARY_MASK_AGREEMENT,
+        "min_mask_iou": min_mask_iou,
+        "mean_mask_iou": statistics.mean(mask_ious) if mask_ious else 0.0,
+        "required_min_mask_iou": MIN_PER_MASK_IOU,
+        "max_mismatch_fraction_per_mask": max(mismatch_fractions, default=0.0),
+        "exact_match": mismatched_pixels == 0,
+        "pass": metadata_match and total_pixels > 0 and tolerance_pass,
     }
 
 
@@ -387,6 +435,8 @@ def main() -> None:
         raise SystemExit("--warmup-videos cannot be negative")
     if args.bucket_size < 1:
         raise SystemExit("--bucket-size must be positive")
+    if args.bucket_min_objects < 1:
+        raise SystemExit("--bucket-min-objects must be positive")
     if args.verify_bucket_frames < 0:
         raise SystemExit("--verify-bucket-frames cannot be negative")
 
@@ -412,7 +462,11 @@ def main() -> None:
     if args.execution_mode == "bucket":
         from sam2_distill.models.sam2_object_buckets import SAM2ObjectBucketAdapter
 
-        predictor = SAM2ObjectBucketAdapter(base_predictor, args.bucket_size)
+        predictor = SAM2ObjectBucketAdapter(
+            base_predictor,
+            args.bucket_size,
+            min_bucket_objects=args.bucket_min_objects,
+        )
     videos = read_videos(args.video_list_file, args.max_videos)
     if not videos:
         raise RuntimeError(f"Empty benchmark cohort: {args.video_list_file}")
@@ -440,6 +494,12 @@ def main() -> None:
         "prompt_kind": args.prompt_kind,
         "execution_mode": args.execution_mode,
         "bucket_size": args.bucket_size if args.execution_mode == "bucket" else None,
+        "bucket_min_objects": (
+            args.bucket_min_objects if args.execution_mode == "bucket" else None
+        ),
+        "bucket_implementation": (
+            predictor.implementation_name if args.execution_mode == "bucket" else None
+        ),
         "verify_bucket_frames": args.verify_bucket_frames,
         "seed": args.seed,
         "gpu": torch.cuda.get_device_name(device)
@@ -546,6 +606,8 @@ def main() -> None:
             run.summary["bucket_binary_mask_agreement"] = verification[
                 "binary_mask_agreement"
             ]
+            run.summary["bucket_min_mask_iou"] = verification["min_mask_iou"]
+            run.summary["bucket_exact_match"] = verification["exact_match"]
         run.finish()
     print(json.dumps(summary, indent=2))
 

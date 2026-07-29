@@ -94,16 +94,26 @@ def split_bucket_output(output: dict[str, Any], batch_size: int) -> list[dict[st
 
 
 class SAM2ObjectBucketAdapter:
-    """Run SAM2 propagation with one tracker call per object bucket.
+    """Run SAM2 propagation with persistent capacity-bounded object buckets.
 
     The wrapped predictor keeps the standard SAM2 inference-state contract. Objects
     must be prompted before propagation and have synchronized frame histories.
     """
 
-    def __init__(self, predictor: Any, bucket_size: int) -> None:
+    implementation_name = "persistent_history_v2"
+
+    def __init__(
+        self,
+        predictor: Any,
+        bucket_size: int,
+        min_bucket_objects: int = 4,
+    ) -> None:
         if bucket_size < 1:
             raise ValueError("bucket_size must be positive")
+        if min_bucket_objects < 1:
+            raise ValueError("min_bucket_objects must be positive")
         required = (
+            "propagate_in_video",
             "propagate_in_video_preflight",
             "_run_single_frame_inference",
             "_get_orig_video_res_output",
@@ -123,6 +133,7 @@ class SAM2ObjectBucketAdapter:
             )
         self.predictor = predictor
         self.bucket_size = bucket_size
+        self.min_bucket_objects = min_bucket_objects
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.predictor, name)
@@ -139,13 +150,31 @@ class SAM2ObjectBucketAdapter:
         max_frame_num_to_track: int | None = None,
         reverse: bool = False,
     ):
-        self.predictor.propagate_in_video_preflight(inference_state)
-
         object_ids = inference_state["obj_ids"]
         object_count = len(object_ids)
         if object_count == 0:
             raise RuntimeError("No objects are registered in the inference state")
+        if object_count < self.min_bucket_objects:
+            yield from self.predictor.propagate_in_video(
+                inference_state,
+                start_frame_idx=start_frame_idx,
+                max_frame_num_to_track=max_frame_num_to_track,
+                reverse=reverse,
+            )
+            return
+
+        self.predictor.propagate_in_video_preflight(inference_state)
         output_dicts = inference_state["output_dict_per_obj"]
+        buckets = []
+        for object_indices in self._bucket_indices(object_count):
+            bucket_outputs = [output_dicts[index] for index in object_indices]
+            buckets.append(
+                (
+                    object_indices,
+                    bucket_outputs,
+                    merge_object_output_dicts(bucket_outputs),
+                )
+            )
         if start_frame_idx is None:
             start_frame_idx = min(
                 frame_idx
@@ -171,30 +200,30 @@ class SAM2ObjectBucketAdapter:
 
         for frame_idx in processing_order:
             pred_masks_per_obj: list[torch.Tensor | None] = [None] * object_count
-            for object_indices in self._bucket_indices(object_count):
-                bucket_outputs = [output_dicts[index] for index in object_indices]
-                is_conditioning = [
-                    frame_idx in output["cond_frame_outputs"]
-                    for output in bucket_outputs
-                ]
-                if any(is_conditioning) and not all(is_conditioning):
-                    raise RuntimeError(
-                        "Bucketed SAM2 requires the same conditioning frames for every "
-                        f"object in a bucket; frame {frame_idx} is only partially conditioned"
+            for object_indices, bucket_outputs, bucket_history in buckets:
+                if frame_idx in bucket_history["cond_frame_outputs"]:
+                    current_out = bucket_history["cond_frame_outputs"][frame_idx]
+                    pred_masks = current_out["pred_masks"].to(
+                        inference_state["device"], non_blocking=True
                     )
-
-                if all(is_conditioning):
-                    for object_idx, output in zip(object_indices, bucket_outputs):
-                        current_out = output["cond_frame_outputs"][frame_idx]
-                        pred_masks_per_obj[object_idx] = current_out["pred_masks"].to(
-                            inference_state["device"], non_blocking=True
-                        )
+                    for local_idx, object_idx in enumerate(object_indices):
+                        pred_masks_per_obj[object_idx] = pred_masks[
+                            local_idx : local_idx + 1
+                        ]
+                elif frame_idx in bucket_history["non_cond_frame_outputs"]:
+                    current_out = bucket_history["non_cond_frame_outputs"][frame_idx]
+                    pred_masks = current_out["pred_masks"].to(
+                        inference_state["device"], non_blocking=True
+                    )
+                    for local_idx, object_idx in enumerate(object_indices):
+                        pred_masks_per_obj[object_idx] = pred_masks[
+                            local_idx : local_idx + 1
+                        ]
                 else:
-                    merged_output = merge_object_output_dicts(bucket_outputs)
                     current_out, pred_masks = (
                         self.predictor._run_single_frame_inference(
                             inference_state=inference_state,
-                            output_dict=merged_output,
+                            output_dict=bucket_history,
                             frame_idx=frame_idx,
                             batch_size=len(object_indices),
                             is_init_cond_frame=False,
@@ -204,6 +233,7 @@ class SAM2ObjectBucketAdapter:
                             run_mem_encoder=True,
                         )
                     )
+                    bucket_history["non_cond_frame_outputs"][frame_idx] = current_out
                     split_outputs = split_bucket_output(
                         current_out, len(object_indices)
                     )

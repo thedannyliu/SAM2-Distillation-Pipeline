@@ -184,6 +184,14 @@ def markdown_report(
             "- Binary-mask agreement: "
             f"{result['bucket_verification'].get('binary_mask_agreement', 'missing')}"
         ),
+        (
+            "- Minimum per-mask IoU: "
+            f"{result['bucket_verification'].get('min_mask_iou', 'missing')}"
+        ),
+        (
+            "- Bit-exact match: "
+            f"{result['bucket_verification'].get('exact_match', 'missing')}"
+        ),
         "",
         "| Objects | Legacy FPS | Bucket FPS | FPS gain | Legacy ms | Bucket ms | "
         "Latency reduction | Memory delta MB | Target |",
