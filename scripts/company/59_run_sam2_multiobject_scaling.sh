@@ -77,6 +77,9 @@ GPU="${GPU:-0}"
 WANDB_PROJECT="${WANDB_PROJECT:-sam2-multiobject-scaling-v1}"
 WANDB_MODE="${WANDB_MODE:-online}"
 SKIP_DONE="${SKIP_DONE:-1}"
+EXECUTION_MODE="${EXECUTION_MODE:-legacy}"
+BUCKET_SIZE="${BUCKET_SIZE:-4}"
+VERIFY_BUCKET_FRAMES="${VERIFY_BUCKET_FRAMES:-4}"
 AUDIT_ROOT="${AUDIT_ROOT:-${RUN_ROOT}/density_audit_n${MAX_OBJECTS}}"
 COHORT_FILE="${COHORT_FILE:-${AUDIT_ROOT}/cohort.txt}"
 
@@ -87,6 +90,21 @@ case "${PROMPT_KIND}" in
     return 2 2>/dev/null || exit 2
     ;;
 esac
+case "${EXECUTION_MODE}" in
+  legacy|bucket) ;;
+  *)
+    echo "[ERROR] EXECUTION_MODE must be legacy or bucket: ${EXECUTION_MODE}" >&2
+    return 2 2>/dev/null || exit 2
+    ;;
+esac
+if [[ "${BUCKET_SIZE}" -lt 1 ]]; then
+  echo "[ERROR] BUCKET_SIZE must be positive: ${BUCKET_SIZE}" >&2
+  return 2 2>/dev/null || exit 2
+fi
+if [[ "${VERIFY_BUCKET_FRAMES}" -lt 0 ]]; then
+  echo "[ERROR] VERIFY_BUCKET_FRAMES cannot be negative: ${VERIFY_BUCKET_FRAMES}" >&2
+  return 2 2>/dev/null || exit 2
+fi
 
 require_path() {
   [[ -e "$1" ]] || {
@@ -119,6 +137,8 @@ describe_lane() {
   echo "Cohort: ${MAX_VIDEOS} videos with >= ${MAX_OBJECTS} non-empty masks on one shared frame"
   echo "Measurement: ${REPETITIONS} repetitions; ${WARMUP_VIDEOS} warmup video(s)"
   echo "Prompt: ${PROMPT_KIND}"
+  echo "Execution: ${EXECUTION_MODE}; bucket capacity ${BUCKET_SIZE}"
+  echo "Bucket correctness frames: ${VERIFY_BUCKET_FRAMES}"
   echo "GPU: visible device ${GPU}; one isolated GPU is intentional for latency validity"
   echo "TinyViT-21M task checkpoint: ${TV21_CHECKPOINT}"
   echo "SAM2.1-L comparison checkpoint: ${SAM2_CHECKPOINT}"
@@ -158,7 +178,11 @@ ensure_cohort() {
 run_benchmark() {
   local model="$1"
   local count_tag="${OBJECT_COUNTS//,/-}"
-  local out_dir="${RUN_ROOT}/${model}/${PROMPT_KIND}_n${count_tag}"
+  local execution_tag=""
+  if [[ "${EXECUTION_MODE}" == "bucket" ]]; then
+    execution_tag="_bucket${BUCKET_SIZE}"
+  fi
+  local out_dir="${RUN_ROOT}/${model}/${PROMPT_KIND}_n${count_tag}${execution_tag}"
   local log
   log="${LOG_ROOT}/${model}_${PROMPT_KIND}_$(date -u +%Y%m%d_%H%M%S).log"
   local -a model_args
@@ -210,8 +234,11 @@ run_benchmark() {
       --warmup-videos "${WARMUP_VIDEOS}" \
       --seed "${SEED}" \
       --device cuda \
+      --execution-mode "${EXECUTION_MODE}" \
+      --bucket-size "${BUCKET_SIZE}" \
+      --verify-bucket-frames "${VERIFY_BUCKET_FRAMES}" \
       --wandb-project "${WANDB_PROJECT}" \
-      --wandb-name "${model}_${SPLIT}_${PROMPT_KIND}" \
+      --wandb-name "${model}_${SPLIT}_${PROMPT_KIND}_${EXECUTION_MODE}${BUCKET_SIZE}" \
       --wandb-mode "${WANDB_MODE}" 2>&1 | tee "${log}"
   local status="${PIPESTATUS[0]}"
   echo "${model} benchmark status: ${status}"

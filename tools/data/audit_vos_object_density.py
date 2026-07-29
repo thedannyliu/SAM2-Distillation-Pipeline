@@ -124,6 +124,11 @@ def main() -> None:
             "track_count": count_tracks(ann_video_dir),
             "shared_frame": shared[0] if shared is not None else "",
             "shared_nonempty_objects": len(shared[1]) if shared is not None else 0,
+            "shared_object_ids": (
+                json.dumps([object_id for object_id, _ in shared[1]])
+                if shared is not None
+                else "[]"
+            ),
             "eligible": int(shared is not None),
         }
         rows.append(row)
@@ -137,6 +142,9 @@ def main() -> None:
         if args.max_cohort_videos > 0
         else eligible
     )
+    cohort_set = set(cohort)
+    for row in rows:
+        row["cohort_selected"] = int(row["video"] in cohort_set)
     track_counts = [int(row["track_count"]) for row in rows]
     shared_counts = [int(row["shared_nonempty_objects"]) for row in rows]
     summary = {
@@ -180,12 +188,32 @@ def main() -> None:
         "track_count",
         "shared_frame",
         "shared_nonempty_objects",
+        "shared_object_ids",
         "eligible",
+        "cohort_selected",
     ]
     with (args.out_dir / "per_video.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+    cohort_rows = [
+        {
+            "video": row["video"],
+            "prompt_frame": row["shared_frame"],
+            "object_ids": row["shared_object_ids"],
+        }
+        for row in rows
+        if row["cohort_selected"]
+    ]
+    with (args.out_dir / "cohort_prompts.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["video", "prompt_frame", "object_ids"],
+        )
+        writer.writeheader()
+        writer.writerows(cohort_rows)
     (args.out_dir / "cohort.txt").write_text(
         "".join(f"{video}\n" for video in cohort),
         encoding="utf-8",

@@ -13,7 +13,10 @@ from tools.benchmark.benchmark_sam2_multiobject_scaling import (
     aggregate_rows,
     parse_object_counts,
 )
-from tools.data.audit_vos_object_density import shared_frame_prompts
+from tools.data.audit_vos_object_density import (
+    main as audit_density_main,
+    shared_frame_prompts,
+)
 from tools.data.select_sav_dense_training_videos import (
     frame_object_counts,
     main as select_dense_main,
@@ -23,6 +26,11 @@ from tools.train.summarize_mask_finetune_ablations import (
     add_multiobject_latency,
 )
 from sam2_distill.models.task_finetune import initialize_edgetam_memory_model
+from sam2_distill.models.sam2_object_buckets import (
+    SAM2ObjectBucketAdapter,
+    merge_object_output_dicts,
+    split_bucket_output,
+)
 
 
 def write_mask(path: Path, nonempty: bool) -> None:
@@ -46,6 +54,41 @@ def test_shared_frame_prompts_requires_nonempty_common_frame(tmp_path):
     assert shared[0] == 0
     assert [object_id for object_id, _ in shared[1]] == ["000", "001"]
     assert shared_frame_prompts(ann_video, min_objects=3) is None
+
+
+def test_density_audit_records_fixed_prompt_objects(tmp_path, monkeypatch):
+    image_root = tmp_path / "images"
+    ann_root = tmp_path / "annotations"
+    video = "video"
+    write_mask(image_root / video / "00000.png", True)
+    write_mask(ann_root / video / "000" / "00000.png", True)
+    write_mask(ann_root / video / "001" / "00000.png", True)
+    video_list = tmp_path / "videos.txt"
+    video_list.write_text(f"{video}\n", encoding="utf-8")
+    out_dir = tmp_path / "audit"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "audit_vos_object_density.py",
+            "--image-root",
+            str(image_root),
+            "--ann-root",
+            str(ann_root),
+            "--video-list-file",
+            str(video_list),
+            "--out-dir",
+            str(out_dir),
+            "--min-shared-objects",
+            "2",
+        ],
+    )
+
+    audit_density_main()
+
+    prompts = pd.read_csv(out_dir / "cohort_prompts.csv")
+    assert prompts.loc[0, "prompt_frame"] == 0
+    assert json.loads(prompts.loc[0, "object_ids"]) == ["000", "001"]
 
 
 def test_parse_object_counts_requires_one_object_baseline():
@@ -200,3 +243,99 @@ def test_two_layer_memory_initializes_from_four_layer_checkpoint(tmp_path):
         target.memory_attention.layers[1].weight,
         source.memory_attention.layers[1].weight,
     )
+
+
+def compact_output(value: float) -> dict:
+    tensor = torch.tensor([[value]])
+    return {
+        "maskmem_features": tensor[:, :, None, None],
+        "maskmem_pos_enc": [tensor[:, :, None, None]],
+        "pred_masks": tensor[:, :, None, None],
+        "obj_ptr": tensor,
+        "object_score_logits": tensor,
+    }
+
+
+def object_output(value: float) -> dict:
+    return {
+        "cond_frame_outputs": {0: compact_output(value)},
+        "non_cond_frame_outputs": {},
+    }
+
+
+def test_bucket_output_merge_and_split_preserve_object_order():
+    merged = merge_object_output_dicts([object_output(2.0), object_output(5.0)])
+
+    assert merged["cond_frame_outputs"][0]["obj_ptr"].tolist() == [[2.0], [5.0]]
+    split = split_bucket_output(merged["cond_frame_outputs"][0], batch_size=2)
+    assert split[0]["pred_masks"].item() == 2.0
+    assert split[1]["pred_masks"].item() == 5.0
+
+
+class FakeBucketPredictor:
+    non_overlap_masks_for_mem_enc = False
+
+    def __init__(self):
+        self.batch_sizes = []
+
+    def propagate_in_video_preflight(self, inference_state):
+        return None
+
+    def _run_single_frame_inference(
+        self,
+        *,
+        output_dict,
+        frame_idx,
+        batch_size,
+        **kwargs,
+    ):
+        self.batch_sizes.append(batch_size)
+        values = output_dict["cond_frame_outputs"][0]["obj_ptr"] + frame_idx
+        output = compact_output(0.0)
+        output = {
+            key: (
+                [values[:, :, None, None]]
+                if key == "maskmem_pos_enc"
+                else values[:, :, None, None]
+                if key in {"maskmem_features", "pred_masks"}
+                else values
+            )
+            for key in output
+        }
+        return output, output["pred_masks"]
+
+    def _get_orig_video_res_output(self, inference_state, masks):
+        return masks, masks
+
+
+def test_bucket_adapter_runs_one_tracker_call_per_bucket():
+    predictor = FakeBucketPredictor()
+    adapter = SAM2ObjectBucketAdapter(predictor, bucket_size=4)
+    state = {
+        "obj_ids": ["a", "b", "c", "d", "e"],
+        "num_frames": 3,
+        "device": torch.device("cpu"),
+        "output_dict_per_obj": {
+            index: object_output(float(index)) for index in range(5)
+        },
+        "frames_tracked_per_obj": {index: {} for index in range(5)},
+    }
+
+    frames = list(adapter.propagate_in_video(state))
+
+    assert predictor.batch_sizes == [4, 1, 4, 1]
+    assert [frame_idx for frame_idx, _, _ in frames] == [0, 1, 2]
+    assert frames[-1][2][:, 0, 0, 0].tolist() == [2.0, 3.0, 4.0, 5.0, 6.0]
+    assert (
+        state["output_dict_per_obj"][4]["non_cond_frame_outputs"][2]["obj_ptr"].item()
+        == 6.0
+    )
+
+
+def test_bucket_adapter_rejects_unsynchronized_history():
+    first = object_output(1.0)
+    second = object_output(2.0)
+    second["non_cond_frame_outputs"][1] = compact_output(3.0)
+
+    with pytest.raises(RuntimeError, match="synchronized object histories"):
+        merge_object_output_dicts([first, second])

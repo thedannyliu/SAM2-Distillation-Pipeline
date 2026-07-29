@@ -69,6 +69,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-videos", type=int, default=1)
     parser.add_argument("--seed", type=int, default=310107256)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--execution-mode",
+        choices=("legacy", "bucket"),
+        default="legacy",
+    )
+    parser.add_argument("--bucket-size", type=int, default=4)
+    parser.add_argument("--verify-bucket-frames", type=int, default=0)
     parser.add_argument("--wandb-project", default="")
     parser.add_argument("--wandb-name", default="")
     parser.add_argument(
@@ -103,6 +110,35 @@ def read_videos(path: Path, max_videos: int) -> list[str]:
     return videos[:max_videos] if max_videos > 0 else videos
 
 
+def add_prompts(
+    predictor,
+    evaluator,
+    args: argparse.Namespace,
+    state: dict[str, Any],
+    object_count: int,
+    prompt_frame: int,
+    prompt_records: list[tuple[str, Path]],
+) -> None:
+    for object_id, mask_path in prompt_records[:object_count]:
+        mask = evaluator.load_mask(mask_path)
+        if args.prompt_kind == "box":
+            predictor.add_new_points_or_box(
+                state,
+                frame_idx=prompt_frame,
+                obj_id=object_id,
+                box=evaluator.mask_bbox(mask),
+            )
+        else:
+            points, labels = evaluator.mask_point(mask)
+            predictor.add_new_points_or_box(
+                state,
+                frame_idx=prompt_frame,
+                obj_id=object_id,
+                points=points,
+                labels=labels,
+            )
+
+
 def measure_video(
     predictor,
     evaluator,
@@ -124,24 +160,15 @@ def measure_video(
     init_sec = time.perf_counter() - init_start
 
     prompt_start = time.perf_counter()
-    for object_id, mask_path in prompt_records[:object_count]:
-        mask = evaluator.load_mask(mask_path)
-        if args.prompt_kind == "box":
-            predictor.add_new_points_or_box(
-                state,
-                frame_idx=prompt_frame,
-                obj_id=object_id,
-                box=evaluator.mask_bbox(mask),
-            )
-        else:
-            points, labels = evaluator.mask_point(mask)
-            predictor.add_new_points_or_box(
-                state,
-                frame_idx=prompt_frame,
-                obj_id=object_id,
-                points=points,
-                labels=labels,
-            )
+    add_prompts(
+        predictor,
+        evaluator,
+        args,
+        state,
+        object_count,
+        prompt_frame,
+        prompt_records,
+    )
     synchronize(device)
     prompt_sec = time.perf_counter() - prompt_start
 
@@ -182,6 +209,74 @@ def measure_video(
         "end_to_end_fps": propagated_frames / max(total_sec, 1e-12),
         "object_masks_per_sec": object_mask_outputs / max(propagation_sec, 1e-12),
         "peak_memory_mb": peak_memory_mb,
+    }
+
+
+def verify_bucket_equivalence(
+    base_predictor,
+    bucket_predictor,
+    evaluator,
+    args: argparse.Namespace,
+    video: str,
+    object_count: int,
+    prompt_frame: int,
+    prompt_records: list[tuple[str, Path]],
+) -> dict[str, Any]:
+    def run(predictor) -> list[tuple[int, list[Any], torch.Tensor]]:
+        state = predictor.init_state(video_path=str(args.image_root / video))
+        add_prompts(
+            predictor,
+            evaluator,
+            args,
+            state,
+            object_count,
+            prompt_frame,
+            prompt_records,
+        )
+        outputs = []
+        for frame_idx, object_ids, masks in predictor.propagate_in_video(state):
+            outputs.append(
+                (
+                    int(frame_idx),
+                    list(object_ids),
+                    (masks.detach().cpu() > 0),
+                )
+            )
+            if len(outputs) >= args.verify_bucket_frames:
+                break
+        if hasattr(predictor, "reset_state"):
+            predictor.reset_state(state)
+        del state
+        gc.collect()
+        return outputs
+
+    legacy_outputs = run(base_predictor)
+    bucket_outputs = run(bucket_predictor)
+    mismatched_pixels = 0
+    total_pixels = 0
+    metadata_match = len(legacy_outputs) == len(bucket_outputs)
+    for legacy, bucket in zip(legacy_outputs, bucket_outputs):
+        legacy_frame, legacy_ids, legacy_masks = legacy
+        bucket_frame, bucket_ids, bucket_masks = bucket
+        metadata_match = metadata_match and (
+            legacy_frame == bucket_frame
+            and legacy_ids == bucket_ids
+            and legacy_masks.shape == bucket_masks.shape
+        )
+        if legacy_masks.shape == bucket_masks.shape:
+            mismatched_pixels += int(torch.count_nonzero(legacy_masks != bucket_masks))
+            total_pixels += legacy_masks.numel()
+    return {
+        "video": video,
+        "object_count": object_count,
+        "frames_compared": min(len(legacy_outputs), len(bucket_outputs)),
+        "metadata_match": metadata_match,
+        "total_pixels": total_pixels,
+        "mismatched_pixels": mismatched_pixels,
+        "binary_mask_agreement": (
+            1.0 - mismatched_pixels / total_pixels if total_pixels else 0.0
+        ),
+        "pass": metadata_match and total_pixels > 0 and mismatched_pixels == 0,
     }
 
 
@@ -290,6 +385,10 @@ def main() -> None:
         raise SystemExit("--repetitions must be positive")
     if args.warmup_videos < 0:
         raise SystemExit("--warmup-videos cannot be negative")
+    if args.bucket_size < 1:
+        raise SystemExit("--bucket-size must be positive")
+    if args.verify_bucket_frames < 0:
+        raise SystemExit("--verify-bucket-frames cannot be negative")
 
     from tools.eval import run_sam2_vos_prompt_dataset as evaluator
 
@@ -308,7 +407,12 @@ def main() -> None:
         student_model_name=args.student_model_name,
         student_family=args.student_family,
     )
-    predictor, load_summary = evaluator.build_predictor(model_args, device)
+    base_predictor, load_summary = evaluator.build_predictor(model_args, device)
+    predictor = base_predictor
+    if args.execution_mode == "bucket":
+        from sam2_distill.models.sam2_object_buckets import SAM2ObjectBucketAdapter
+
+        predictor = SAM2ObjectBucketAdapter(base_predictor, args.bucket_size)
     videos = read_videos(args.video_list_file, args.max_videos)
     if not videos:
         raise RuntimeError(f"Empty benchmark cohort: {args.video_list_file}")
@@ -334,6 +438,9 @@ def main() -> None:
         "videos": videos,
         "repetitions": args.repetitions,
         "prompt_kind": args.prompt_kind,
+        "execution_mode": args.execution_mode,
+        "bucket_size": args.bucket_size if args.execution_mode == "bucket" else None,
+        "verify_bucket_frames": args.verify_bucket_frames,
         "seed": args.seed,
         "gpu": torch.cuda.get_device_name(device)
         if device.type == "cuda"
@@ -341,7 +448,23 @@ def main() -> None:
     }
     run = init_wandb(args, config)
 
+    verification = None
     with torch.inference_mode(), evaluator.autocast_context(device):
+        if args.execution_mode == "bucket" and args.verify_bucket_frames > 0:
+            video = videos[0]
+            frame_idx, prompts = prepared[video]
+            verification = verify_bucket_equivalence(
+                base_predictor,
+                predictor,
+                evaluator,
+                args,
+                video,
+                max_objects,
+                frame_idx,
+                prompts,
+            )
+            print(json.dumps({"bucket_verification": verification}), flush=True)
+
         for video in videos[: args.warmup_videos]:
             frame_idx, prompts = prepared[video]
             measure_video(
@@ -391,6 +514,7 @@ def main() -> None:
         "load": load_summary,
         "warmup_videos": args.warmup_videos,
         "aggregate": aggregate,
+        "bucket_verification": verification,
         "latency_target_pass": bool(gate_rows)
         and all(int(row["target_pass"]) == 1 for row in gate_rows),
         "wandb_run_id": run.id if run is not None else None,
@@ -417,6 +541,11 @@ def main() -> None:
                 }
             )
         run.summary["latency_target_pass"] = summary["latency_target_pass"]
+        if verification is not None:
+            run.summary["bucket_equivalence_pass"] = verification["pass"]
+            run.summary["bucket_binary_mask_agreement"] = verification[
+                "binary_mask_agreement"
+            ]
         run.finish()
     print(json.dumps(summary, indent=2))
 
