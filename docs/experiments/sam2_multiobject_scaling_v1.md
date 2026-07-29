@@ -1,5 +1,10 @@
 # SAM2 Multi-Object Shared-Session Scaling v1
 
+The runtime-only study is complete. The learned fixed-slot decoder and shared
+memory K/V follow-up, including the four-node company runbook and 95% quality
+gate, is tracked in
+[`sam2_learned_object_slots_v1.md`](sam2_learned_object_slots_v1.md).
+
 ## Research question
 
 Can the current distilled SAM2 tracker handle more simultaneously prompted
