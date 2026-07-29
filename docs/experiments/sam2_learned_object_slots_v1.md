@@ -64,8 +64,12 @@ weight-compatible copy of SAM3.1:
 - `SharedSlotMemoryAttention` additionally superposes raw object memories
   before the existing memory-attention K/V projections. One four-layer
   memory-attention path then serves each bucket.
-- Point-prompted frames and sessions below four objects use the selected
-  legacy path. This protects interactive and one-object latency.
+- At inference, point-prompted frames and sessions below four objects use the
+  selected legacy path. This protects interactive and one-object latency.
+- During training, unprompted frames use slots at every available object
+  count so small sampled batches still teach the conditional slot tensors.
+  Prompted legacy fallbacks carry a zero-valued autograd anchor; this changes
+  no prediction but keeps frozen-base slot-only optimization and DDP valid.
 - Full SA-V evaluation uses learned buckets only when object histories are
   synchronized. Objects introduced on different frames explicitly fall back
   to the selected legacy tracker and are counted in
@@ -109,6 +113,17 @@ Each node runs:
 
 Expected wall time is approximately 7–10 hours per node and stays inside a
 12-hour allocation under the storage throughput observed in prior runs.
+
+### Runtime preflight record
+
+The first 2026-07-29 launches stopped before any optimizer update. MX2 exposed
+an unavailable optional `teacher_obj_ptr` target, while MX3/MX4 exposed the
+EdgeTAM `num_spatial_mem` interface. After those were corrected, MX2 reached
+backward but its first prompted batch used only the frozen legacy head. The
+current configuration disables object-pointer KD, forwards
+`num_spatial_mem`, trains slots on unprompted small-object batches, and keeps
+prompt fallbacks differentiable with a numerical-zero anchor. Retries reuse
+the original W&B IDs and run directories.
 
 ## Company data handling
 
