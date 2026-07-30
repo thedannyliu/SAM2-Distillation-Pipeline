@@ -128,12 +128,12 @@ echo "Summary status: ${PIPESTATUS[0]}"
 
 Recorded from
 `/group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2`.
-MX5 has no checkpoint, validation, test, or latency artifact. MX6–MX8 have
-their pipeline-complete marker and all expected artifacts.
+MX5–MX8 have their pipeline-complete marker and all expected checkpoint,
+validation, test, and latency artifacts.
 
 | Variant | Status | Val J&F | Test J&F | Min quality | Learned mask IoU | N1 FPS | N1 retention | N8 FPS | N8 gain | N8 ms | Promote |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| MX5 | incomplete | - | - | - | - | - | - | - | - | - | no |
+| MX5 | complete | 72.30 | 74.60 | 0.999 | not reported | 60.11 | 0.842 | 24.40 | +10.5% | 40.99 | no |
 | MX6 | complete | 63.60 | 60.30 | 0.807 | 1.000 | 60.28 | 0.845 | 49.06 | +122.3% | 20.38 | no |
 | MX7 | complete | 63.70 | 60.50 | 0.810 | 1.000 | 60.88 | 0.853 | 48.72 | +120.7% | 20.52 | no |
 | MX8 | complete | 63.60 | 60.30 | 0.807 | 1.000 | 59.26 | 0.830 | 48.79 | +121.0% | 20.50 | no |
@@ -146,27 +146,31 @@ minimum quality column is the lower of val and test retention relative to
 
 | Variant | N1 ms / FPS | N2 ms / FPS | N4 ms / FPS | N8 ms / FPS | N8 peak memory |
 |---|---:|---:|---:|---:|---:|
+| MX5 | 16.64 / 60.11 | 20.13 / 49.68 | 26.59 / 37.61 | 40.99 / 24.40 | 12497 MB |
 | MX6 | 16.59 / 60.28 | 20.00 / 49.99 | 18.01 / 55.52 | 20.38 / 49.06 | 11698 MB |
 | MX7 | 16.42 / 60.88 | 20.23 / 49.43 | 18.02 / 55.50 | 20.52 / 48.72 | 11680 MB |
 | MX8 | 16.88 / 59.26 | 20.03 / 49.93 | 18.22 / 54.89 | 20.50 / 48.79 | 11698 MB |
 
-All completed runs pass the configured N4 and N8 relative-latency targets but
-fail N2. Their N1 retention is only 83.0–85.3%, below the 95% gate.
+MX5 fails the configured N2, N4, and N8 relative-latency targets. MX6–MX8 pass
+N4 and N8 but fail N2. All four N1 retention values are only 83.0–85.3%,
+below the 95% gate.
 
 ### Quality localization
 
-All three completed variants preserve the image-only result:
+All four completed variants preserve the image-only result:
 
 | Split | mIoU | AP |
 |---|---:|---:|
 | SA-V val | 0.8403 | 0.7166 |
 | SA-V test | 0.8391 | 0.7191 |
 
-The loss is isolated to temporal tracking. MX6 reaches val/test J&F
+MX5 also preserves temporal quality at val/test J&F 72.3/74.6, or 99.9% of
+the reference. The loss is therefore specific to shared K/V: MX6 reaches
 63.6/60.3, MX7 reaches 63.7/60.5, and MX8 reaches 63.6/60.3. A learned-path
 mask IoU of 1.0 means the synchronized bucket and legacy execution paths agree
 for the same trained model; it does not mean that the model retains the
-72.4/74.7 reference tracking quality.
+72.4/74.7 reference tracking quality. MX5 learned-path IoU was not included
+in the recorded artifact output.
 
 ## Interpretation and decision
 
@@ -175,6 +179,13 @@ Shared K/V raises N8 throughput from 22.07 FPS to about 49 FPS, a 2.21–2.22×
 gain, while keeping image segmentation unchanged. However, every shared-K/V
 lane retains only 80.7–81.0% of reference video quality and loses 14.7–17.0%
 of reference N1 throughput.
+
+MX5 is the matched high-quality control. Longer T8 decoder training preserves
+99.9% of full tracking quality but reaches only 24.40 FPS at N8, a 10.5% gain
+over the runtime reference. Its N1 throughput is also only 84.2% of the
+reference. This confirms the central trade-off: keeping per-object temporal
+state preserves quality but leaves most of the multiplex latency, while fully
+sharing temporal K/V removes that latency at an unacceptable quality cost.
 
 The controlled KD sweep provides no evidence that more training or a larger
 distillation weight repairs the failure:
@@ -194,8 +205,7 @@ for the common scene context while adding an explicit low-rank per-object
 temporal residual. Use MX2 as the quality parent and compare residual capacity
 under the same N1, N8, and full-SA-V gates.
 
-MX7 is the best completed v2 quality endpoint, but its 0.810 minimum retention
-is far below the 0.95 promotion threshold. MX5 remains unresolved rather than
-failed: it produced no checkpoint or evaluation artifact, so its company log
-must be inspected before deciding whether to resume the matched decoder
-control.
+MX5 is the best v2 quality endpoint, but it fails the N1 retention and
+relative-latency gates. MX7 is the best shared-K/V quality endpoint, but its
+0.810 minimum retention is far below the 0.95 promotion threshold. No v2
+variant is promoted.
