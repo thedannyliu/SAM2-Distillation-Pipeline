@@ -594,6 +594,25 @@ def test_bucket_adapter_runs_one_tracker_call_per_bucket():
     )
 
 
+def test_bucket_adapter_supports_edgetam_state_without_tracking_bookkeeping():
+    predictor = FakeBucketPredictor()
+    adapter = SAM2ObjectBucketAdapter(predictor, bucket_size=4)
+    state = {
+        "obj_ids": ["a", "b", "c", "d"],
+        "num_frames": 2,
+        "device": torch.device("cpu"),
+        "output_dict_per_obj": {
+            index: object_output(float(index)) for index in range(4)
+        },
+    }
+
+    frames = list(adapter.propagate_in_video(state))
+
+    assert predictor.batch_sizes == [4]
+    assert [frame_idx for frame_idx, _, _ in frames] == [0, 1]
+    assert frames[-1][2][:, 0, 0, 0].tolist() == [1.0, 2.0, 3.0, 4.0]
+
+
 def test_bucket_adapter_uses_legacy_fast_path_below_threshold():
     predictor = FakeBucketPredictor()
     adapter = SAM2ObjectBucketAdapter(

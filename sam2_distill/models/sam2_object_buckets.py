@@ -268,10 +268,14 @@ class SAM2ObjectBucketAdapter:
                             local_idx : local_idx + 1
                         ]
 
-                for object_idx in object_indices:
-                    inference_state["frames_tracked_per_obj"][object_idx][frame_idx] = {
-                        "reverse": reverse
-                    }
+                frames_tracked_per_obj = inference_state.get(
+                    "frames_tracked_per_obj"
+                )
+                if frames_tracked_per_obj is not None:
+                    for object_idx in object_indices:
+                        frames_tracked_per_obj[object_idx][frame_idx] = {
+                            "reverse": reverse
+                        }
 
             if any(mask is None for mask in pred_masks_per_obj):
                 raise RuntimeError(f"Missing bucket output on frame {frame_idx}")
