@@ -698,6 +698,10 @@ def test_bucket_adapter_rejects_unsynchronized_history():
         ("MX2_slot8_decoder_kd_3ep", "1/0/0/1/0"),
         ("MX3_slot4_sharedkv_kd_3ep", "1/0/0.25/1/0"),
         ("MX4_slot8_sharedkv_kd_3ep", "1/0/0.25/1/0"),
+        ("MX5_slot8_decoder_t8_logits2_5ep", "1/0/0/2/0"),
+        ("MX6_slot8_sharedkv_t8_mem1_5ep", "1/0/1/2/0"),
+        ("MX7_slot8_sharedkv_t8_mem4_5ep", "1/0/4/2/0"),
+        ("MX8_slot8_sharedkv_t8_mem1_logits4_5ep", "1/0/1/4/0"),
     ],
 )
 def test_object_slot_variants_do_not_require_missing_teacher_pointer(

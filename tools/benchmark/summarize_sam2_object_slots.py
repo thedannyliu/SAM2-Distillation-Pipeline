@@ -50,6 +50,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-quality-retention", type=float, default=0.95)
     parser.add_argument("--min-learned-mask-iou", type=float, default=0.95)
     parser.add_argument("--min-n1-fps-retention", type=float, default=0.95)
+    parser.add_argument(
+        "--variants",
+        default=",".join(VARIANTS),
+        help="Comma-separated variant names to include.",
+    )
     return parser.parse_args()
 
 
@@ -85,6 +90,7 @@ def build_rows(
     min_quality_retention: float,
     min_learned_mask_iou: float,
     min_n1_fps_retention: float,
+    variants: tuple[str, ...] = VARIANTS,
 ) -> list[dict[str, Any]]:
     central_rows = {
         row["variant"]: row for row in read_csv(run_root / "summary.csv")
@@ -93,7 +99,7 @@ def build_rows(
     reference_n1 = float(reference[1]["median_propagation_fps"])
     reference_n8 = float(reference[8]["median_propagation_fps"])
     rows = []
-    for variant in VARIANTS:
+    for variant in variants:
         central = central_rows.get(variant, {})
         latency_dir = (
             run_root
@@ -236,6 +242,13 @@ def markdown(
 
 def main() -> None:
     args = parse_args()
+    variants = tuple(
+        variant.strip()
+        for variant in args.variants.split(",")
+        if variant.strip()
+    )
+    if not variants:
+        raise SystemExit("--variants must contain at least one variant")
     rows = build_rows(
         args.run_root,
         args.reference_latency_dir,
@@ -244,6 +257,7 @@ def main() -> None:
         args.min_quality_retention,
         args.min_learned_mask_iou,
         args.min_n1_fps_retention,
+        variants,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.out_dir / "object_slot_results.csv", rows)

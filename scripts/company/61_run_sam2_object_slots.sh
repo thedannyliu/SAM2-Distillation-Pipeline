@@ -10,6 +10,10 @@ VARIANTS=(
   MX2_slot8_decoder_kd_3ep
   MX3_slot4_sharedkv_kd_3ep
   MX4_slot8_sharedkv_kd_3ep
+  MX5_slot8_decoder_t8_logits2_5ep
+  MX6_slot8_sharedkv_t8_mem1_5ep
+  MX7_slot8_sharedkv_t8_mem4_5ep
+  MX8_slot8_sharedkv_t8_mem1_logits4_5ep
 )
 
 is_variant() {
@@ -55,7 +59,16 @@ fi
 
 SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
-RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/sam2_object_slots_v1}"
+if [[ -z "${RUN_ROOT:-}" ]]; then
+  case "${VARIANT}" in
+    MX5_*|MX6_*|MX7_*|MX8_*)
+      RUN_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v2"
+      ;;
+    *)
+      RUN_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v1"
+      ;;
+  esac
+fi
 SUMMARY_CSV="${SUMMARY_CSV:-${RUN_ROOT}/summary.csv}"
 WANDB_PROJECT="${WANDB_PROJECT:-sam2-object-slots-v1}"
 WANDB_MODE="${WANDB_MODE:-online}"
@@ -89,7 +102,7 @@ MIN_N1_FPS_RETENTION="${MIN_N1_FPS_RETENTION:-0.95}"
 slot_count() {
   case "$1" in
     MX1_*|MX3_*) echo 4 ;;
-    MX2_*|MX4_*) echo 8 ;;
+    MX2_*|MX4_*|MX5_*|MX6_*|MX7_*|MX8_*) echo 8 ;;
     *) return 2 ;;
   esac
 }

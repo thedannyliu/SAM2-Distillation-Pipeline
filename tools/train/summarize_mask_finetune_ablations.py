@@ -34,6 +34,26 @@ REGISTRY = {
         "Add eight-way learned memory superposition so one memory-attention K/V path and one mask decoder serve each object bucket.",
         "MX2_slot8_decoder_kd_3ep",
     ),
+    "MX5_slot8_decoder_t8_logits2_5ep": (
+        "long_context_slot_decoder",
+        "Continue the quality-preserving slot8 decoder on T8 clips with stronger propagated-mask distillation.",
+        "MX2_slot8_decoder_kd_3ep",
+    ),
+    "MX6_slot8_sharedkv_t8_mem1_5ep": (
+        "shared_memory_kv_recovery",
+        "Recover slot8 shared memory K/V on T8 clips with memory KD weight one and mask-logit KD weight two.",
+        "MX2_slot8_decoder_kd_3ep",
+    ),
+    "MX7_slot8_sharedkv_t8_mem4_5ep": (
+        "shared_memory_kv_recovery",
+        "Test whether strong memory KD weight four restores identity under slot8 shared K/V.",
+        "MX2_slot8_decoder_kd_3ep",
+    ),
+    "MX8_slot8_sharedkv_t8_mem1_logits4_5ep": (
+        "shared_memory_kv_recovery",
+        "Test stronger propagated-mask KD with memory KD weight one under slot8 shared K/V.",
+        "MX2_slot8_decoder_kd_3ep",
+    ),
     "MO0_mem4_task_dense8_5ep": (
         "multiobject_memory_depth_control",
         "Continue the selected four-layer SAM2 temporal path on dense eight-object clips with task loss only.",
