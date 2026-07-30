@@ -125,6 +125,13 @@ current configuration disables object-pointer KD, forwards
 prompt fallbacks differentiable with a numerical-zero anchor. Retries reuse
 the original W&B IDs and run directories.
 
+The completed runs later exposed one evaluation-only compatibility issue:
+EdgeTAM inference state does not contain the optional official-SAM2
+`frames_tracked_per_obj` bookkeeping map. Commit `c398c34` made the persistent
+bucket adapter update that map only when the predictor provides it. No
+training weights changed, and all four existing checkpoints resumed directly
+into the unfinished VOS and latency stages.
+
 ## Company data handling
 
 No additional labels or teacher cache are required. The runner deterministically
@@ -241,14 +248,77 @@ verification prevents asynchronous fallback from hiding a poor learned path.
 learned buckets, the small-object legacy path, or the asynchronous legacy
 fallback.
 
+The company image does not necessarily provide `rg`. If the optional log scan
+prints `xargs: rg: No such file or directory`, that is a missing audit utility,
+not an experiment failure; the pipeline status, metrics, and comparison
+artifacts above remain authoritative.
+
 ## Result table
 
 This table answers whether decoder sharing alone is enough and whether true
 shared memory K/V advances the quality–latency frontier.
 
-| Variant | Val J&F | Test J&F | Quality retention | N1 FPS retention | N8 FPS | N8 gain vs 22.07 | N8 ms | Peak MB | Promote |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| MX1 slot4 decoder | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| MX2 slot8 decoder | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| MX3 slot4 shared K/V | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| MX4 slot8 shared K/V | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+All four 2026-07-30 pipelines completed train, full SA-V val, full SA-V test,
+and isolated N=1/2/4/8 latency. None passes every promotion gate.
+
+| Variant | Val J&F | Test J&F | Min quality retention | Learned mask IoU | N1 FPS | N1 retention | N8 FPS | N8 gain vs 22.07 | N8 ms | Peak MB | Promote |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| MX1 slot4 decoder | 72.3 | 74.6 | 0.999 | 0.000 | 59.68 | 0.836 | 21.68 | -1.8% | 46.13 | 11,977 | no |
+| MX2 slot8 decoder | 72.3 | 74.6 | 0.999 | 1.000 | 61.65 | 0.864 | 24.46 | +10.8% | 40.88 | 12,513 | no |
+| MX3 slot4 shared K/V | 63.8 | 60.9 | 0.815 | 0.413 | 60.66 | 0.850 | 34.52 | +56.4% | 28.97 | 11,581 | no |
+| MX4 slot8 shared K/V | 63.6 | 60.2 | 0.806 | 1.000 | 59.87 | 0.839 | 49.03 | +122.1% | 20.39 | 11,662 | no |
+
+The image-only metrics are effectively unchanged across all four runs
+(validation mIoU 0.8403/AP 0.7166 and test mIoU 0.8391/AP 0.7191), as expected
+from the frozen image path. The differences are temporal:
+
+- **MX1 is rejected.** Hybrid full-set J&F is retained, but minimum learned
+  mask IoU is zero and N=8 is slightly slower than the persistent runtime
+  bucket. The full-set score is therefore not evidence that its synchronized
+  slot4 path is correct; legacy/asynchronous fallback protects much of that
+  evaluation.
+- **MX2 is the best learned-decoder result.** It retains 99.9% of full
+  tracking quality, has perfect measured learned-path mask agreement, and
+  improves N=8 FPS by 10.8% over the persistent bucket. It is not promoted
+  because N=1 retains only 86.4% of reference FPS rather than the required
+  95%.
+- **MX3 confirms that shared K/V creates real speed but loses object
+  identity.** N=8 improves 56.4%, while minimum quality retention falls to
+  81.5% and learned-path mask IoU to 0.413.
+- **MX4 establishes the latency upper bound.** One slot8 shared-K/V bucket
+  reaches 49.03 FPS at N=8, 2.22× the persistent-bucket reference, but full
+  tracking retention is only 80.6%. Its learned mask IoU of 1.0 does not mean
+  reference-model quality is preserved: that check compares bucket and
+  legacy execution inside the same already-degraded trained model.
+
+The causal conclusion is that decoder multiplexing is compatible with the
+selected SAM2 behavior, while fully collapsing temporal memory K/V removes
+information needed for persistent object identity. The useful frontier is
+between MX2 and MX4, not at either extreme.
+
+## Decision and next experiment
+
+Do not deploy any v1 learned-slot checkpoint. Keep the existing persistent
+runtime bucket as the deployment candidate and use MX2 as the parent for the
+next learned experiment.
+
+The next controlled intervention should preserve an explicit per-object
+temporal residual while sharing most K/V computation:
+
+```text
+shared bucket K/V
+  + low-rank per-object residual K/V
+  + temporal rollout distillation from the selected TV21M teacher
+```
+
+Run capacity eight first because MX2 shows that its decoder slot assignment is
+stable. Compare three residual ranks against MX2 and MX4 under the same seed,
+full val/test, and latency cohort. Select on validation J&F retention before
+examining test. In parallel, profile MX2 with a true external legacy bypass
+for N<4 and a paired same-checkpoint legacy/bucket benchmark; this determines
+whether its N=1 loss is avoidable orchestration overhead rather than learned
+model cost.
+
+Before any promotion, repeat the latency and identity tests on a company-only
+held-out cohort with multiple 8/16/32-object videos. The current N=8 latency
+table has three repetitions but only one eligible SA-V video.
