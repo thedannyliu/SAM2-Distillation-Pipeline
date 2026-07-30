@@ -272,6 +272,7 @@ def initialize_object_slot_model(
     new_prefixes = (
         "object_slot_decoder.",
         "memory_attention.slot_memory_scale",
+        "memory_attention.object_residual.",
     )
     merged: dict[str, torch.Tensor] = {}
     copied = 0

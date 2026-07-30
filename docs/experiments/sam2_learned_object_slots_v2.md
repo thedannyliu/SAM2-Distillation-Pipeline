@@ -202,8 +202,12 @@ sweeps. The evidence points to a representational bottleneck: fully shared
 temporal K/V removes object-specific temporal information that the current
 decoder cannot reconstruct. The next architecture should retain shared K/V
 for the common scene context while adding an explicit low-rank per-object
-temporal residual. Use MX2 as the quality parent and compare residual capacity
-under the same N1, N8, and full-SA-V gates.
+temporal residual. Use the quality-preserving decoder path as the parent and
+compare residual capacity under the same N1, N8, and full-SA-V gates.
+
+That follow-up is implemented in
+[`sam2_object_slots_v3.md`](sam2_object_slots_v3.md), using the completed MX5
+T8 decoder checkpoint as the stronger quality parent.
 
 MX5 is the best v2 quality endpoint, but it fails the N1 retention and
 relative-latency gates. MX7 is the best shared-K/V quality endpoint, but its

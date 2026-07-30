@@ -14,6 +14,10 @@ VARIANTS=(
   MX6_slot8_sharedkv_t8_mem1_5ep
   MX7_slot8_sharedkv_t8_mem4_5ep
   MX8_slot8_sharedkv_t8_mem1_logits4_5ep
+  MX9_slot8_sharedkv_r4_t8_5ep
+  MX10_slot8_sharedkv_r8_t8_5ep
+  MX11_slot8_sharedkv_r16_t8_5ep
+  MX12_slot8_sharedkv_r8_ptr8_t8_5ep
   MO0_mem4_task_dense8_5ep
   MO1_mem2_task_dense8_5ep
   MO2_mem2_logits_dense8_5ep
@@ -98,6 +102,7 @@ BEST_TV21_RUN="${BEST_TV21_RUN:-${SAM2D_ROOT}/runs/tinyvit_max_jf_v1/tv21/main}"
 BEST_TV21_CHECKPOINT="${BEST_TV21_CHECKPOINT:-${BEST_TV21_RUN}/checkpoints/best.pt}"
 BEST_TV21_CONFIG="${BEST_TV21_CONFIG:-${BEST_TV21_RUN}/resolved_config.yaml}"
 MX2_SLOT8_CHECKPOINT="${MX2_SLOT8_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/checkpoints/last.pt}"
+MX5_SLOT8_CHECKPOINT="${MX5_SLOT8_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/checkpoints/last.pt}"
 A02_BASE_CHECKPOINT="${A02_BASE_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/A02_e2e_t4_official_prompt/main/checkpoints/checkpoint.pt}"
 BASE_CHECKPOINT="${BASE_CHECKPOINT:-${A02_BASE_CHECKPOINT}}"
 M0_RUN_DIR="${M0_RUN_DIR:-${SAM2D_ROOT}/runs/edgetam_memory_ablation_v1/M0_sam2_mem4/main}"
@@ -107,7 +112,11 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == MX5_* || "${VARIANT}" == MX6_* || \
+if [[ "${VARIANT}" == MX9_* || "${VARIANT}" == MX10_* || \
+      "${VARIANT}" == MX11_* || "${VARIANT}" == MX12_* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v3"
+  DEFAULT_WANDB_PROJECT="sam2-object-slots-v3"
+elif [[ "${VARIANT}" == MX5_* || "${VARIANT}" == MX6_* || \
       "${VARIANT}" == MX7_* || "${VARIANT}" == MX8_* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v2"
   DEFAULT_WANDB_PROJECT="sam2-object-slots-v2"
@@ -188,7 +197,10 @@ PY
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == MX5_* || "$1" == MX6_* || \
+  if [[ "$1" == MX9_* || "$1" == MX10_* || \
+        "$1" == MX11_* || "$1" == MX12_* ]]; then
+    export TASK_EXPERIMENT_SUITE=sam2_object_slots_v3
+  elif [[ "$1" == MX5_* || "$1" == MX6_* || \
         "$1" == MX7_* || "$1" == MX8_* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_object_slots_v2
   elif [[ "$1" == MX* ]]; then
@@ -257,6 +269,8 @@ configure_variant() {
   export TASK_OBJECT_SLOT_MODE=none
   export TASK_OBJECT_SLOT_COUNT=0
   export TASK_OBJECT_SLOT_MIN_OBJECTS=4
+  export TASK_OBJECT_RESIDUAL_RANK=0
+  export TASK_OBJECT_POINTER_RESIDUAL_RANK=0
   export TASK_OFFICIAL_EDGETAM_MODEL=0
   export STUDENT_FAMILY=tinyvit
   export TASK_LOSS_MASK_WEIGHT=20
@@ -493,6 +507,38 @@ configure_variant() {
       export TASK_LAMBDA_MEM=1
       export TASK_LAMBDA_MASK_LOGITS=4
       export TASK_LAMBDA_OBJ_PTR=0
+      ;;
+    MX9_slot8_sharedkv_r4_t8_5ep|\
+    MX10_slot8_sharedkv_r8_t8_5ep|\
+    MX11_slot8_sharedkv_r16_t8_5ep|\
+    MX12_slot8_sharedkv_r8_ptr8_t8_5ep)
+      export BASE_CHECKPOINT="${MX5_SLOT8_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_EPOCHS=5
+      export TASK_NUM_FRAMES=8
+      export TASK_TRAINABLE_MODE=object_slot_shared_kv
+      export TASK_MEMORY_LR=3.0e-5
+      export TASK_MEMORY_LR_END=3.0e-6
+      export TASK_MEMORY_AUX_LR=1.0e-5
+      export TASK_MEMORY_AUX_LR_END=1.0e-6
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_OBJECT_SLOT_MODE=shared_kv
+      export TASK_OBJECT_SLOT_COUNT=8
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MEM=1
+      export TASK_LAMBDA_MASK_LOGITS=2
+      export TASK_LAMBDA_OBJ_PTR=0
+      case "$1" in
+        MX9_*) export TASK_OBJECT_RESIDUAL_RANK=4 ;;
+        MX10_*) export TASK_OBJECT_RESIDUAL_RANK=8 ;;
+        MX11_*) export TASK_OBJECT_RESIDUAL_RANK=16 ;;
+        MX12_*)
+          export TASK_OBJECT_RESIDUAL_RANK=8
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          ;;
+      esac
       ;;
     MO0_mem4_task_dense8_5ep)
       export TASK_MEMORY_TOPOLOGY=standard4
@@ -1248,6 +1294,7 @@ case "${ACTION}" in
       echo "Prompt point/box/GT: ${TASK_PROB_USE_POINT}/${TASK_PROB_USE_BOX}/${TASK_PROB_SAMPLE_GT}"
       echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
       echo "Loss task/image/memory/logits/obj: ${TASK_LAMBDA_TASK}/${TASK_LAMBDA_IMG}/${TASK_LAMBDA_MEM}/${TASK_LAMBDA_MASK_LOGITS}/${TASK_LAMBDA_OBJ_PTR}"
+      echo "Object residual spatial/pointer rank: ${TASK_OBJECT_RESIDUAL_RANK}/${TASK_OBJECT_POINTER_RESIDUAL_RANK}"
       echo "Base: ${BASE_CHECKPOINT}"
       echo "Teacher: ${TASK_TEACHER_CHECKPOINT:-none}"
     fi

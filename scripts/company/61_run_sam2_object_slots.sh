@@ -14,6 +14,10 @@ VARIANTS=(
   MX6_slot8_sharedkv_t8_mem1_5ep
   MX7_slot8_sharedkv_t8_mem4_5ep
   MX8_slot8_sharedkv_t8_mem1_logits4_5ep
+  MX9_slot8_sharedkv_r4_t8_5ep
+  MX10_slot8_sharedkv_r8_t8_5ep
+  MX11_slot8_sharedkv_r16_t8_5ep
+  MX12_slot8_sharedkv_r8_ptr8_t8_5ep
 )
 
 is_variant() {
@@ -61,6 +65,9 @@ SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
 if [[ -z "${RUN_ROOT:-}" ]]; then
   case "${VARIANT}" in
+    MX9_*|MX10_*|MX11_*|MX12_*)
+      RUN_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v3"
+      ;;
     MX5_*|MX6_*|MX7_*|MX8_*)
       RUN_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v2"
       ;;
@@ -102,7 +109,7 @@ MIN_N1_FPS_RETENTION="${MIN_N1_FPS_RETENTION:-0.95}"
 slot_count() {
   case "$1" in
     MX1_*|MX3_*) echo 4 ;;
-    MX2_*|MX4_*|MX5_*|MX6_*|MX7_*|MX8_*) echo 8 ;;
+    MX2_*|MX4_*|MX5_*|MX6_*|MX7_*|MX8_*|MX9_*|MX10_*|MX11_*|MX12_*) echo 8 ;;
     *) return 2 ;;
   esac
 }

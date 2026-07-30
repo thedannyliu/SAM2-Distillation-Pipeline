@@ -21,6 +21,108 @@ def _slot_codes(slot_count: int, channels: int) -> torch.Tensor:
     return codes / codes.square().mean(dim=1, keepdim=True).sqrt()
 
 
+class _LowRankMemoryProjection(nn.Module):
+    def __init__(self, memory_dim: int, rank: int, d_model: int) -> None:
+        super().__init__()
+        self.norm = nn.LayerNorm(memory_dim)
+        self.down = nn.Linear(memory_dim, rank, bias=False)
+        self.up = nn.Linear(rank, d_model, bias=False)
+        nn.init.zeros_(self.up.weight)
+
+    def encode(self, value: torch.Tensor) -> torch.Tensor:
+        return F.gelu(self.down(self.norm(value)))
+
+    def decode(self, value: torch.Tensor) -> torch.Tensor:
+        return self.up(value)
+
+
+class LowRankObjectMemoryResidual(nn.Module):
+    """Restore cheap object-specific state after bucket-shared attention.
+
+    Spatial memory tokens are aligned with the current feature grid and
+    averaged over memory frames. Object-pointer tokens are pooled separately.
+    Each enabled path uses a low-rank projection into the SAM hidden
+    dimension, avoiding another per-object memory-attention stack.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        memory_dim: int,
+        spatial_rank: int,
+        pointer_rank: int,
+    ) -> None:
+        super().__init__()
+        if spatial_rank < 0 or pointer_rank < 0:
+            raise ValueError("Object residual ranks must be non-negative")
+        if spatial_rank == 0 and pointer_rank == 0:
+            raise ValueError("At least one object residual path is required")
+        self.d_model = d_model
+        self.memory_dim = memory_dim
+        self.spatial_rank = spatial_rank
+        self.pointer_rank = pointer_rank
+        self.spatial_path = self._make_path(spatial_rank)
+        self.pointer_path = self._make_path(pointer_rank)
+
+    def _make_path(
+        self, rank: int
+    ) -> _LowRankMemoryProjection | None:
+        if rank == 0:
+            return None
+        return _LowRankMemoryProjection(
+            memory_dim=self.memory_dim,
+            rank=rank,
+            d_model=self.d_model,
+        )
+
+    @staticmethod
+    def _align_spatial_memory(
+        spatial_memory: torch.Tensor,
+        query_tokens: int,
+    ) -> torch.Tensor:
+        spatial_tokens, object_count, channels = spatial_memory.shape
+        if spatial_tokens % query_tokens == 0:
+            return spatial_memory.reshape(
+                -1, query_tokens, object_count, channels
+            ).mean(dim=0)
+        return spatial_memory.mean(dim=0, keepdim=True).expand(
+            query_tokens, -1, -1
+        )
+
+    def forward(
+        self,
+        memory: torch.Tensor,
+        *,
+        memory_pos: torch.Tensor | None,
+        query_tokens: int,
+        num_obj_ptr_tokens: int,
+    ) -> torch.Tensor:
+        if num_obj_ptr_tokens < 0 or num_obj_ptr_tokens > memory.shape[0]:
+            raise ValueError("Invalid object-pointer token count")
+        if memory_pos is not None and memory_pos.shape != memory.shape:
+            raise ValueError("Memory and positional encoding shapes differ")
+        positioned_memory = (
+            memory if memory_pos is None else memory + memory_pos
+        )
+        object_count = memory.shape[1]
+        residual = memory.new_zeros(
+            query_tokens, object_count, self.d_model
+        )
+        spatial_end = memory.shape[0] - num_obj_ptr_tokens
+        if self.spatial_path is not None and spatial_end > 0:
+            spatial = self.spatial_path.encode(
+                positioned_memory[:spatial_end]
+            )
+            spatial = self._align_spatial_memory(spatial, query_tokens)
+            residual = residual + self.spatial_path.decode(spatial)
+        if self.pointer_path is not None and num_obj_ptr_tokens > 0:
+            pointers = self.pointer_path.encode(
+                positioned_memory[spatial_end:]
+            ).mean(dim=0)
+            residual = residual + self.pointer_path.decode(pointers)[None]
+        return residual
+
+
 class SharedSlotMemoryAttention(nn.Module):
     """Superpose per-object memories before projecting attention K/V.
 
@@ -42,6 +144,8 @@ class SharedSlotMemoryAttention(nn.Module):
         slot_count: int = 8,
         min_objects: int = 4,
         memory_dim: int = 64,
+        object_residual_rank: int = 0,
+        object_pointer_residual_rank: int = 0,
     ) -> None:
         super().__init__()
         if slot_count < 1:
@@ -61,6 +165,17 @@ class SharedSlotMemoryAttention(nn.Module):
         self.memory_dim = memory_dim
         self.slot_memory_scale = nn.Parameter(
             _slot_codes(slot_count, memory_dim)
+        )
+        self.object_residual = (
+            LowRankObjectMemoryResidual(
+                d_model=d_model,
+                memory_dim=memory_dim,
+                spatial_rank=object_residual_rank,
+                pointer_rank=object_pointer_residual_rank,
+            )
+            if object_residual_rank > 0
+            or object_pointer_residual_rank > 0
+            else None
         )
 
     def _run_attention(
@@ -180,9 +295,17 @@ class SharedSlotMemoryAttention(nn.Module):
             num_obj_ptr_tokens,
             num_spatial_mem,
         )
-        return output.repeat_interleave(self.slot_count, dim=1)[
+        output = output.repeat_interleave(self.slot_count, dim=1)[
             :, :object_count
         ]
+        if self.object_residual is not None:
+            output = output + self.object_residual(
+                memory,
+                memory_pos=memory_pos,
+                query_tokens=curr.shape[0],
+                num_obj_ptr_tokens=num_obj_ptr_tokens,
+            )
+        return output
 
 
 class LearnedObjectSlotDecoder(nn.Module):

@@ -54,6 +54,26 @@ REGISTRY = {
         "Test stronger propagated-mask KD with memory KD weight one under slot8 shared K/V.",
         "MX2_slot8_decoder_kd_3ep",
     ),
+    "MX9_slot8_sharedkv_r4_t8_5ep": (
+        "object_memory_residual_capacity",
+        "Add a rank-four aligned per-object spatial-memory residual after slot8 shared K/V.",
+        "MX5_slot8_decoder_t8_logits2_5ep",
+    ),
+    "MX10_slot8_sharedkv_r8_t8_5ep": (
+        "object_memory_residual_capacity",
+        "Add a rank-eight aligned per-object spatial-memory residual after slot8 shared K/V.",
+        "MX9_slot8_sharedkv_r4_t8_5ep",
+    ),
+    "MX11_slot8_sharedkv_r16_t8_5ep": (
+        "object_memory_residual_capacity",
+        "Add a rank-sixteen aligned per-object spatial-memory residual after slot8 shared K/V.",
+        "MX10_slot8_sharedkv_r8_t8_5ep",
+    ),
+    "MX12_slot8_sharedkv_r8_ptr8_t8_5ep": (
+        "object_pointer_identity_bypass",
+        "Add a rank-eight object-pointer bypass to the rank-eight spatial residual.",
+        "MX10_slot8_sharedkv_r8_t8_5ep",
+    ),
     "MO0_mem4_task_dense8_5ep": (
         "multiobject_memory_depth_control",
         "Continue the selected four-layer SAM2 temporal path on dense eight-object clips with task loss only.",
@@ -355,6 +375,8 @@ FIELDNAMES = [
     "object_slot_mode",
     "object_slot_count",
     "object_slot_min_objects",
+    "object_residual_rank",
+    "object_pointer_residual_rank",
     "total_parameters",
     "trainable_parameters",
     "encoder_lr",
@@ -491,6 +513,12 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         "object_slot_count": os.environ.get("TASK_OBJECT_SLOT_COUNT", "0"),
         "object_slot_min_objects": os.environ.get(
             "TASK_OBJECT_SLOT_MIN_OBJECTS", "4"
+        ),
+        "object_residual_rank": os.environ.get(
+            "TASK_OBJECT_RESIDUAL_RANK", "0"
+        ),
+        "object_pointer_residual_rank": os.environ.get(
+            "TASK_OBJECT_POINTER_RESIDUAL_RANK", "0"
         ),
         "encoder_lr": os.environ.get("TASK_ENCODER_LR", ""),
         "encoder_lr_end": os.environ.get("TASK_ENCODER_LR_END", ""),

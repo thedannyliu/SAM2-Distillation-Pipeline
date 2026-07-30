@@ -102,6 +102,11 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
                         "SharedSlotMemoryAttention"
                     )
                 slot_memory_scale.requires_grad = True
+                object_residual = getattr(
+                    self.memory_attention, "object_residual", None
+                )
+                if isinstance(object_residual, torch.nn.Module):
+                    modules.append(object_residual)
         elif mode == "mask_decoder_only":
             modules = [self.sam_mask_decoder]
         elif mode in {

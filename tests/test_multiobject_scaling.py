@@ -38,6 +38,7 @@ from sam2_distill.models.sam2_object_buckets import (
 )
 from sam2_distill.models.sam2_object_slots import (
     LearnedObjectSlotDecoder,
+    LowRankObjectMemoryResidual,
     ObjectSlotModelMixin,
     SharedSlotMemoryAttention,
 )
@@ -352,6 +353,42 @@ def test_shared_slot_memory_attention_keeps_small_batch_legacy_path():
     assert module.layers[0].batch_sizes == [2]
 
 
+def test_low_rank_object_residual_restores_distinct_bucket_outputs():
+    module = SharedSlotMemoryAttention(
+        d_model=4,
+        pos_enc_at_input=False,
+        layer=FakeMemoryAttentionLayer(),
+        num_layers=1,
+        batch_first=True,
+        slot_count=4,
+        min_objects=4,
+        memory_dim=4,
+        object_residual_rank=2,
+        object_pointer_residual_rank=2,
+    )
+    assert isinstance(module.object_residual, LowRankObjectMemoryResidual)
+    curr = torch.randn(3, 8, 4)
+    memory = torch.randn(8, 8, 4)
+    initial_residual = module.object_residual(
+        memory,
+        memory_pos=None,
+        query_tokens=curr.shape[0],
+        num_obj_ptr_tokens=2,
+    )
+    assert torch.count_nonzero(initial_residual) == 0
+    with torch.no_grad():
+        module.object_residual.spatial_path.up.weight.fill_(0.25)
+        module.object_residual.pointer_path.up.weight.fill_(0.25)
+
+    output = module(curr, memory, num_obj_ptr_tokens=2)
+    output.sum().backward()
+
+    assert output.shape == curr.shape
+    assert not torch.equal(output[:, 0], output[:, 1])
+    assert module.object_residual.spatial_path.up.weight.grad is not None
+    assert module.object_residual.pointer_path.up.weight.grad is not None
+
+
 class FakeMaskTransformer(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -478,10 +515,15 @@ def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
     target = torch.nn.Module()
     target.projection = torch.nn.Linear(2, 2, bias=False)
     target.object_slot_decoder = torch.nn.Linear(2, 2, bias=False)
+    target.memory_attention = torch.nn.Module()
+    target.memory_attention.object_residual = torch.nn.Linear(
+        2, 2, bias=False
+    )
     with torch.no_grad():
         source.projection.weight.fill_(3)
         target.projection.weight.zero_()
         target.object_slot_decoder.weight.fill_(7)
+        target.memory_attention.object_residual.weight.fill_(5)
     checkpoint = tmp_path / "selected.pt"
     torch.save({"model": source.state_dict()}, checkpoint)
 
@@ -489,6 +531,7 @@ def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
 
     assert torch.equal(target.projection.weight, source.projection.weight)
     assert torch.all(target.object_slot_decoder.weight == 7)
+    assert torch.all(target.memory_attention.object_residual.weight == 5)
 
 
 def compact_output(value: float) -> dict:
@@ -702,6 +745,10 @@ def test_bucket_adapter_rejects_unsynchronized_history():
         ("MX6_slot8_sharedkv_t8_mem1_5ep", "1/0/1/2/0"),
         ("MX7_slot8_sharedkv_t8_mem4_5ep", "1/0/4/2/0"),
         ("MX8_slot8_sharedkv_t8_mem1_logits4_5ep", "1/0/1/4/0"),
+        ("MX9_slot8_sharedkv_r4_t8_5ep", "1/0/1/2/0"),
+        ("MX10_slot8_sharedkv_r8_t8_5ep", "1/0/1/2/0"),
+        ("MX11_slot8_sharedkv_r16_t8_5ep", "1/0/1/2/0"),
+        ("MX12_slot8_sharedkv_r8_ptr8_t8_5ep", "1/0/1/2/0"),
     ],
 )
 def test_object_slot_variants_do_not_require_missing_teacher_pointer(
@@ -725,5 +772,39 @@ def test_object_slot_variants_do_not_require_missing_teacher_pointer(
 
     assert (
         f"Loss task/image/memory/logits/obj: {expected_losses}"
+        in result.stdout
+    )
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected_ranks"),
+    [
+        ("MX9_slot8_sharedkv_r4_t8_5ep", "4/0"),
+        ("MX10_slot8_sharedkv_r8_t8_5ep", "8/0"),
+        ("MX11_slot8_sharedkv_r16_t8_5ep", "16/0"),
+        ("MX12_slot8_sharedkv_r8_ptr8_t8_5ep", "8/8"),
+    ],
+)
+def test_object_slot_v3_variants_set_residual_ranks(
+    variant,
+    expected_ranks,
+):
+    repo_root = Path(__file__).resolve().parents[1]
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "describe",
+            variant,
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert (
+        f"Object residual spatial/pointer rank: {expected_ranks}"
         in result.stdout
     )

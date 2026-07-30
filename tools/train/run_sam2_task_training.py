@@ -120,6 +120,14 @@ def init_wandb(args: argparse.Namespace):
             "object_slot_min_objects": int(
                 os.environ.get("TASK_OBJECT_SLOT_MIN_OBJECTS", "4")
             ),
+            "object_residual_rank": int(
+                os.environ.get("TASK_OBJECT_RESIDUAL_RANK", "0")
+            ),
+            "object_pointer_residual_rank": int(
+                os.environ.get(
+                    "TASK_OBJECT_POINTER_RESIDUAL_RANK", "0"
+                )
+            ),
             "teacher_checkpoint": os.environ.get(
                 "TASK_TEACHER_CHECKPOINT", ""
             ),
@@ -684,6 +692,12 @@ def apply_object_slot_overrides(config) -> None:
         model.memory_attention.slot_count = slot_count
         model.memory_attention.min_objects = min_objects
         model.memory_attention.memory_dim = 64
+        model.memory_attention.object_residual_rank = int(
+            os.environ.get("TASK_OBJECT_RESIDUAL_RANK", "0")
+        )
+        model.memory_attention.object_pointer_residual_rank = int(
+            os.environ.get("TASK_OBJECT_POINTER_RESIDUAL_RANK", "0")
+        )
 
     config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(
         {
