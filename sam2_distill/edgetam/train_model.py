@@ -17,6 +17,7 @@ from sam2_distill.edgetam.teacher_features import (
     attach_synthetic_teacher_features,
     attach_teacher_features,
     extract_teacher_model_state,
+    flatten_tracking_outputs,
 )
 from sam2_distill.models.sam2_object_slots import ObjectSlotModelMixin
 from training.model.sam2 import SAM2Train
@@ -37,6 +38,7 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
         freeze_batchnorm: bool = False,
         object_slot_count: int = 0,
         object_slot_min_objects: int = 4,
+        expose_obj_ptr_for_distillation: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -44,6 +46,9 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
         self.image_encoder_activation_checkpoint = image_encoder_activation_checkpoint
         self.trainable_module_mode = trainable_module_mode
         self.freeze_batchnorm = freeze_batchnorm
+        self.expose_obj_ptr_for_distillation = (
+            expose_obj_ptr_for_distillation
+        )
         self._frozen_eval_modules: list[torch.nn.Module] = []
         self.trainable_parameter_summary = None
         self._init_object_slots(
@@ -223,6 +228,26 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
             else:
                 chunks.append(self._forward_image_impl(chunk))
         return self._concat_backbone_outputs(chunks)
+
+    def forward_tracking(self, backbone_out, input, return_dict=False):
+        if not self.expose_obj_ptr_for_distillation:
+            return super().forward_tracking(
+                backbone_out,
+                input,
+                return_dict=return_dict,
+            )
+        output_dict = super().forward_tracking(
+            backbone_out,
+            input,
+            return_dict=True,
+        )
+        if return_dict:
+            return output_dict
+        return flatten_tracking_outputs(
+            output_dict,
+            input.num_frames,
+            keep_obj_ptr=True,
+        )
 
     def _forward_image_impl(self, img_batch: torch.Tensor) -> dict:
         if getattr(
@@ -417,6 +442,7 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
                 "num_frames_to_correct_for_eval",
                 "num_init_cond_frames_for_eval",
                 "forward_backbone_per_frame_for_eval",
+                "expose_obj_ptr_for_distillation",
             )
             if key in kwargs
         }

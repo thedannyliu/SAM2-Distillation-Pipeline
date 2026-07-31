@@ -132,6 +132,15 @@ Promotion resumes the same checkpoint and W&B run from epoch three to epoch
 five, then runs full SA-V val, full SA-V test, and a three-repetition latency
 benchmark.
 
+## Object-pointer KD startup correction
+
+The first MX25 launch exposed an output-contract bug before its first optimizer
+step: upstream `SAM2Train.forward_tracking()` removes `obj_ptr` from loss
+outputs, while MX25/MX26 require student and teacher pointers for cosine KD.
+The training wrapper now retains object pointers only when
+`TASK_LAMBDA_OBJ_PTR > 0` and applies the same opt-in behavior to the frozen
+teacher. All variants with zero pointer-KD weight retain the upstream path.
+
 ## Deferred SA-V scale study
 
 The extra 1–2 TB is intentionally not used in this architecture screen.

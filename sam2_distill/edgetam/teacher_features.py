@@ -59,6 +59,25 @@ def attach_teacher_features(
                 student[student_key] = teacher[teacher_key].detach()
 
 
+def flatten_tracking_outputs(
+    output_dict: dict[str, dict[int, dict]],
+    num_frames: int,
+    *,
+    keep_obj_ptr: bool,
+) -> list[dict]:
+    """Flatten SAM2 frame outputs, optionally retaining pointer KD targets."""
+    all_frame_outputs = {}
+    all_frame_outputs.update(output_dict["cond_frame_outputs"])
+    all_frame_outputs.update(output_dict["non_cond_frame_outputs"])
+    outputs = [all_frame_outputs[frame_idx] for frame_idx in range(num_frames)]
+    if keep_obj_ptr:
+        return outputs
+    return [
+        {key: value for key, value in output.items() if key != "obj_ptr"}
+        for output in outputs
+    ]
+
+
 def attach_synthetic_teacher_features(
     student_outputs: list[dict],
     offset: float = 0.01,

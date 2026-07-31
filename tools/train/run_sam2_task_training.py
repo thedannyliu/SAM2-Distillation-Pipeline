@@ -459,6 +459,7 @@ def apply_mask_ablation_overrides(config) -> None:
         os.environ.get("TASK_LAMBDA_MASK_LOGITS", "0")
     )
     lambda_obj_ptr = float(os.environ.get("TASK_LAMBDA_OBJ_PTR", "0"))
+    model.expose_obj_ptr_for_distillation = bool(lambda_obj_ptr)
     if (
         lambda_task != 1
         or lambda_img
