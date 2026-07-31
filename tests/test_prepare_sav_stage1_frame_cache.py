@@ -4,6 +4,7 @@ from tools.data.prepare_sav_stage1_frame_cache import (
     choose_annotation,
     detect_ann_root,
     discover_split,
+    task_shard_index,
 )
 
 
@@ -57,3 +58,22 @@ def test_sharded_release_uses_annotation_length_without_video_decode(
     assert len(tasks) == 1
     assert tasks[0]["annotation_path"] == str(annotation)
     assert tasks[0]["indices_6fps"] == list(range(6))
+
+
+def test_video_tasks_are_deterministically_partitioned() -> None:
+    tasks = [
+        {"split": "train", "video_id": f"sav_{index:06d}"}
+        for index in range(100)
+    ]
+    shards = [
+        {
+            task["video_id"]
+            for task in tasks
+            if task_shard_index(task, 4) == shard_index
+        }
+        for shard_index in range(4)
+    ]
+
+    assert all(shards)
+    assert sum(len(shard) for shard in shards) == len(tasks)
+    assert set().union(*shards) == {task["video_id"] for task in tasks}

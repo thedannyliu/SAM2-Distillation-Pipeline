@@ -20,6 +20,11 @@ def stable_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def task_shard_index(task: dict[str, Any], num_shards: int) -> int:
+    key = f"{task['split']}|{task['video_id']}"
+    return int(stable_digest(key)[:16], 16) % num_shards
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--train-root", type=Path, required=True)
@@ -37,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ann-every", type=int, default=4)
     parser.add_argument("--seed", default="sam2_stage1_sav_vbal16_6fps_v1")
     parser.add_argument("--num-workers", type=int, default=64)
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--jpeg-quality", type=int, default=90)
     parser.add_argument("--use-auto", action="store_true")
     parser.add_argument("--skip-existing", action="store_true", default=True)
@@ -326,6 +333,10 @@ def read_reused_train_rows(path: Path) -> list[dict]:
 
 def main() -> None:
     args = parse_args()
+    if args.num_shards < 1:
+        raise SystemExit("--num-shards must be at least 1")
+    if not 0 <= args.shard_index < args.num_shards:
+        raise SystemExit("--shard-index must be in [0, num-shards)")
     args.out_root.mkdir(parents=True, exist_ok=True)
 
     reused_train_rows = []
@@ -368,6 +379,17 @@ def main() -> None:
                 args.ann_every,
             )
         )
+    if args.num_shards > 1:
+        tasks = [
+            task
+            for task in tasks
+            if task_shard_index(task, args.num_shards) == args.shard_index
+        ]
+        reused_train_rows = [
+            row
+            for row in reused_train_rows
+            if task_shard_index(row, args.num_shards) == args.shard_index
+        ]
     if not tasks and not reused_train_rows:
         raise RuntimeError("No videos selected for frame extraction or reuse.")
 
@@ -416,8 +438,17 @@ def main() -> None:
         "ann_every": args.ann_every,
         "seed": args.seed,
         "num_workers": worker_count,
+        "num_shards": args.num_shards,
+        "shard_index": args.shard_index,
     }
-    (args.out_root / "provenance.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    provenance_name = (
+        f"provenance.shard_{args.shard_index:03d}.json"
+        if args.num_shards > 1
+        else "provenance.json"
+    )
+    (args.out_root / provenance_name).write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(summary, indent=2))
 
 
