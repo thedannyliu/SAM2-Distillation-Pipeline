@@ -14,7 +14,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
 
 
-COMPONENTS = ("JPEGImages", "sav_val", "sav_test")
+COMPONENTS = ("JPEGImages", "sav_train", "sav_val", "sav_test")
+DEFAULT_COMPONENTS = ("JPEGImages", "sav_val", "sav_test")
 
 
 class DownloadSizeError(IOError):
@@ -36,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         "--components",
         nargs="+",
         choices=COMPONENTS,
-        default=list(COMPONENTS),
+        default=list(DEFAULT_COMPONENTS),
     )
     parser.add_argument("--reserve-gib", type=float, default=5.0)
     return parser.parse_args()
@@ -289,7 +290,13 @@ def main() -> None:
         "inventory": source_inventory,
         "sync": sync_results,
     }
-    summary_path = args.out_root / "runtime_data_sync.provenance.json"
+    if tuple(args.components) == DEFAULT_COMPONENTS:
+        summary_name = "runtime_data_sync.provenance.json"
+    else:
+        summary_name = (
+            f"{'_'.join(args.components)}_data_sync.provenance.json"
+        )
+    summary_path = args.out_root / summary_name
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2), flush=True)
     print(f"Provenance: {summary_path}", flush=True)
