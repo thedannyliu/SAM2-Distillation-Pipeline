@@ -142,6 +142,8 @@ def discover_prepared_split(
     max_videos: int,
     seed: str,
     ann_every: int,
+    num_shards: int = 1,
+    shard_index: int = 0,
 ) -> list[dict[str, Any]]:
     image_root = root / "JPEGImages_24fps"
     if not image_root.is_dir():
@@ -151,6 +153,9 @@ def discover_prepared_split(
     tasks = []
     for video_dir in sorted(path for path in image_root.iterdir() if path.is_dir()):
         video_id = video_dir.name
+        identity = {"split": split_name, "video_id": video_id}
+        if task_shard_index(identity, num_shards) != shard_index:
+            continue
         if allowed_ids is not None and video_id not in allowed_ids:
             continue
         frames = sorted(
@@ -187,16 +192,40 @@ def discover_split(
     seed: str,
     use_auto: bool,
     ann_every: int,
+    num_shards: int = 1,
+    shard_index: int = 0,
 ) -> list[dict[str, Any]]:
     if frames_per_video <= 0:
         return []
-    prepared_tasks = discover_prepared_split(split_name, root, frames_per_video, max_videos, seed, ann_every)
+    prepared_tasks = discover_prepared_split(
+        split_name,
+        root,
+        frames_per_video,
+        max_videos,
+        seed,
+        ann_every,
+        num_shards,
+        shard_index,
+    )
     if prepared_tasks:
         return prepared_tasks
     video_root = detect_video_root(root)
     ann_root = detect_ann_root(root)
+    videos = [
+        video
+        for video in sorted(video_root.rglob("*.mp4"))
+        if task_shard_index(
+            {"split": split_name, "video_id": video.stem}, num_shards
+        )
+        == shard_index
+    ]
+    print(
+        f"discover {split_name}: shard={shard_index}/{num_shards} "
+        f"selected_videos={len(videos)}",
+        flush=True,
+    )
     tasks = []
-    for video in sorted(video_root.rglob("*.mp4")):
+    for video in tqdm(videos, desc=f"read {split_name} metadata"):
         ann_path = choose_annotation(ann_root, video.stem, use_auto)
         total_6fps = annotation_length(ann_path)
         if total_6fps is None:
@@ -353,6 +382,8 @@ def main() -> None:
                 args.seed,
                 args.use_auto,
                 args.ann_every,
+                args.num_shards,
+                args.shard_index,
             )
         )
     if args.val_root:
@@ -365,6 +396,8 @@ def main() -> None:
                 args.seed,
                 args.use_auto,
                 args.ann_every,
+                args.num_shards,
+                args.shard_index,
             )
         )
     if args.test_root:
@@ -377,14 +410,11 @@ def main() -> None:
                 args.seed,
                 args.use_auto,
                 args.ann_every,
+                args.num_shards,
+                args.shard_index,
             )
         )
     if args.num_shards > 1:
-        tasks = [
-            task
-            for task in tasks
-            if task_shard_index(task, args.num_shards) == args.shard_index
-        ]
         reused_train_rows = [
             row
             for row in reused_train_rows
