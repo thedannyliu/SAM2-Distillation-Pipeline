@@ -204,6 +204,7 @@ def build_edgetam_trainer_predictor(
         "num_frames_to_correct_for_eval",
         "num_init_cond_frames_for_eval",
         "forward_backbone_per_frame_for_eval",
+        "expose_obj_ptr_for_distillation",
         "freeze_teacher",
         "synthetic_teacher",
         "synthetic_teacher_offset",
