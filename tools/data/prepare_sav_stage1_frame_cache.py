@@ -54,7 +54,10 @@ def detect_video_root(root: Path) -> Path:
 def detect_ann_root(root: Path) -> Path | None:
     candidates = [root / "annotations", root / "train" / "annotations", root]
     for candidate in candidates:
-        if candidate.is_dir() and (any(candidate.glob("*_manual.json")) or any(candidate.glob("*_auto.json"))):
+        if candidate.is_dir() and (
+            any(candidate.rglob("*_manual.json"))
+            or any(candidate.rglob("*_auto.json"))
+        ):
             return candidate
     return None
 
@@ -62,12 +65,14 @@ def detect_ann_root(root: Path) -> Path | None:
 def choose_annotation(ann_root: Path | None, video_id: str, use_auto: bool) -> Path | None:
     if ann_root is None:
         return None
-    manual = ann_root / f"{video_id}_manual.json"
-    auto = ann_root / f"{video_id}_auto.json"
-    if manual.exists():
-        return manual
-    if use_auto and auto.exists():
-        return auto
+    shard = f"sav_{int(video_id.rsplit('_', 1)[-1]) // 1000:03d}"
+    for parent in (ann_root, ann_root / shard):
+        manual = parent / f"{video_id}_manual.json"
+        auto = parent / f"{video_id}_auto.json"
+        if manual.exists():
+            return manual
+        if use_auto and auto.exists():
+            return auto
     return None
 
 
