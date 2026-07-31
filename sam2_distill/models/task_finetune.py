@@ -279,8 +279,12 @@ def initialize_object_slot_model(
     initialized = 0
     for key, target in model.state_dict().items():
         source = source_state.get(key)
-        if source is None:
-            if not key.startswith(new_prefixes):
+        is_slot_tensor = key.startswith(new_prefixes)
+        if source is None or (
+            is_slot_tensor
+            and tuple(source.shape) != tuple(target.shape)
+        ):
+            if not is_slot_tensor:
                 raise KeyError(f"Missing selected-checkpoint tensor for {key}")
             source = target
             initialized += 1

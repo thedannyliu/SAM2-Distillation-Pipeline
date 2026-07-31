@@ -389,6 +389,26 @@ def test_low_rank_object_residual_restores_distinct_bucket_outputs():
     assert module.object_residual.pointer_path.up.weight.grad is not None
 
 
+def test_object_residual_temporal_pooling_modes():
+    frames = torch.tensor([1.0, 1.0, 3.0, 3.0]).view(4, 1, 1)
+
+    mean = LowRankObjectMemoryResidual._align_spatial_memory(
+        frames, 2, "mean", 0.5
+    )
+    latest = LowRankObjectMemoryResidual._align_spatial_memory(
+        frames, 2, "latest", 0.5
+    )
+    recency = LowRankObjectMemoryResidual._align_spatial_memory(
+        frames, 2, "recency", 0.5
+    )
+
+    assert torch.allclose(mean, torch.full((2, 1, 1), 2.0))
+    assert torch.allclose(latest, torch.full((2, 1, 1), 3.0))
+    assert torch.allclose(
+        recency, torch.full((2, 1, 1), 7.0 / 3.0)
+    )
+
+
 class FakeMaskTransformer(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -532,6 +552,26 @@ def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
     assert torch.equal(target.projection.weight, source.projection.weight)
     assert torch.all(target.object_slot_decoder.weight == 7)
     assert torch.all(target.memory_attention.object_residual.weight == 5)
+
+
+def test_object_slot_initializer_reinitializes_changed_slot_capacity(tmp_path):
+    source = torch.nn.Module()
+    source.projection = torch.nn.Linear(2, 2, bias=False)
+    source.object_slot_decoder = torch.nn.Linear(2, 8, bias=False)
+    target = torch.nn.Module()
+    target.projection = torch.nn.Linear(2, 2, bias=False)
+    target.object_slot_decoder = torch.nn.Linear(2, 4, bias=False)
+    with torch.no_grad():
+        source.projection.weight.fill_(3)
+        source.object_slot_decoder.weight.fill_(9)
+        target.object_slot_decoder.weight.fill_(7)
+    checkpoint = tmp_path / "slot8.pt"
+    torch.save({"model": source.state_dict()}, checkpoint)
+
+    initialize_object_slot_model(target, str(checkpoint))
+
+    assert torch.equal(target.projection.weight, source.projection.weight)
+    assert torch.all(target.object_slot_decoder.weight == 7)
 
 
 def compact_output(value: float) -> dict:
@@ -808,3 +848,62 @@ def test_object_slot_v3_variants_set_residual_ranks(
         f"Object residual spatial/pointer rank: {expected_ranks}"
         in result.stdout
     )
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        (
+            "MX13_slot8_r2_mean_screen3ep",
+            (
+                "Object residual spatial/pointer rank: 2/0",
+                "Object residual temporal pool/decay: mean/0.5",
+            ),
+        ),
+        (
+            "MX17_slot8_r8_mean_ptr4_screen3ep",
+            ("Object residual spatial/pointer rank: 8/4",),
+        ),
+        (
+            "MX19_slot8_r8_latest_ptr8_screen3ep",
+            ("Object residual temporal pool/decay: latest/0.5",),
+        ),
+        (
+            "MX21_slot8_r8_recency025_ptr8_screen3ep",
+            ("Object residual temporal pool/decay: recency/0.25",),
+        ),
+        (
+            "MX23_slot4_r8_mean_ptr8_screen3ep",
+            ("Object slot mode/count/min: shared_kv/4/4",),
+        ),
+        (
+            "MX25_slot8_r8_mean_ptr8_objkd025_screen3ep",
+            ("Loss task/image/memory/logits/obj: 1/0/1/2/0.25",),
+        ),
+        (
+            "MX27_slot8_min2_r8_mean_ptr8_screen3ep",
+            ("Object slot mode/count/min: shared_kv/8/2",),
+        ),
+    ],
+)
+def test_multiplex_screen_variants_set_one_planned_axis(
+    variant,
+    expected,
+):
+    repo_root = Path(__file__).resolve().parents[1]
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "describe",
+            variant,
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for snippet in expected:
+        assert snippet in result.stdout

@@ -377,6 +377,8 @@ FIELDNAMES = [
     "object_slot_min_objects",
     "object_residual_rank",
     "object_pointer_residual_rank",
+    "object_residual_temporal_pool",
+    "object_residual_temporal_decay",
     "total_parameters",
     "trainable_parameters",
     "encoder_lr",
@@ -519,6 +521,12 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
         ),
         "object_pointer_residual_rank": os.environ.get(
             "TASK_OBJECT_POINTER_RESIDUAL_RANK", "0"
+        ),
+        "object_residual_temporal_pool": os.environ.get(
+            "TASK_OBJECT_RESIDUAL_TEMPORAL_POOL", "mean"
+        ),
+        "object_residual_temporal_decay": os.environ.get(
+            "TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY", "0.5"
         ),
         "encoder_lr": os.environ.get("TASK_ENCODER_LR", ""),
         "encoder_lr_end": os.environ.get("TASK_ENCODER_LR_END", ""),

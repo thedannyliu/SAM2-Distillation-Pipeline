@@ -128,6 +128,14 @@ def init_wandb(args: argparse.Namespace):
                     "TASK_OBJECT_POINTER_RESIDUAL_RANK", "0"
                 )
             ),
+            "object_residual_temporal_pool": os.environ.get(
+                "TASK_OBJECT_RESIDUAL_TEMPORAL_POOL", "mean"
+            ),
+            "object_residual_temporal_decay": float(
+                os.environ.get(
+                    "TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY", "0.5"
+                )
+            ),
             "teacher_checkpoint": os.environ.get(
                 "TASK_TEACHER_CHECKPOINT", ""
             ),
@@ -697,6 +705,16 @@ def apply_object_slot_overrides(config) -> None:
         )
         model.memory_attention.object_pointer_residual_rank = int(
             os.environ.get("TASK_OBJECT_POINTER_RESIDUAL_RANK", "0")
+        )
+        model.memory_attention.object_residual_temporal_pool = (
+            os.environ.get(
+                "TASK_OBJECT_RESIDUAL_TEMPORAL_POOL", "mean"
+            )
+        )
+        model.memory_attention.object_residual_temporal_decay = float(
+            os.environ.get(
+                "TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY", "0.5"
+            )
         )
 
     config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(

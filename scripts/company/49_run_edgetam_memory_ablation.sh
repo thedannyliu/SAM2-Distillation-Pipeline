@@ -18,6 +18,22 @@ VARIANTS=(
   MX10_slot8_sharedkv_r8_t8_5ep
   MX11_slot8_sharedkv_r16_t8_5ep
   MX12_slot8_sharedkv_r8_ptr8_t8_5ep
+  MX13_slot8_r2_mean_screen3ep
+  MX14_slot8_r4_mean_screen3ep
+  MX15_slot8_r8_mean_screen3ep
+  MX16_slot8_r16_mean_screen3ep
+  MX17_slot8_r8_mean_ptr4_screen3ep
+  MX18_slot8_r8_mean_ptr8_screen3ep
+  MX19_slot8_r8_latest_ptr8_screen3ep
+  MX20_slot8_r8_recency050_ptr8_screen3ep
+  MX21_slot8_r8_recency025_ptr8_screen3ep
+  MX22_slot8_r8_recency075_ptr8_screen3ep
+  MX23_slot4_r8_mean_ptr8_screen3ep
+  MX24_slot6_r8_mean_ptr8_screen3ep
+  MX25_slot8_r8_mean_ptr8_objkd025_screen3ep
+  MX26_slot8_r8_mean_ptr8_objkd100_screen3ep
+  MX27_slot8_min2_r8_mean_ptr8_screen3ep
+  MX28_slot8_min3_r8_mean_ptr8_screen3ep
   MO0_mem4_task_dense8_5ep
   MO1_mem2_task_dense8_5ep
   MO2_mem2_logits_dense8_5ep
@@ -103,6 +119,7 @@ BEST_TV21_CHECKPOINT="${BEST_TV21_CHECKPOINT:-${BEST_TV21_RUN}/checkpoints/best.
 BEST_TV21_CONFIG="${BEST_TV21_CONFIG:-${BEST_TV21_RUN}/resolved_config.yaml}"
 MX2_SLOT8_CHECKPOINT="${MX2_SLOT8_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/checkpoints/last.pt}"
 MX5_SLOT8_CHECKPOINT="${MX5_SLOT8_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/checkpoints/last.pt}"
+MX5_SLOT8_CONFIG="${MX5_SLOT8_CONFIG:-${SAM2D_ROOT}/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/resolved_config.yaml}"
 A02_BASE_CHECKPOINT="${A02_BASE_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/A02_e2e_t4_official_prompt/main/checkpoints/checkpoint.pt}"
 BASE_CHECKPOINT="${BASE_CHECKPOINT:-${A02_BASE_CHECKPOINT}}"
 M0_RUN_DIR="${M0_RUN_DIR:-${SAM2D_ROOT}/runs/edgetam_memory_ablation_v1/M0_sam2_mem4/main}"
@@ -112,7 +129,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == MX9_* || "${VARIANT}" == MX10_* || \
+if [[ "${VARIANT}" == MX1[3-9]_* || "${VARIANT}" == MX2[0-8]_* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_multiplex_overnight_v4"
+  DEFAULT_WANDB_PROJECT="sam2-multiplex-overnight-v4"
+elif [[ "${VARIANT}" == MX9_* || "${VARIANT}" == MX10_* || \
       "${VARIANT}" == MX11_* || "${VARIANT}" == MX12_* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v3"
   DEFAULT_WANDB_PROJECT="sam2-object-slots-v3"
@@ -155,6 +175,14 @@ GATE_MAX_VIDEOS="${EDGETAM_GATE_MAX_VIDEOS:-32}"
 GATE_MIN_JF="${EDGETAM_GATE_MIN_JF:-60}"
 GATE_MAX_JF_DROP="${EDGETAM_GATE_MAX_JF_DROP:-10}"
 GATE_MAX_IMAGE_DROP="${EDGETAM_GATE_MAX_IMAGE_DROP:-0.005}"
+GATE_MIN_JF_RETENTION="${EDGETAM_GATE_MIN_JF_RETENTION:-0}"
+GATE_ENFORCE="${EDGETAM_GATE_ENFORCE:-1}"
+EVAL_MODE="${EDGETAM_EVAL_MODE:-full}"
+GATE_REFERENCE_CHECKPOINT="${EDGETAM_GATE_REFERENCE_CHECKPOINT:-${M0_CHECKPOINT}}"
+GATE_REFERENCE_CONFIG="${EDGETAM_GATE_REFERENCE_CONFIG:-${M0_CONFIG}}"
+GATE_REFERENCE_TAG="${EDGETAM_GATE_REFERENCE_TAG:-m0}"
+GATE_REFERENCE_BUCKET_SIZE="${EDGETAM_GATE_REFERENCE_BUCKET_SIZE:-8}"
+GATE_REFERENCE_BUCKET_MIN_OBJECTS="${EDGETAM_GATE_REFERENCE_BUCKET_MIN_OBJECTS:-4}"
 
 is_variant() {
   local candidate="$1" item
@@ -197,7 +225,9 @@ PY
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == MX9_* || "$1" == MX10_* || \
+  if [[ "$1" == MX1[3-9]_* || "$1" == MX2[0-8]_* ]]; then
+    export TASK_EXPERIMENT_SUITE=sam2_multiplex_overnight_v4
+  elif [[ "$1" == MX9_* || "$1" == MX10_* || \
         "$1" == MX11_* || "$1" == MX12_* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_object_slots_v3
   elif [[ "$1" == MX5_* || "$1" == MX6_* || \
@@ -271,6 +301,8 @@ configure_variant() {
   export TASK_OBJECT_SLOT_MIN_OBJECTS=4
   export TASK_OBJECT_RESIDUAL_RANK=0
   export TASK_OBJECT_POINTER_RESIDUAL_RANK=0
+  export TASK_OBJECT_RESIDUAL_TEMPORAL_POOL=mean
+  export TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY=0.5
   export TASK_OFFICIAL_EDGETAM_MODEL=0
   export STUDENT_FAMILY=tinyvit
   export TASK_LOSS_MASK_WEIGHT=20
@@ -536,6 +568,96 @@ configure_variant() {
         MX11_*) export TASK_OBJECT_RESIDUAL_RANK=16 ;;
         MX12_*)
           export TASK_OBJECT_RESIDUAL_RANK=8
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          ;;
+      esac
+      ;;
+    MX13_slot8_r2_mean_screen3ep|\
+    MX14_slot8_r4_mean_screen3ep|\
+    MX15_slot8_r8_mean_screen3ep|\
+    MX16_slot8_r16_mean_screen3ep|\
+    MX17_slot8_r8_mean_ptr4_screen3ep|\
+    MX18_slot8_r8_mean_ptr8_screen3ep|\
+    MX19_slot8_r8_latest_ptr8_screen3ep|\
+    MX20_slot8_r8_recency050_ptr8_screen3ep|\
+    MX21_slot8_r8_recency025_ptr8_screen3ep|\
+    MX22_slot8_r8_recency075_ptr8_screen3ep|\
+    MX23_slot4_r8_mean_ptr8_screen3ep|\
+    MX24_slot6_r8_mean_ptr8_screen3ep|\
+    MX25_slot8_r8_mean_ptr8_objkd025_screen3ep|\
+    MX26_slot8_r8_mean_ptr8_objkd100_screen3ep|\
+    MX27_slot8_min2_r8_mean_ptr8_screen3ep|\
+    MX28_slot8_min3_r8_mean_ptr8_screen3ep)
+      export BASE_CHECKPOINT="${MX5_SLOT8_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_EPOCHS=3
+      export TASK_NUM_FRAMES=8
+      export TASK_TRAINABLE_MODE=object_slot_shared_kv
+      export TASK_MEMORY_LR=3.0e-5
+      export TASK_MEMORY_LR_END=3.0e-6
+      export TASK_MEMORY_AUX_LR=1.0e-5
+      export TASK_MEMORY_AUX_LR_END=1.0e-6
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_OBJECT_SLOT_MODE=shared_kv
+      export TASK_OBJECT_SLOT_COUNT=8
+      export TASK_OBJECT_SLOT_MIN_OBJECTS=4
+      export TASK_OBJECT_RESIDUAL_RANK=8
+      export TASK_OBJECT_POINTER_RESIDUAL_RANK=0
+      export TASK_OBJECT_RESIDUAL_TEMPORAL_POOL=mean
+      export TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY=0.5
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_MEM=1
+      export TASK_LAMBDA_MASK_LOGITS=2
+      export TASK_LAMBDA_OBJ_PTR=0
+      case "$1" in
+        MX13_*) export TASK_OBJECT_RESIDUAL_RANK=2 ;;
+        MX14_*) export TASK_OBJECT_RESIDUAL_RANK=4 ;;
+        MX15_*) export TASK_OBJECT_RESIDUAL_RANK=8 ;;
+        MX16_*) export TASK_OBJECT_RESIDUAL_RANK=16 ;;
+        MX17_*) export TASK_OBJECT_POINTER_RESIDUAL_RANK=4 ;;
+        MX18_*) export TASK_OBJECT_POINTER_RESIDUAL_RANK=8 ;;
+        MX19_*)
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          export TASK_OBJECT_RESIDUAL_TEMPORAL_POOL=latest
+          ;;
+        MX20_*)
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          export TASK_OBJECT_RESIDUAL_TEMPORAL_POOL=recency
+          ;;
+        MX21_*)
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          export TASK_OBJECT_RESIDUAL_TEMPORAL_POOL=recency
+          export TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY=0.25
+          ;;
+        MX22_*)
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          export TASK_OBJECT_RESIDUAL_TEMPORAL_POOL=recency
+          export TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY=0.75
+          ;;
+        MX23_*)
+          export TASK_OBJECT_SLOT_COUNT=4
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          ;;
+        MX24_*)
+          export TASK_OBJECT_SLOT_COUNT=6
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          ;;
+        MX25_*)
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          export TASK_LAMBDA_OBJ_PTR=0.25
+          ;;
+        MX26_*)
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          export TASK_LAMBDA_OBJ_PTR=1
+          ;;
+        MX27_*)
+          export TASK_OBJECT_SLOT_MIN_OBJECTS=2
+          export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
+          ;;
+        MX28_*)
+          export TASK_OBJECT_SLOT_MIN_OBJECTS=3
           export TASK_OBJECT_POINTER_RESIDUAL_RANK=8
           ;;
       esac
@@ -958,6 +1080,10 @@ configure_variant() {
       return 2
       ;;
   esac
+
+  if [[ -n "${TASK_EPOCHS_OVERRIDE:-}" ]]; then
+    export TASK_EPOCHS="${TASK_EPOCHS_OVERRIDE}"
+  fi
 }
 
 checkpoint_reached_epoch() {
@@ -1184,6 +1310,8 @@ run_gate_benchmark() {
 
 ensure_gate_reference() {
   local reference_dir="$1" reference_benchmark="$2"
+  require_path "${GATE_REFERENCE_CHECKPOINT}" || return 1
+  require_path "${GATE_REFERENCE_CONFIG}" || return 1
   mkdir -p "${reference_dir}"
   exec 6>"${ABLATION_ROOT}/.gate_reference.lock" || return 1
   flock 6 || return 1
@@ -1191,11 +1319,13 @@ ensure_gate_reference() {
     --input "${SAV_ROOT}/sav_val/sav_val.txt" \
     --output "${ABLATION_ROOT}/gate_sav_val_${GATE_MAX_VIDEOS}.txt" \
     --count "${GATE_MAX_VIDEOS}" || return 1
-  echo "===== M0 fixed mini-val reference (${GATE_MAX_VIDEOS} videos) ====="
-  run_gate_benchmark \
-    M0_gate_reference \
-    "${M0_CHECKPOINT}" \
-    "${M0_CONFIG}" \
+  echo "===== ${GATE_REFERENCE_TAG} fixed mini-val reference (${GATE_MAX_VIDEOS} videos) ====="
+  VOS_BUCKET_SIZE="${GATE_REFERENCE_BUCKET_SIZE}" \
+  VOS_BUCKET_MIN_OBJECTS="${GATE_REFERENCE_BUCKET_MIN_OBJECTS}" \
+    run_gate_benchmark \
+    "${GATE_REFERENCE_TAG}_gate_reference" \
+    "${GATE_REFERENCE_CHECKPOINT}" \
+    "${GATE_REFERENCE_CONFIG}" \
     "${reference_dir}" \
     "${reference_benchmark}" || return 1
   flock -u 6
@@ -1204,7 +1334,7 @@ ensure_gate_reference() {
 evaluate_gate() {
   local name="$1" variant_dir="${ABLATION_ROOT}/$1"
   local run_dir="${variant_dir}/main"
-  local reference_dir="${ABLATION_ROOT}/_gate_reference_m0"
+  local reference_dir="${ABLATION_ROOT}/_gate_reference_${GATE_REFERENCE_TAG}"
   local reference_benchmark="${reference_dir}/sav_val_gate${GATE_MAX_VIDEOS}_box_benchmark"
   local candidate_benchmark="${run_dir}/sav_val_gate${GATE_MAX_VIDEOS}_box_benchmark"
   local reference_metrics="${reference_benchmark}/metrics.csv"
@@ -1226,6 +1356,7 @@ evaluate_gate() {
     --reference-metrics "${reference_metrics}" \
     --out-json "${run_dir}/gate_status.json" \
     --min-jf "${GATE_MIN_JF}" \
+    --min-jf-retention "${GATE_MIN_JF_RETENTION}" \
     --max-jf-drop "${GATE_MAX_JF_DROP}" \
     --max-miou-drop "${GATE_MAX_IMAGE_DROP}" \
     --max-ap-drop "${GATE_MAX_IMAGE_DROP}" || gate_status="$?"
@@ -1237,8 +1368,11 @@ evaluate_gate() {
   fi
   record_summary "${variant_dir}" "${run_dir}"
   if [[ "${gate_status}" -ne 0 ]]; then
-    echo "[STOP] ${name} failed the temporal compatibility gate." >&2
-    return "${gate_status}"
+    echo "[GATE FAIL] ${name} failed the temporal compatibility gate." >&2
+    if [[ "${GATE_ENFORCE}" == "1" ]]; then
+      return "${gate_status}"
+    fi
+    echo "[CONTINUE] Gate enforcement is disabled for this screen."
   fi
 }
 
@@ -1295,6 +1429,8 @@ case "${ACTION}" in
       echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
       echo "Loss task/image/memory/logits/obj: ${TASK_LAMBDA_TASK}/${TASK_LAMBDA_IMG}/${TASK_LAMBDA_MEM}/${TASK_LAMBDA_MASK_LOGITS}/${TASK_LAMBDA_OBJ_PTR}"
       echo "Object residual spatial/pointer rank: ${TASK_OBJECT_RESIDUAL_RANK}/${TASK_OBJECT_POINTER_RESIDUAL_RANK}"
+      echo "Object residual temporal pool/decay: ${TASK_OBJECT_RESIDUAL_TEMPORAL_POOL}/${TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY}"
+      echo "Object slot mode/count/min: ${TASK_OBJECT_SLOT_MODE}/${TASK_OBJECT_SLOT_COUNT}/${TASK_OBJECT_SLOT_MIN_OBJECTS}"
       echo "Base: ${BASE_CHECKPOINT}"
       echo "Teacher: ${TASK_TEACHER_CHECKPOINT:-none}"
     fi
@@ -1310,13 +1446,19 @@ case "${ACTION}" in
           record_summary "${ABLATION_ROOT}/${VARIANT}" "${ABLATION_ROOT}/${VARIANT}/main" && \
           train_variant "${VARIANT}"
         STATUS="$?"
-        if [[ "${STATUS}" -eq 0 ]] && is_recovery_variant "${VARIANT}"; then
+        if [[ "${STATUS}" -eq 0 ]] && {
+          is_recovery_variant "${VARIANT}" || [[ "${EVAL_MODE}" == "gate" ]]
+        }; then
           evaluate_gate "${VARIANT}"
           STATUS="$?"
         fi
-        if [[ "${STATUS}" -eq 0 ]]; then
+        if [[ "${STATUS}" -eq 0 && "${EVAL_MODE}" == "full" ]]; then
           evaluate_variant "${VARIANT}"
           STATUS="$?"
+        elif [[ "${STATUS}" -eq 0 && "${EVAL_MODE}" != "gate" && \
+                "${EVAL_MODE}" != "none" ]]; then
+          echo "[ERROR] EDGETAM_EVAL_MODE must be full, gate, or none" >&2
+          STATUS=2
         fi
       fi
     fi

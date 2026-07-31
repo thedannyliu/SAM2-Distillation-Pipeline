@@ -15,6 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reference-metrics", required=True, type=Path)
     parser.add_argument("--out-json", required=True, type=Path)
     parser.add_argument("--min-jf", type=float, default=60.0)
+    parser.add_argument("--min-jf-retention", type=float, default=0.0)
     parser.add_argument("--max-jf-drop", type=float, default=10.0)
     parser.add_argument("--max-miou-drop", type=float, default=0.005)
     parser.add_argument("--max-ap-drop", type=float, default=0.005)
@@ -46,6 +47,11 @@ def main() -> None:
     checks = {
         "absolute_J&F": metrics["J&F"] >= args.min_jf,
         "relative_J&F": deltas["J&F"] >= -args.max_jf_drop,
+        "J&F_retention": (
+            args.min_jf_retention <= 0
+            or metrics["J&F"] / reference["J&F"]
+            >= args.min_jf_retention
+        ),
         "relative_mIoU": deltas["mIoU"] >= -args.max_miou_drop,
         "relative_AP": deltas["AP"] >= -args.max_ap_drop,
     }
@@ -58,6 +64,7 @@ def main() -> None:
         "deltas": deltas,
         "thresholds": {
             "min_J&F": args.min_jf,
+            "min_J&F_retention": args.min_jf_retention,
             "max_J&F_drop": args.max_jf_drop,
             "max_mIoU_drop": args.max_miou_drop,
             "max_AP_drop": args.max_ap_drop,

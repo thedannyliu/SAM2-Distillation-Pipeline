@@ -18,6 +18,22 @@ VARIANTS=(
   MX10_slot8_sharedkv_r8_t8_5ep
   MX11_slot8_sharedkv_r16_t8_5ep
   MX12_slot8_sharedkv_r8_ptr8_t8_5ep
+  MX13_slot8_r2_mean_screen3ep
+  MX14_slot8_r4_mean_screen3ep
+  MX15_slot8_r8_mean_screen3ep
+  MX16_slot8_r16_mean_screen3ep
+  MX17_slot8_r8_mean_ptr4_screen3ep
+  MX18_slot8_r8_mean_ptr8_screen3ep
+  MX19_slot8_r8_latest_ptr8_screen3ep
+  MX20_slot8_r8_recency050_ptr8_screen3ep
+  MX21_slot8_r8_recency025_ptr8_screen3ep
+  MX22_slot8_r8_recency075_ptr8_screen3ep
+  MX23_slot4_r8_mean_ptr8_screen3ep
+  MX24_slot6_r8_mean_ptr8_screen3ep
+  MX25_slot8_r8_mean_ptr8_objkd025_screen3ep
+  MX26_slot8_r8_mean_ptr8_objkd100_screen3ep
+  MX27_slot8_min2_r8_mean_ptr8_screen3ep
+  MX28_slot8_min3_r8_mean_ptr8_screen3ep
 )
 
 is_variant() {
@@ -65,6 +81,9 @@ SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
 if [[ -z "${RUN_ROOT:-}" ]]; then
   case "${VARIANT}" in
+    MX1[3-9]_*|MX2[0-8]_*)
+      RUN_ROOT="${SAM2D_ROOT}/runs/sam2_multiplex_overnight_v4"
+      ;;
     MX9_*|MX10_*|MX11_*|MX12_*)
       RUN_ROOT="${SAM2D_ROOT}/runs/sam2_object_slots_v3"
       ;;
@@ -105,13 +124,26 @@ REFERENCE_TEST_JF="${REFERENCE_TEST_JF:-74.7}"
 MIN_QUALITY_RETENTION="${MIN_QUALITY_RETENTION:-0.95}"
 MIN_LEARNED_MASK_IOU="${MIN_LEARNED_MASK_IOU:-0.95}"
 MIN_N1_FPS_RETENTION="${MIN_N1_FPS_RETENTION:-0.95}"
+PIPELINE_COMPLETE_MARKER="${PIPELINE_COMPLETE_MARKER:-.pipeline_complete}"
 
 slot_count() {
+  if [[ "$1" =~ _slot([0-9]+)_ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
   case "$1" in
     MX1_*|MX3_*) echo 4 ;;
     MX2_*|MX4_*|MX5_*|MX6_*|MX7_*|MX8_*|MX9_*|MX10_*|MX11_*|MX12_*) echo 8 ;;
     *) return 2 ;;
   esac
+}
+
+slot_min_objects() {
+  if [[ "$1" =~ _min([0-9]+)_ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  else
+    echo 4
+  fi
 }
 
 describe() {
@@ -146,8 +178,9 @@ ensure_latency_cohort() {
 }
 
 run_latency() {
-  local slots run_dir out_dir
+  local slots min_objects run_dir out_dir
   slots="$(slot_count "${VARIANT}")" || return 1
+  min_objects="$(slot_min_objects "${VARIANT}")" || return 1
   run_dir="${RUN_ROOT}/${VARIANT}/main"
   out_dir="${run_dir}/multiobject_latency/point_n1-2-4-8"
   ensure_latency_cohort || return 1
@@ -175,7 +208,7 @@ run_latency() {
       --warmup-videos 1 \
       --execution-mode bucket \
       --bucket-size "${slots}" \
-      --bucket-min-objects 4 \
+      --bucket-min-objects "${min_objects}" \
       --verify-bucket-frames "${LATENCY_VERIFY_FRAMES}" \
       --seed 310107256 \
       --device cuda \
@@ -185,20 +218,21 @@ run_latency() {
 }
 
 run_variant() {
-  local slots
+  local slots min_objects
   slots="$(slot_count "${VARIANT}")" || return 1
+  min_objects="$(slot_min_objects "${VARIANT}")" || return 1
   export SAM2D_ROOT SAV_ROOT GPUS SAM2_TRAINING_ROOT EDGETAM_ROOT
   export EDGETAM_MEMORY_ROOT="${RUN_ROOT}"
   export EDGETAM_MEMORY_SUMMARY_CSV="${SUMMARY_CSV}"
   export WANDB_PROJECT WANDB_MODE
   export VOS_EXECUTION_MODE=bucket
   export VOS_BUCKET_SIZE="${slots}"
-  export VOS_BUCKET_MIN_OBJECTS=4
+  export VOS_BUCKET_MIN_OBJECTS="${min_objects}"
   export EDGETAM_MEMORY_SKIP_DONE="${SKIP_DONE:-1}"
   scripts/company/49_run_edgetam_memory_ablation.sh run "${VARIANT}" || return 1
   run_latency || return 1
   scripts/company/49_run_edgetam_memory_ablation.sh summarize || return 1
-  touch "${RUN_ROOT}/${VARIANT}/.pipeline_complete"
+  touch "${RUN_ROOT}/${VARIANT}/${PIPELINE_COMPLETE_MARKER}"
   echo "Completed: ${VARIANT}"
   echo "Summary: ${SUMMARY_CSV}"
 }
