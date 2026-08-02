@@ -266,6 +266,7 @@ run_variant() {
 
 run_queue() {
   local node="$1" variant status queue
+  local -a failures=()
   if [[ ! "${node}" =~ ^([1-9]|10)$ ]]; then
     echo "[ERROR] Queue number must be 1 through 10" >&2
     return 2
@@ -278,10 +279,17 @@ run_queue() {
     status="$?"
     echo "${variant} status: ${status}"
     if [[ "${status}" -ne 0 ]]; then
-      echo "[STOP] Node ${node} queue stopped at ${variant}; rerun the same command to resume." >&2
-      return "${status}"
+      failures+=("${variant}:${status}")
+      echo "[CONTINUE] Recorded failure for ${variant}; starting the next experiment." >&2
     fi
   done
+  if [[ "${#failures[@]}" -gt 0 ]]; then
+    echo "===== Node ${node} failures =====" >&2
+    printf '%s\n' "${failures[@]}" >&2
+    echo "Rerun queue ${node} to retry failed variants; completed variants will be skipped." >&2
+    return 1
+  fi
+  echo "Node ${node}: all five experiments completed successfully."
 }
 
 summarize() {

@@ -31,6 +31,9 @@ Primary code paths:
 - Runtime reference: persistent bucket-4 TV21 result.
 - Training batch: one video per GPU, global batch four.
 - Checkpoints, W&B IDs, logs, locks, and result files are isolated by variant.
+- A variant failure is recorded but does not stop the remaining experiments on
+  that node. Rerunning the queue retries failed variants and skips completed
+  ones. A shared input-audit failure still stops the queue before training.
 
 The full dataset adds temporal windows, not new video identities: it is most
 likely to help T8/T12/T16 memory learning, correction curricula, and identity
