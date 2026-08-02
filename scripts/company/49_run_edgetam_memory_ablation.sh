@@ -78,6 +78,11 @@ VARIANTS=(
   Q1_tinyvit_overfit16_t8_500ep
   Q2_tinyvit_paper_scaled_sav_t8_5ep
 )
+FULL_DATA_TOOL="tools/experiments/sam2_full_data_50.py"
+if [[ -f "${FULL_DATA_TOOL}" ]]; then
+  mapfile -t FULL_DATA_VARIANTS < <(python "${FULL_DATA_TOOL}" list)
+  VARIANTS+=("${FULL_DATA_VARIANTS[@]}")
+fi
 
 if [[ "${ACTION}" == "list" ]]; then
   printf '%s\n' "${VARIANTS[@]}"
@@ -117,6 +122,10 @@ SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_sta
 BEST_TV21_RUN="${BEST_TV21_RUN:-${SAM2D_ROOT}/runs/tinyvit_max_jf_v1/tv21/main}"
 BEST_TV21_CHECKPOINT="${BEST_TV21_CHECKPOINT:-${BEST_TV21_RUN}/checkpoints/best.pt}"
 BEST_TV21_CONFIG="${BEST_TV21_CONFIG:-${BEST_TV21_RUN}/resolved_config.yaml}"
+BEST_TV11_RUN="${BEST_TV11_RUN:-${SAM2D_ROOT}/runs/tinyvit_max_jf_v1/tv11/main}"
+BEST_TV11_CHECKPOINT="${BEST_TV11_CHECKPOINT:-${BEST_TV11_RUN}/checkpoints/best.pt}"
+TV11_TINYVIT_CHECKPOINT="${TV11_TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_11m_224.dist_in22k_ft_in1k.safetensors}"
+TV11_SOURCE_STAGE1_CHECKPOINT="${TV11_SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_stage1_ablation_v2/4gpu_size_scaling/tv11_proj_sam21l_msehr_cos025/checkpoints/best.pt}"
 MX2_SLOT8_CHECKPOINT="${MX2_SLOT8_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/checkpoints/last.pt}"
 MX5_SLOT8_CHECKPOINT="${MX5_SLOT8_CHECKPOINT:-${SAM2D_ROOT}/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/checkpoints/last.pt}"
 MX5_SLOT8_CONFIG="${MX5_SLOT8_CONFIG:-${SAM2D_ROOT}/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/resolved_config.yaml}"
@@ -129,7 +138,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == MX1[3-9]_* || "${VARIANT}" == MX2[0-8]_* ]]; then
+if [[ "${VARIANT}" == FD* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_full_data_50_v1"
+  DEFAULT_WANDB_PROJECT="sam2-full-data-50-v1"
+elif [[ "${VARIANT}" == MX1[3-9]_* || "${VARIANT}" == MX2[0-8]_* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_multiplex_overnight_v4"
   DEFAULT_WANDB_PROJECT="sam2-multiplex-overnight-v4"
 elif [[ "${VARIANT}" == MX9_* || "${VARIANT}" == MX10_* || \
@@ -223,9 +235,72 @@ print(f"Prerequisite gate: PASS | {path}")
 PY
 }
 
+configure_full_data_variant() {
+  local rendered key value
+  rendered="$(python "${FULL_DATA_TOOL}" env "$1")" || return 1
+  while IFS=$'\t' read -r key value; do
+    case "${key}" in
+      FD_*|TASK_*)
+        printf -v "${key}" '%s' "${value}"
+        export "${key?}"
+        ;;
+      *)
+        echo "[ERROR] Unsupported full-data setting: ${key}" >&2
+        return 2
+        ;;
+    esac
+  done <<< "${rendered}"
+
+  case "${FD_BASE_PROFILE}" in
+    mx5)
+      export BASE_CHECKPOINT="${MX5_SLOT8_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      ;;
+    tv21)
+      export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      ;;
+    tv11)
+      export BASE_CHECKPOINT="${BEST_TV11_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export SOURCE_STAGE1_CHECKPOINT="${TV11_SOURCE_STAGE1_CHECKPOINT}"
+      export BASE_STAGE_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT}"
+      export TINYVIT_MODEL_NAME="tiny_vit_11m_224.dist_in22k_ft_in1k"
+      export TINYVIT_CHECKPOINT="${TV11_TINYVIT_CHECKPOINT}"
+      ;;
+    *)
+      echo "[ERROR] Unknown full-data base profile: ${FD_BASE_PROFILE}" >&2
+      return 2
+      ;;
+  esac
+
+  case "${FD_DATA_COHORT}" in
+    all)
+      export TASK_VIDEO_IDS_FILE=""
+      ;;
+    dense4|dense8)
+      export TASK_VIDEO_IDS_FILE="${ABLATION_ROOT}/cohorts/${FD_DATA_COHORT}_train_ids.txt"
+      ;;
+    *)
+      echo "[ERROR] Unknown full-data cohort: ${FD_DATA_COHORT}" >&2
+      return 2
+      ;;
+  esac
+
+  if [[ "${TASK_MEMORY_TOPOLOGY}" == "edgetam_hybrid2" ]]; then
+    export TASK_TEACHER_MODEL_CONFIG="${OFFICIAL_EDGETAM_CONFIG}"
+    export TASK_TEACHER_CHECKPOINT="${EDGETAM_CHECKPOINT}"
+  else
+    export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+    export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+  fi
+}
+
 configure_variant() {
   local local_source=""
-  if [[ "$1" == MX1[3-9]_* || "$1" == MX2[0-8]_* ]]; then
+  if [[ "$1" == FD* ]]; then
+    export TASK_EXPERIMENT_SUITE=sam2_full_data_50_v1
+  elif [[ "$1" == MX1[3-9]_* || "$1" == MX2[0-8]_* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_multiplex_overnight_v4
   elif [[ "$1" == MX9_* || "$1" == MX10_* || \
         "$1" == MX11_* || "$1" == MX12_* ]]; then
@@ -310,7 +385,7 @@ configure_variant() {
   export TASK_WEIGHT_DECAY=0.05
 
   case "$1" in
-    MO*|MX*)
+    MO*|MX*|FD*)
       export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
       export TASK_TRAIN_BATCH_SIZE=1
@@ -401,6 +476,9 @@ configure_variant() {
   esac
 
   case "$1" in
+    FD*)
+      configure_full_data_variant "$1" || return $?
+      ;;
     MX1_slot4_decoder_kd_3ep)
       export TASK_EPOCHS=3
       export TASK_TRAINABLE_MODE=object_slot_decoder
@@ -1137,6 +1215,10 @@ record_summary() {
 }
 
 audit_inputs() {
+  if [[ "${EDGETAM_SKIP_INPUT_AUDIT:-0}" == "1" ]]; then
+    echo "Skip per-variant input audit; suite-level audit already passed."
+    return 0
+  fi
   python tools/train/audit_sam2_task_inputs.py \
     --manifest "${MANIFEST}" \
     --stage1-checkpoint "${SOURCE_STAGE1_CHECKPOINT}" \
@@ -1187,19 +1269,24 @@ validate_common_paths() {
 }
 
 ensure_variant_inputs() {
-  if [[ "${VARIANT}" == MO* || "${VARIANT}" == MX* ]]; then
-    local cohort_root="${ABLATION_ROOT}/cohorts"
+  if [[ "${VARIANT}" == MO* || "${VARIANT}" == MX* || \
+        ( "${VARIANT}" == FD* && "${FD_DATA_COHORT:-all}" == dense* ) ]]; then
+    local cohort_root="${ABLATION_ROOT}/cohorts" dense_min=8 cohort_name=dense8
+    if [[ "${VARIANT}" == FD* ]]; then
+      cohort_name="${FD_DATA_COHORT}"
+      dense_min="${FD_DATA_COHORT#dense}"
+    fi
     mkdir -p "${cohort_root}"
-    exec 7>"${cohort_root}/.dense8.lock" || return 1
+    exec 7>"${cohort_root}/.${cohort_name}.lock" || return 1
     flock 7 || return 1
     if [[ ! -s "${TASK_VIDEO_IDS_FILE}" ]]; then
       python tools/data/select_sav_dense_training_videos.py \
         --manifest "${MANIFEST}" \
         --sav-root "${SAV_ROOT}" \
         --output-video-ids "${TASK_VIDEO_IDS_FILE}" \
-        --out-csv "${cohort_root}/dense8_index.csv" \
-        --out-summary "${cohort_root}/dense8_summary.json" \
-        --min-objects 8 \
+        --out-csv "${cohort_root}/${cohort_name}_index.csv" \
+        --out-summary "${cohort_root}/${cohort_name}_summary.json" \
+        --min-objects "${dense_min}" \
         --min-dense-frames 4 \
         --target-samples "${MO_TRAIN_SAMPLES:-50337}" \
         --seed "${TASK_SEED}" || return 1
