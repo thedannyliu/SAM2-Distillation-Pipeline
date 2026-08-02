@@ -18,3 +18,5 @@ tensordict>=0.5
 tensorboard>=2.14
 wandb>=0.17
 rich>=13.0
+boto3>=1.34
+pycocotools>=2.0.8

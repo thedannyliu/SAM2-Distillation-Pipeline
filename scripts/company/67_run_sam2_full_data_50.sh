@@ -76,12 +76,59 @@ describe() {
   done
 }
 
+prepare_repeated_cohort() {
+  local name="$1"
+  local source="${SAM2D_ROOT}/cohorts/sav_train_6fps_full/${name}_unique.txt"
+  local output="${RUN_ROOT}/cohorts/${name}_train_ids.txt"
+  if [[ -s "${output}" ]]; then
+    echo "Training cohort ready: ${output}"
+    return 0
+  fi
+  if [[ ! -s "${source}" ]]; then
+    echo "[WARN] Unique ${name} cohort is missing; the first training node will rebuild it from the manifest: ${source}" >&2
+    return 0
+  fi
+  python - "${source}" "${output}" "${MO_TRAIN_SAMPLES:-50337}" <<'PY'
+import random
+import sys
+from pathlib import Path
+
+source, output = map(Path, sys.argv[1:3])
+target = int(sys.argv[3])
+values = [
+    line.strip()
+    for line in source.read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.lstrip().startswith("#")
+]
+if not values:
+    raise SystemExit(f"empty source cohort: {source}")
+rng = random.Random(250107256)
+repeated = []
+while len(repeated) < target:
+    cycle = list(values)
+    rng.shuffle(cycle)
+    repeated.extend(cycle)
+output.parent.mkdir(parents=True, exist_ok=True)
+temporary = output.with_suffix(output.suffix + ".tmp")
+temporary.write_text(
+    "".join(f"{video_id}\n" for video_id in repeated[:target]),
+    encoding="utf-8",
+)
+temporary.replace(output)
+print(
+    f"Prepared {output}: unique={len(values)}, samples={target}, seed=250107256"
+)
+PY
+}
+
 audit_inputs_once() {
   local marker="${RUN_ROOT}/.full_data_input_audit_passed"
   local lock="${RUN_ROOT}/.full_data_input_audit.lock"
   mkdir -p "${RUN_ROOT}"
   exec 7>"${lock}" || return 1
   flock 7 || return 1
+  prepare_repeated_cohort dense4 || return 1
+  prepare_repeated_cohort dense8 || return 1
   if [[ -f "${marker}" && "${marker}" -nt "${FULL_SAV_MANIFEST}" ]]; then
     echo "Full-data input audit already passed: ${marker}"
     flock -u 7
