@@ -186,6 +186,7 @@ evaluate() {
 }
 
 run_all() {
+  describe
   audit || return $?
   run_stage "${STAGE1}" none || return $?
   run_stage "${STAGE2}" none || return $?
