@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,51 @@ from tqdm import tqdm
 
 def stable_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def verified_image_size(path: Path) -> tuple[int, int] | None:
+    """Return image size only when Pillow can verify the complete file."""
+    try:
+        with Image.open(path) as image:
+            size = image.size
+            image.verify()
+        return int(size[0]), int(size[1])
+    except (OSError, ValueError):
+        return None
+
+
+def save_jpeg_atomic(image: Image.Image, path: Path, quality: int) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as output:
+            temporary = Path(output.name)
+        image.save(temporary, format="JPEG", quality=quality)
+        temporary.replace(path)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+
+
+def copy_image_atomic(source: Path, target: Path) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            dir=target.parent,
+            delete=False,
+        ) as output:
+            temporary = Path(output.name)
+        shutil.copy2(source, temporary)
+        temporary.replace(target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 
 
 def task_shard_index(task: dict[str, Any], num_shards: int) -> int:
@@ -261,12 +307,16 @@ def prepared_frame_task(
         idx_24fps = int(source_path.stem)
         cached_path = Path(out_root) / image_cache_name / task["video_id"] / source_path.name
         cached_path.parent.mkdir(parents=True, exist_ok=True)
-        if source_path.resolve() != cached_path.resolve() and not (
-            skip_existing and cached_path.is_file()
-        ):
-            shutil.copy2(source_path, cached_path)
-        with Image.open(cached_path) as image:
-            width, height = image.size
+        same_path = source_path.resolve() == cached_path.resolve()
+        size = verified_image_size(cached_path) if skip_existing else None
+        if skip_existing and cached_path.exists() and size is None:
+            print(f"repair corrupt cached image: {cached_path}", flush=True)
+        if size is None and not same_path:
+            copy_image_atomic(source_path, cached_path)
+            size = verified_image_size(cached_path)
+        if size is None:
+            raise RuntimeError(f"Could not verify prepared image: {cached_path}")
+        width, height = size
         rows.append(
             {
                 "sample_id": f"sav_{task['split']}_{task['video_id']}_{idx_24fps:05d}",
@@ -310,15 +360,20 @@ def extract_video_task(task: dict[str, Any], out_root: str, ann_every: int, jpeg
     for idx_6fps in task["indices_6fps"]:
         idx_24fps = int(idx_6fps) * ann_every
         out_path = out_dir / f"{idx_24fps:05d}.jpg"
-        if not (skip_existing and out_path.exists()):
+        size = verified_image_size(out_path) if skip_existing else None
+        if skip_existing and out_path.exists() and size is None:
+            print(f"repair corrupt cached image: {out_path}", flush=True)
+        if size is None:
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx_24fps)
             ok, frame = cap.read()
             if not ok:
                 continue
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            Image.fromarray(frame_rgb).save(out_path, quality=jpeg_quality)
-        with Image.open(out_path) as image:
-            width, height = image.size
+            save_jpeg_atomic(Image.fromarray(frame_rgb), out_path, jpeg_quality)
+            size = verified_image_size(out_path)
+        if size is None:
+            raise RuntimeError(f"Could not verify extracted image: {out_path}")
+        width, height = size
         rows.append(
             {
                 "sample_id": f"sav_{task['split']}_{task['video_id']}_{idx_24fps:05d}",

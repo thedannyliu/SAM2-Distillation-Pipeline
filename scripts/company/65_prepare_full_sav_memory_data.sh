@@ -14,6 +14,8 @@ SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_sta
 DOWNLOAD_WORKERS="${DOWNLOAD_WORKERS:-32}"
 NUM_WORKERS="${NUM_WORKERS:-64}"
 AUDIT_SAMPLE_VIDEOS="${AUDIT_SAMPLE_VIDEOS:-1000}"
+RAW_AUDIT_JSON_SAMPLES="${RAW_AUDIT_JSON_SAMPLES:-500}"
+RAW_AUDIT_VIDEO_SAMPLES="${RAW_AUDIT_VIDEO_SAMPLES:-200}"
 
 describe() {
   echo "Full SA-V train preparation for SAM2 memory/task training"
@@ -36,20 +38,33 @@ sync_raw() {
     --reserve-gib 100
 }
 
+audit_source_inventory() {
+  python tools/data/sync_sav_runtime_from_s3.py \
+    --bucket sdp-ril \
+    --source-root danny-dataset/SA-V \
+    --out-root "${SAV_ROOT}" \
+    --components sav_train \
+    --workers "${DOWNLOAD_WORKERS}" \
+    --audit-only
+}
+
 audit_raw() {
-  python - "${RAW_ROOT}" <<'PY'
+  python - "${RAW_ROOT}" "${RAW_AUDIT_JSON_SAMPLES}" "${RAW_AUDIT_VIDEO_SAMPLES}" <<'PY'
 import json
 import random
 import sys
 from pathlib import Path
 
+import cv2
+
 root = Path(sys.argv[1])
+json_sample_count = int(sys.argv[2])
+video_sample_count = int(sys.argv[3])
 mp4 = sorted(root.rglob("*.mp4"))
 manual = sorted(root.rglob("*_manual.json"))
 auto = sorted(root.rglob("*_auto.json"))
 counts = {"mp4": len(mp4), "manual_json": len(manual), "auto_json": len(auto)}
 expected = {"mp4": 50453, "manual_json": 50452, "auto_json": 48306}
-print(json.dumps({"root": str(root), "counts": counts, "expected": expected}, indent=2))
 failures = [
     f"{name}: got {counts[name]}, expected {value}"
     for name, value in expected.items()
@@ -58,21 +73,75 @@ failures = [
 zero_size = [str(path) for path in mp4 + manual + auto if path.stat().st_size == 0]
 if zero_size:
     failures.append(f"zero-size files: {zero_size[:10]}")
-sample = random.Random(310107256).sample(manual, min(500, len(manual)))
+
+mp4_ids = [path.stem for path in mp4]
+manual_ids = [path.name.removesuffix("_manual.json") for path in manual]
+auto_ids = [path.name.removesuffix("_auto.json") for path in auto]
+duplicate_ids = {
+    "mp4": len(mp4_ids) - len(set(mp4_ids)),
+    "manual_json": len(manual_ids) - len(set(manual_ids)),
+    "auto_json": len(auto_ids) - len(set(auto_ids)),
+}
+if any(duplicate_ids.values()):
+    failures.append(f"duplicate IDs: {duplicate_ids}")
+orphan_manual = sorted(set(manual_ids) - set(mp4_ids))
+orphan_auto = sorted(set(auto_ids) - set(mp4_ids))
+if orphan_manual or orphan_auto:
+    failures.append(
+        f"annotations without MP4: manual={orphan_manual[:10]}, auto={orphan_auto[:10]}"
+    )
+
+rng = random.Random(310107256)
+json_sample = rng.sample(manual, min(json_sample_count, len(manual)))
 json_errors = []
-for path in sample:
+for path in json_sample:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload.get("masklet"), list):
-            raise ValueError("missing masklet list")
+        masklet = payload.get("masklet")
+        if not isinstance(masklet, list) or not masklet:
+            raise ValueError("missing or empty masklet list")
     except Exception as exc:
         json_errors.append(f"{path}: {exc}")
 if json_errors:
     failures.append(f"sampled JSON errors: {json_errors[:10]}")
+
+video_sample = rng.sample(mp4, min(video_sample_count, len(mp4)))
+video_errors = []
+for path in video_sample:
+    capture = cv2.VideoCapture(str(path))
+    try:
+        if not capture.isOpened():
+            raise ValueError("VideoCapture could not open file")
+        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if frame_count <= 0:
+            raise ValueError(f"invalid frame count {frame_count}")
+        for frame_index in sorted({0, min(160, frame_count - 1)}):
+            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                raise ValueError(f"could not decode frame {frame_index}")
+    except Exception as exc:
+        video_errors.append(f"{path}: {exc}")
+    finally:
+        capture.release()
+if video_errors:
+    failures.append(f"sampled MP4 errors: {video_errors[:10]}")
+
+summary = {
+    "root": str(root),
+    "counts": counts,
+    "expected": expected,
+    "duplicate_ids": duplicate_ids,
+    "mp4_without_manual_json": len(set(mp4_ids) - set(manual_ids)),
+    "mp4_without_auto_json": len(set(mp4_ids) - set(auto_ids)),
+    "manual_json_sampled": len(json_sample),
+    "mp4_sampled": len(video_sample),
+}
+print(json.dumps(summary, indent=2))
 if failures:
     print(json.dumps({"status": "fail", "failures": failures}, indent=2))
     raise SystemExit(1)
-print(json.dumps({"status": "pass", "manual_json_sampled": len(sample)}, indent=2))
+print(json.dumps({"status": "pass"}, indent=2))
 PY
 }
 
@@ -175,6 +244,12 @@ case "${ACTION}" in
   sync)
     sync_raw || STATUS="$?"
     ;;
+  source-audit)
+    audit_source_inventory && audit_raw || STATUS="$?"
+    ;;
+  source-repair)
+    sync_raw && audit_raw || STATUS="$?"
+    ;;
   prepare)
     audit_raw && prepare_frames || STATUS="$?"
     ;;
@@ -192,7 +267,7 @@ case "${ACTION}" in
       build_cohorts || STATUS="$?"
     ;;
   *)
-    echo "Usage: $0 {describe|sync|prepare|audit|cohorts|all}" >&2
+    echo "Usage: $0 {describe|sync|source-audit|source-repair|prepare|audit|cohorts|all}" >&2
     STATUS=2
     ;;
 esac

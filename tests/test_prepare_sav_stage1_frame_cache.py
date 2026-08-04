@@ -1,9 +1,15 @@
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+from PIL import Image
 
 from tools.data.prepare_sav_stage1_frame_cache import (
     choose_annotation,
     detect_ann_root,
     discover_split,
+    extract_video_task,
     task_shard_index,
 )
 
@@ -77,3 +83,55 @@ def test_video_tasks_are_deterministically_partitioned() -> None:
     assert all(shards)
     assert sum(len(shard) for shard in shards) == len(tasks)
     assert set().union(*shards) == {task["video_id"] for task in tasks}
+
+
+def test_corrupt_cached_jpeg_is_rebuilt_atomically(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    video_id = "sav_038326"
+    cached = tmp_path / "JPEGImages" / video_id / "00160.jpg"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"incomplete jpeg")
+
+    class FakeCapture:
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, _property, _value) -> None:
+            pass
+
+        def read(self):
+            return True, np.zeros((12, 16, 3), dtype=np.uint8)
+
+        def release(self) -> None:
+            pass
+
+    fake_cv2 = SimpleNamespace(
+        CAP_PROP_POS_FRAMES=1,
+        COLOR_BGR2RGB=2,
+        VideoCapture=lambda _path: FakeCapture(),
+        cvtColor=lambda frame, _conversion: frame,
+    )
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+
+    rows = extract_video_task(
+        {
+            "kind": "raw",
+            "split": "train",
+            "video_id": video_id,
+            "video_path": str(tmp_path / f"{video_id}.mp4"),
+            "annotation_path": "",
+            "indices_6fps": [40],
+        },
+        str(tmp_path),
+        ann_every=4,
+        jpeg_quality=90,
+        skip_existing=True,
+    )
+
+    with Image.open(cached) as image:
+        image.verify()
+    assert rows[0]["width"] == 16
+    assert rows[0]["height"] == 12
+    assert not list(cached.parent.glob(".00160.jpg.*.tmp"))

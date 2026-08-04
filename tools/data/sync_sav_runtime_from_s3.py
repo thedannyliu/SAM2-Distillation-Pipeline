@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
         default=list(DEFAULT_COMPONENTS),
     )
     parser.add_argument("--reserve-gib", type=float, default=5.0)
+    parser.add_argument(
+        "--audit-only",
+        action="store_true",
+        help="Compare every Data Lake object with the local path and do not download.",
+    )
     return parser.parse_args()
 
 
@@ -165,6 +170,28 @@ def inventory(client, args: argparse.Namespace) -> dict[str, dict[str, int]]:
     return result
 
 
+def inventory_is_complete(result: dict[str, dict[str, int]]) -> bool:
+    return all(item["missing_objects"] == 0 for item in result.values())
+
+
+def write_summary(args: argparse.Namespace, summary: dict) -> Path:
+    suffix = "audit" if args.audit_only else "sync"
+    if tuple(args.components) == DEFAULT_COMPONENTS:
+        summary_name = f"runtime_data_{suffix}.provenance.json"
+    else:
+        summary_name = (
+            f"{'_'.join(args.components)}_data_{suffix}.provenance.json"
+        )
+    summary_path = args.out_root / summary_name
+    summary_path.write_text(
+        json.dumps(summary, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(summary, indent=2), flush=True)
+    print(f"Provenance: {summary_path}", flush=True)
+    return summary_path
+
+
 def sync_component(
     client,
     args: argparse.Namespace,
@@ -267,6 +294,21 @@ def main() -> None:
     print(f"Endpoint: {endpoint or 'AWS default S3 endpoint'}", flush=True)
     print(f"Destination: {args.out_root}", flush=True)
     source_inventory = inventory(client, args)
+    if args.audit_only:
+        complete = inventory_is_complete(source_inventory)
+        summary = {
+            "status": "pass" if complete else "fail",
+            "mode": "audit-only",
+            "source": f"s3://{args.bucket}/{args.source_root.strip('/')}/",
+            "destination": str(args.out_root),
+            "components": args.components,
+            "inventory": source_inventory,
+        }
+        write_summary(args, summary)
+        if not complete:
+            raise SystemExit(1)
+        return
+
     missing_bytes = sum(item["missing_bytes"] for item in source_inventory.values())
     free_bytes = shutil.disk_usage(args.out_root).free
     reserve_bytes = int(args.reserve_gib * 1024**3)
@@ -282,24 +324,21 @@ def main() -> None:
         component: sync_component(client, args, component)
         for component in args.components
     }
+    post_sync_inventory = inventory(client, args)
+    complete = inventory_is_complete(post_sync_inventory)
     summary = {
-        "status": "pass",
+        "status": "pass" if complete else "fail",
         "source": f"s3://{args.bucket}/{args.source_root.strip('/')}/",
         "destination": str(args.out_root),
         "components": args.components,
         "inventory": source_inventory,
+        "pre_sync_inventory": source_inventory,
         "sync": sync_results,
+        "post_sync_inventory": post_sync_inventory,
     }
-    if tuple(args.components) == DEFAULT_COMPONENTS:
-        summary_name = "runtime_data_sync.provenance.json"
-    else:
-        summary_name = (
-            f"{'_'.join(args.components)}_data_sync.provenance.json"
-        )
-    summary_path = args.out_root / summary_name
-    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(summary, indent=2), flush=True)
-    print(f"Provenance: {summary_path}", flush=True)
+    write_summary(args, summary)
+    if not complete:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
