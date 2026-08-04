@@ -23,8 +23,11 @@ T4/T8/T16 task, decoder, memory, shared-K/V, and object-slot experiments.
 | Dense-8 cohort | `/group-volume/danny-dataset/sam2_distill/cohorts/sav_train_6fps_full/dense8_unique.txt` |
 
 The raw release gate expects 50,453 MP4 files, 50,452 manual JSON files, and
-48,306 auto JSON files. The one video without a manual annotation remains in
-the manifest but is excluded by the SAM2 task dataset.
+48,306 auto JSON files. File counts do not imply one-to-one IDs: the mounted
+release has 116 MP4 IDs without matching manual JSON and 115 manual JSON IDs
+without matching MP4, leaving 50,337 videos usable by the SAM2 task dataset.
+The manifest retains all 50,453 videos; the task adapter excludes the 116
+without readable matching manual annotations.
 
 ## Preparation
 
@@ -62,6 +65,9 @@ requires a same-size local file for every key. It then checks the expected raw
 file counts, duplicate/orphan IDs, zero-size files, 500 sampled manual JSON
 annotations, and frames 0/160 in 200 sampled MP4s. `source-repair` downloads
 missing or size-mismatched objects and runs the same semantic checks.
+The release-ID gate preserves the audited source relationships: 116/115
+MP4/manual mismatches and 2,255/108 MP4/auto mismatches. These are properties
+of the Data Lake release rather than incomplete local downloads.
 
 `audit` checks manifest cardinality, frame cadence, duplicate IDs, cache
 cardinality, sampled image paths, sampled manual annotations, and the actual
