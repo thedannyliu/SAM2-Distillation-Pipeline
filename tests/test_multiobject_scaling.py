@@ -907,3 +907,58 @@ def test_multiplex_screen_variants_set_one_planned_axis(
 
     for snippet in expected:
         assert snippet in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        (
+            "EM1_t4_official_temporal_2ep",
+            (
+                "Initializer/layout: official_temporal/official",
+                "Trainable mode: memory_perceiver_full",
+                "Epochs/max objects: 2/3",
+                "T/global batch: 4/4",
+                "Loss task/image/memory/logits/obj: 1/0/0.5/2/0",
+            ),
+        ),
+        (
+            "EM2_t8_joint_edgetam_5ep",
+            (
+                "Initializer/layout: current_full/official",
+                "Trainable mode: image_encoder_memory_perceiver",
+                "Epochs/max objects: 5/3",
+                "T/global batch: 8/4",
+                "Loss task/image/memory/logits/obj: 1/1/0.5/2/0",
+            ),
+        ),
+        (
+            "EM3_t16_memory_refine_2ep",
+            (
+                "Initializer/layout: current_full/official",
+                "Trainable mode: memory_perceiver_full",
+                "Epochs/max objects: 2/3",
+                "T/global batch: 16/4",
+                "Loss task/image/memory/logits/obj: 1/0/0.25/1/0",
+            ),
+        ),
+    ],
+)
+def test_tinyvit21_edgetam_memory_curriculum_is_staged(variant, expected):
+    repo_root = Path(__file__).resolve().parents[1]
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "describe",
+            variant,
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for snippet in expected:
+        assert snippet in result.stdout
