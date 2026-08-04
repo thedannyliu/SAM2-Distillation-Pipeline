@@ -90,6 +90,9 @@ status() {
   local variant checkpoint
   for variant in "${STAGE1}" "${STAGE2}" "${STAGE3}"; do
     checkpoint="${RUN_ROOT}/${variant}/main/checkpoints/last.pt"
+    if [[ ! -f "${checkpoint}" ]]; then
+      checkpoint="${RUN_ROOT}/${variant}/main/checkpoints/checkpoint.pt"
+    fi
     echo "===== ${variant} ====="
     if [[ -f "${checkpoint}" ]]; then
       python - "${checkpoint}" <<'PY'

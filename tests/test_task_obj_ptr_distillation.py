@@ -24,6 +24,7 @@ def test_obj_ptr_kd_exposes_student_and_teacher_pointer_outputs(
 ) -> None:
     config = _namespace(
         {
+            "scratch": {"max_num_objects": 2},
             "trainer": {
                 "model": {},
                 "seed_value": 0,
@@ -60,6 +61,7 @@ def test_obj_ptr_kd_exposes_student_and_teacher_pointer_outputs(
     monkeypatch.setitem(sys.modules, "omegaconf", fake_omegaconf)
     monkeypatch.setenv("TASK_MASK_ABLATION_V2", "1")
     monkeypatch.setenv("TASK_LAMBDA_OBJ_PTR", "0.25")
+    monkeypatch.setenv("TASK_MAX_NUM_OBJECTS", "3")
     monkeypatch.setenv("TASK_TEACHER_MODEL_CONFIG", "/teacher/config.yaml")
     monkeypatch.setenv("TASK_TEACHER_CHECKPOINT", "/teacher/checkpoint.pt")
 
@@ -71,3 +73,7 @@ def test_obj_ptr_kd_exposes_student_and_teacher_pointer_outputs(
         == "sam2_distill.edgetam.train_model.EdgeTAMTrainWithTeacher"
     )
     assert config.trainer.loss.all.lambda_obj_ptr == 0.25
+    assert config.scratch.max_num_objects == 3
+    assert (
+        config.trainer.data.train.datasets[0].sampler.max_num_objects == 3
+    )

@@ -53,6 +53,52 @@ about 113,265 updates. Full SA-V increases the frame/clip sampling pool; it does
 not change updates per epoch unless the number of manifest video records or the
 dataset multiplier changes.
 
+## Progress snapshot: 2026-08-04
+
+| Stage | Observed state | Persisted progress | Trainable parameters | Evaluation |
+|---|---|---:|---:|---|
+| EM1 | Training complete | epoch 2; 25,170 updates | 4,775,392 / 29,800,722 | Intentionally deferred |
+| EM2 | Active; confirmed still running by the operator | 25,170 updates in `checkpoint.pt`, equivalent to the epoch-2 boundary of 5 | 25,561,040 / 29,800,722 | Pending |
+| EM3 | Not started | 0 / 25,170 planned updates | Pending construction | Pending |
+
+EM1 took 14,039.96 seconds, or about 3.90 hours, for its two epochs. At least
+50,340 of the curriculum's 113,265 updates have therefore been persisted across
+EM1 and EM2. This is a lower bound because a running process may have advanced
+beyond its most recent checkpoint.
+
+The result is positive at the engineering-feasibility level:
+
+1. The best TinyViT-21M task checkpoint accepted the coherent official EdgeTAM
+   temporal initialization and completed two epochs with no recorded checkpoint
+   loading or backward-pass error.
+2. EM2 successfully loaded EM1 through `current_full`, enabled gradients for the
+   encoder plus memory stack, and reached at least 25,170 updates. This removes
+   two failure modes seen in earlier experiments: broken temporal-call
+   interfaces and losses disconnected from trainable parameters.
+3. There is not yet a research-quality result. No validation, test, J&F, or
+   latency metric exists, so the experiment currently demonstrates trainability
+   rather than accuracy or speed.
+
+The `.full_eval_required` markers on EM1 and EM2 are expected. Intermediate
+stages run with evaluation disabled; the orchestrator performs full validation
+and test only after EM3. The original resolved configs also showed
+`scratch.max_num_objects: 2` while the effective dataset sampler and experiment
+summary both showed 3. Runtime sampling was therefore three objects, but the
+scratch field was misleading. Commit following this snapshot keeps the scratch
+and sampler fields synchronized for subsequent resolved configs.
+
+No restart or resume action is warranted at this snapshot. The recent error
+scan was empty, EM2 has a valid in-progress checkpoint, and the operator
+confirmed that experiments are still running. Observe the current jobs without
+changing their code or process state unless a real error appears.
+
+The next decision point is the completed EM3 full validation. If its val J&F is
+below 60, the official temporal path has not surpassed the earlier shared-K/V
+line and should not receive a latency benchmark. A result from 60 to below the
+95% quality-retention threshold is useful but remains an accuracy/speed tradeoff.
+At or above 68.8 val J&F (95% of the 72.4 reference), proceed to full test and
+N=1/2/4/8 latency measurement.
+
 ## Company command
 
 Run in the foreground on the new 4xH100 node:

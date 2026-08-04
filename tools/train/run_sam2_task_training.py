@@ -399,7 +399,9 @@ def apply_mask_ablation_overrides(config) -> None:
     video_ids_file = os.environ.get("TASK_VIDEO_IDS_FILE", "").strip()
     if video_ids_file:
         dataset.video_ids_file = video_ids_file
-    sampler.max_num_objects = int(os.environ.get("TASK_MAX_NUM_OBJECTS", "2"))
+    max_num_objects = int(os.environ.get("TASK_MAX_NUM_OBJECTS", "2"))
+    config.scratch.max_num_objects = max_num_objects
+    sampler.max_num_objects = max_num_objects
 
     prompt_values = {
         "prob_to_use_pt_input_for_train": float(
