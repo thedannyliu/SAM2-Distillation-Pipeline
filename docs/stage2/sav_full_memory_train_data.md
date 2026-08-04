@@ -28,8 +28,10 @@ the manifest but is excluded by the SAM2 task dataset.
 
 ## Preparation
 
-The workflow is resumable. S3 downloads use temporary files and size checks,
-and frame extraction skips existing JPEGs.
+The workflow is resumable. S3 downloads use temporary files, exact object-size
+checks, and a post-sync inventory. Frame extraction verifies existing JPEGs;
+an interrupted or corrupt cache file is rebuilt from its MP4 and replaced
+atomically.
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
@@ -47,15 +49,33 @@ echo "Full preparation status: ${PIPESTATUS[0]}"
 The same workflow can be resumed one stage at a time:
 
 ```bash
+scripts/company/65_prepare_full_sav_memory_data.sh source-audit
+scripts/company/65_prepare_full_sav_memory_data.sh source-repair
 scripts/company/65_prepare_full_sav_memory_data.sh sync
 scripts/company/65_prepare_full_sav_memory_data.sh prepare
 scripts/company/65_prepare_full_sav_memory_data.sh audit
 scripts/company/65_prepare_full_sav_memory_data.sh cohorts
 ```
 
+`source-audit` lists every object under the Data Lake `sav_train` prefix and
+requires a same-size local file for every key. It then checks the expected raw
+file counts, duplicate/orphan IDs, zero-size files, 500 sampled manual JSON
+annotations, and frames 0/160 in 200 sampled MP4s. `source-repair` downloads
+missing or size-mismatched objects and runs the same semantic checks.
+
 `audit` checks manifest cardinality, frame cadence, duplicate IDs, cache
 cardinality, sampled image paths, sampled manual annotations, and the actual
 SAM2 task-data adapter.
+
+For four-node frame extraction, each node owns one deterministic shard. A
+failed shard can be rerun directly; completed shard markers remain untouched:
+
+```bash
+NUM_WORKERS=64 scripts/company/66_prepare_full_sav_frames_4node.sh node 4
+scripts/company/66_prepare_full_sav_frames_4node.sh status
+scripts/company/66_prepare_full_sav_frames_4node.sh merge
+scripts/company/65_prepare_full_sav_memory_data.sh audit
+```
 
 ## Training selection
 
