@@ -86,9 +86,22 @@ if any(duplicate_ids.values()):
     failures.append(f"duplicate IDs: {duplicate_ids}")
 orphan_manual = sorted(set(manual_ids) - set(mp4_ids))
 orphan_auto = sorted(set(auto_ids) - set(mp4_ids))
-if orphan_manual or orphan_auto:
+release_id_relationships = {
+    "mp4_without_manual_json": len(set(mp4_ids) - set(manual_ids)),
+    "manual_json_without_mp4": len(orphan_manual),
+    "mp4_without_auto_json": len(set(mp4_ids) - set(auto_ids)),
+    "auto_json_without_mp4": len(orphan_auto),
+}
+expected_id_relationships = {
+    "mp4_without_manual_json": 116,
+    "manual_json_without_mp4": 115,
+    "mp4_without_auto_json": 2255,
+    "auto_json_without_mp4": 108,
+}
+if release_id_relationships != expected_id_relationships:
     failures.append(
-        f"annotations without MP4: manual={orphan_manual[:10]}, auto={orphan_auto[:10]}"
+        "unexpected release ID relationships: "
+        f"got {release_id_relationships}, expected {expected_id_relationships}"
     )
 
 rng = random.Random(310107256)
@@ -132,8 +145,10 @@ summary = {
     "counts": counts,
     "expected": expected,
     "duplicate_ids": duplicate_ids,
-    "mp4_without_manual_json": len(set(mp4_ids) - set(manual_ids)),
-    "mp4_without_auto_json": len(set(mp4_ids) - set(auto_ids)),
+    "release_id_relationships": release_id_relationships,
+    "expected_id_relationships": expected_id_relationships,
+    "mp4_without_manual_examples": sorted(set(mp4_ids) - set(manual_ids))[:10],
+    "manual_without_mp4_examples": orphan_manual[:10],
     "manual_json_sampled": len(json_sample),
     "mp4_sampled": len(video_sample),
 }
