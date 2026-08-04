@@ -2,6 +2,10 @@
 
 This is the normalized, one-entry-per-experiment record derived from [`experiment_result_all.txt`](experiment_result_all.txt). The source is a read-only company-side snapshot generated at `2026-08-04T18:44:57Z`; statuses are historical and must not be interpreted as current process state.
 
+The architecture-level interpretation of the efficient-memory and multiplex
+experiments is in
+[`sam2_efficient_memory_multiplex_progress_2026-08-04.md`](sam2_efficient_memory_multiplex_progress_2026-08-04.md).
+
 ## Scope and conventions
 
 - Universal experiment rows: **181**.
