@@ -679,9 +679,10 @@ def apply_object_slot_overrides(config) -> None:
     mode = os.environ.get("TASK_OBJECT_SLOT_MODE", "none")
     if mode == "none":
         return
-    if mode not in {"decoder", "shared_kv"}:
+    if mode not in {"decoder", "shared_kv", "multiplex"}:
         raise ValueError(
-            "TASK_OBJECT_SLOT_MODE must be none, decoder, or shared_kv"
+            "TASK_OBJECT_SLOT_MODE must be none, decoder, shared_kv, or "
+            "multiplex"
         )
 
     from omegaconf import OmegaConf
@@ -719,6 +720,20 @@ def apply_object_slot_overrides(config) -> None:
                 "TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY", "0.5"
             )
         )
+    elif mode == "multiplex":
+        model.memory_encoder._target_ = (
+            "sam2_distill.models.sam2_object_slots."
+            "SlotPreservingMemoryEncoder"
+        )
+        model.memory_encoder.slot_count = slot_count
+        model.memory_encoder.min_objects = min_objects
+        model.memory_attention._target_ = (
+            "sam2_distill.models.sam2_object_slots."
+            "SlotPreservingMemoryAttention"
+        )
+        model.memory_attention.slot_count = slot_count
+        model.memory_attention.min_objects = min_objects
+        model.memory_attention.memory_dim = 64
 
     config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(
         {

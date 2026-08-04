@@ -41,6 +41,8 @@ from sam2_distill.models.sam2_object_slots import (
     LowRankObjectMemoryResidual,
     ObjectSlotModelMixin,
     SharedSlotMemoryAttention,
+    SlotPreservingMemoryAttention,
+    SlotPreservingMemoryEncoder,
 )
 
 
@@ -260,6 +262,7 @@ class FakeMemoryAttentionLayer(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.batch_sizes = []
+        self.excluded_tokens = []
 
     def forward(
         self,
@@ -271,6 +274,7 @@ class FakeMemoryAttentionLayer(torch.nn.Module):
         num_k_exclude_rope,
     ):
         self.batch_sizes.append(tgt.shape[0])
+        self.excluded_tokens.append(num_k_exclude_rope)
         return tgt + memory.mean(dim=1, keepdim=True)
 
 
@@ -351,6 +355,103 @@ def test_shared_slot_memory_attention_keeps_small_batch_legacy_path():
 
     assert output.shape == (3, 2, 4)
     assert module.layers[0].batch_sizes == [2]
+
+
+class FakePositionEncoding(torch.nn.Module):
+    def forward(self, value):
+        return torch.zeros_like(value)
+
+
+class FakeMaskDownsampler(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = torch.nn.Sequential(
+            torch.nn.Conv2d(1, 4, kernel_size=1),
+        )
+
+    def forward(self, value):
+        return self.encoder(value)
+
+
+def test_slot_preserving_memory_encoder_uses_mask_channels_per_bucket():
+    downsampler = FakeMaskDownsampler()
+    module = SlotPreservingMemoryEncoder(
+        out_dim=4,
+        mask_downsampler=downsampler,
+        fuser=torch.nn.Identity(),
+        position_encoding=FakePositionEncoding(),
+        in_dim=4,
+        slot_count=4,
+        min_objects=4,
+    )
+    result = module(
+        torch.randn(6, 4, 2, 2),
+        torch.randn(6, 1, 2, 2),
+    )
+
+    first_conv = module.multiplex_mask_downsampler.encoder[0]
+    assert first_conv.in_channels == 4
+    assert result["vision_features"].shape == (6, 4, 2, 2)
+    assert torch.equal(
+        result["vision_features"][0], result["vision_features"][3]
+    )
+    assert torch.equal(
+        result["vision_features"][4], result["vision_features"][5]
+    )
+
+
+def test_slot_memory_padding_stays_background_after_sigmoid():
+    downsampler = FakeMaskDownsampler()
+    with torch.no_grad():
+        downsampler.encoder[0].weight.fill_(1)
+        downsampler.encoder[0].bias.zero_()
+    module = SlotPreservingMemoryEncoder(
+        out_dim=4,
+        mask_downsampler=downsampler,
+        fuser=torch.nn.Identity(),
+        position_encoding=FakePositionEncoding(),
+        in_dim=4,
+        slot_count=4,
+        min_objects=4,
+    )
+    with torch.no_grad():
+        module.pix_feat_proj.weight.zero_()
+        module.pix_feat_proj.bias.zero_()
+
+    result = module(torch.zeros(1, 4, 1, 1), torch.zeros(1, 1, 1, 1))
+
+    assert torch.allclose(
+        result["vision_features"], torch.full((1, 4, 1, 1), 0.5)
+    )
+
+
+def test_slot_preserving_attention_packs_private_pointer_tokens():
+    module = SlotPreservingMemoryAttention(
+        d_model=4,
+        pos_enc_at_input=False,
+        layer=FakeMemoryAttentionLayer(),
+        num_layers=1,
+        batch_first=True,
+        slot_count=4,
+        min_objects=4,
+        memory_dim=4,
+    )
+    bucket_spatial = torch.randn(5, 2, 4)
+    spatial = bucket_spatial.repeat_interleave(4, dim=1)
+    pointers = torch.arange(2 * 8 * 4, dtype=torch.float32).view(2, 8, 4)
+
+    output = module(
+        torch.randn(3, 8, 4),
+        torch.cat([spatial, pointers], dim=0),
+        memory_pos=torch.zeros(7, 8, 4),
+        num_obj_ptr_tokens=2,
+    )
+
+    assert output.shape == (3, 8, 4)
+    assert module.layers[0].batch_sizes == [2]
+    assert module.layers[0].excluded_tokens == [8]
+    assert torch.equal(output[:, 0], output[:, 3])
+    assert torch.equal(output[:, 4], output[:, 7])
 
 
 def test_low_rank_object_residual_restores_distinct_bucket_outputs():
@@ -539,11 +640,19 @@ def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
     target.memory_attention.object_residual = torch.nn.Linear(
         2, 2, bias=False
     )
+    target.memory_attention.slot_pointer_pos = torch.nn.Parameter(
+        torch.full((2, 2), 11.0)
+    )
+    target.memory_encoder = torch.nn.Module()
+    target.memory_encoder.multiplex_mask_downsampler = torch.nn.Linear(
+        2, 2, bias=False
+    )
     with torch.no_grad():
         source.projection.weight.fill_(3)
         target.projection.weight.zero_()
         target.object_slot_decoder.weight.fill_(7)
         target.memory_attention.object_residual.weight.fill_(5)
+        target.memory_encoder.multiplex_mask_downsampler.weight.fill_(13)
     checkpoint = tmp_path / "selected.pt"
     torch.save({"model": source.state_dict()}, checkpoint)
 
@@ -552,6 +661,10 @@ def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
     assert torch.equal(target.projection.weight, source.projection.weight)
     assert torch.all(target.object_slot_decoder.weight == 7)
     assert torch.all(target.memory_attention.object_residual.weight == 5)
+    assert torch.all(target.memory_attention.slot_pointer_pos == 11)
+    assert torch.all(
+        target.memory_encoder.multiplex_mask_downsampler.weight == 13
+    )
 
 
 def test_object_slot_initializer_reinitializes_changed_slot_capacity(tmp_path):
@@ -945,6 +1058,57 @@ def test_multiplex_screen_variants_set_one_planned_axis(
     ],
 )
 def test_tinyvit21_edgetam_memory_curriculum_is_staged(variant, expected):
+    repo_root = Path(__file__).resolve().parents[1]
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "describe",
+            variant,
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for snippet in expected:
+        assert snippet in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        (
+            "SMX1_slot8_t4_bootstrap_2ep",
+            (
+                "Trainable mode: object_slot_multiplex",
+                "Epochs/max objects: 2/8",
+                "T/global batch: 4/4",
+                "Object slot mode/count/min: multiplex/8/4",
+            ),
+        ),
+        (
+            "SMX2_slot8_t8_fullsav_8ep",
+            (
+                "Trainable mode: object_slot_multiplex",
+                "Epochs/max objects: 8/8",
+                "T/global batch: 8/4",
+                "Loss task/image/memory/logits/obj: 1/0/0/2/0",
+            ),
+        ),
+        (
+            "SMX3_slot8_t16_refine_2ep",
+            (
+                "Trainable mode: object_slot_multiplex",
+                "Epochs/max objects: 2/8",
+                "T/global batch: 16/4",
+            ),
+        ),
+    ],
+)
+def test_sam2_tv_multiplex_curriculum_is_staged(variant, expected):
     repo_root = Path(__file__).resolve().parents[1]
 
     result = subprocess.run(

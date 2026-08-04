@@ -349,6 +349,285 @@ class SharedSlotMemoryAttention(nn.Module):
         return output
 
 
+def _multiplex_mask_downsampler(
+    mask_downsampler: nn.Module,
+    slot_count: int,
+) -> nn.Module:
+    """Clone a SAM2 mask downsampler with one input channel per slot."""
+
+    multiplex = copy.deepcopy(mask_downsampler)
+    encoder = getattr(multiplex, "encoder", None)
+    if not isinstance(encoder, nn.Sequential) or not encoder:
+        raise TypeError("SAM2 mask downsampler must expose encoder[0]")
+    first = encoder[0]
+    if not isinstance(first, nn.Conv2d) or first.in_channels != 1:
+        raise TypeError(
+            "SAM2 mask downsampler must start with a 1-channel Conv2d"
+        )
+    replacement = nn.Conv2d(
+        in_channels=slot_count,
+        out_channels=first.out_channels,
+        kernel_size=first.kernel_size,
+        stride=first.stride,
+        padding=first.padding,
+        dilation=first.dilation,
+        groups=first.groups,
+        bias=first.bias is not None,
+        padding_mode=first.padding_mode,
+    ).to(device=first.weight.device, dtype=first.weight.dtype)
+    with torch.no_grad():
+        replacement.weight.copy_(first.weight.repeat(1, slot_count, 1, 1))
+        if first.bias is not None:
+            replacement.bias.copy_(first.bias)
+    encoder[0] = replacement
+    return multiplex
+
+
+class SlotPreservingMemoryEncoder(nn.Module):
+    """Encode an object bucket as a multi-channel mask memory.
+
+    This follows SAM 3.1's central multiplex invariant: each object keeps a
+    stable mask channel while the bucket produces one dense memory feature.
+    The bucket feature is repeated only to preserve SAM2's public tensor
+    interface; ``SlotPreservingMemoryAttention`` removes that repetition
+    before attention.
+    """
+
+    def __init__(
+        self,
+        out_dim: int,
+        mask_downsampler: nn.Module,
+        fuser: nn.Module,
+        position_encoding: nn.Module,
+        in_dim: int = 256,
+        slot_count: int = 8,
+        min_objects: int = 4,
+    ) -> None:
+        super().__init__()
+        if slot_count < 1 or min_objects < 1:
+            raise ValueError("slot_count and min_objects must be positive")
+        self.slot_count = slot_count
+        self.min_objects = min_objects
+        self.mask_downsampler = mask_downsampler
+        self.multiplex_mask_downsampler = _multiplex_mask_downsampler(
+            mask_downsampler, slot_count
+        )
+        self.pix_feat_proj = nn.Conv2d(in_dim, in_dim, kernel_size=1)
+        self.fuser = fuser
+        self.position_encoding = position_encoding
+        self.out_proj = (
+            nn.Identity()
+            if out_dim == in_dim
+            else nn.Conv2d(in_dim, out_dim, kernel_size=1)
+        )
+
+    def _encode(
+        self,
+        pix_feat: torch.Tensor,
+        masks: torch.Tensor,
+        mask_downsampler: nn.Module,
+        skip_mask_sigmoid: bool,
+    ) -> dict[str, torch.Tensor | list[torch.Tensor]]:
+        if not skip_mask_sigmoid:
+            masks = masks.sigmoid()
+        masks = mask_downsampler(masks)
+        pix_feat = pix_feat.to(masks.device)
+        features = self.pix_feat_proj(pix_feat) + masks
+        features = self.out_proj(self.fuser(features))
+        position = self.position_encoding(features).to(features.dtype)
+        return {
+            "vision_features": features,
+            "vision_pos_enc": [position],
+        }
+
+    def forward(
+        self,
+        pix_feat: torch.Tensor,
+        masks: torch.Tensor,
+        skip_mask_sigmoid: bool = False,
+    ) -> dict[str, torch.Tensor | list[torch.Tensor]]:
+        object_count = masks.shape[0]
+        if pix_feat.shape[0] != object_count or masks.shape[1] != 1:
+            raise ValueError("SAM2 multiplex memory expects [N,1,H,W] masks")
+        if not self.training and object_count < self.min_objects:
+            return self._encode(
+                pix_feat,
+                masks,
+                self.mask_downsampler,
+                skip_mask_sigmoid,
+            )
+
+        if not skip_mask_sigmoid:
+            masks = masks.sigmoid()
+            skip_mask_sigmoid = True
+
+        bucket_count = math.ceil(object_count / self.slot_count)
+        padded_count = bucket_count * self.slot_count
+        if padded_count != object_count:
+            padding = masks.new_zeros(
+                padded_count - object_count,
+                *masks.shape[1:],
+            )
+            masks = torch.cat([masks, padding], dim=0)
+        multiplex_masks = masks.view(
+            bucket_count,
+            self.slot_count,
+            masks.shape[-2],
+            masks.shape[-1],
+        )
+        bucket_pix_feat = pix_feat[:: self.slot_count][:bucket_count]
+        encoded = self._encode(
+            bucket_pix_feat,
+            multiplex_masks,
+            self.multiplex_mask_downsampler,
+            skip_mask_sigmoid,
+        )
+        encoded["vision_features"] = encoded[
+            "vision_features"
+        ].repeat_interleave(self.slot_count, dim=0)[:object_count]
+        encoded["vision_pos_enc"] = [
+            value.repeat_interleave(self.slot_count, dim=0)[:object_count]
+            for value in encoded["vision_pos_enc"]
+        ]
+        return encoded
+
+
+class SlotPreservingMemoryAttention(SharedSlotMemoryAttention):
+    """Attend once per bucket without superposing object identities.
+
+    Dense memory is already shared and slot-preserving after the multi-channel
+    memory encoder. Object pointers remain private tokens and are packed along
+    the memory sequence with learned slot positional embeddings.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        pos_enc_at_input: bool,
+        layer: nn.Module,
+        num_layers: int,
+        batch_first: bool = True,
+        slot_count: int = 8,
+        min_objects: int = 4,
+        memory_dim: int = 64,
+    ) -> None:
+        super().__init__(
+            d_model=d_model,
+            pos_enc_at_input=pos_enc_at_input,
+            layer=layer,
+            num_layers=num_layers,
+            batch_first=batch_first,
+            slot_count=slot_count,
+            min_objects=min_objects,
+            memory_dim=memory_dim,
+        )
+        del self.slot_memory_scale
+        self.slot_pointer_pos = nn.Parameter(
+            0.02 * _slot_codes(slot_count, memory_dim)
+        )
+
+    def _pack_pointer_tokens(self, value: torch.Tensor) -> torch.Tensor:
+        sequence, object_count, channels = value.shape
+        bucket_count = math.ceil(object_count / self.slot_count)
+        padded_count = bucket_count * self.slot_count
+        if padded_count != object_count:
+            value = F.pad(value, (0, 0, 0, padded_count - object_count))
+        return (
+            value.view(sequence, bucket_count, self.slot_count, channels)
+            .permute(0, 2, 1, 3)
+            .reshape(sequence * self.slot_count, bucket_count, channels)
+        )
+
+    def forward(
+        self,
+        curr: torch.Tensor | list[torch.Tensor],
+        memory: torch.Tensor,
+        curr_pos: torch.Tensor | list[torch.Tensor] | None = None,
+        memory_pos: torch.Tensor | None = None,
+        num_obj_ptr_tokens: int = 0,
+        num_spatial_mem: int = -1,
+    ) -> torch.Tensor:
+        if isinstance(curr, list):
+            if (
+                not isinstance(curr_pos, list)
+                or len(curr) != 1
+                or len(curr_pos) != 1
+            ):
+                raise ValueError(
+                    "SAM2 memory attention expects one feature level"
+                )
+            curr, curr_pos = curr[0], curr_pos[0]
+        object_count = curr.shape[1]
+        if memory.shape[1] != object_count:
+            raise ValueError("current features and memory must share object batch")
+        if not self.training and object_count < self.min_objects:
+            return self._run_attention(
+                curr,
+                memory,
+                curr_pos,
+                memory_pos,
+                num_obj_ptr_tokens,
+                num_spatial_mem,
+            )
+        if not 0 <= num_obj_ptr_tokens <= memory.shape[0]:
+            raise ValueError("Invalid object-pointer token count")
+
+        bucket_count = math.ceil(object_count / self.slot_count)
+        spatial_end = memory.shape[0] - num_obj_ptr_tokens
+        bucket_memory = self._bucket_tensor(
+            memory[:spatial_end], encode_slots=False
+        )
+        bucket_memory_pos = (
+            self._bucket_tensor(
+                memory_pos[:spatial_end], encode_slots=False
+            )
+            if memory_pos is not None
+            else None
+        )
+        packed_pointer_count = 0
+        if num_obj_ptr_tokens:
+            pointers = self._pack_pointer_tokens(memory[spatial_end:])
+            packed_pointer_count = pointers.shape[0]
+            bucket_memory = torch.cat([bucket_memory, pointers], dim=0)
+            if memory_pos is not None:
+                pointer_pos = self._pack_pointer_tokens(
+                    memory_pos[spatial_end:]
+                )
+                slot_pos = self.slot_pointer_pos.view(
+                    1, self.slot_count, 1, self.memory_dim
+                ).expand(
+                    num_obj_ptr_tokens,
+                    self.slot_count,
+                    bucket_count,
+                    self.memory_dim,
+                )
+                slot_pos = slot_pos.reshape(
+                    packed_pointer_count, bucket_count, self.memory_dim
+                )
+                pointer_pos = pointer_pos + slot_pos
+                bucket_memory_pos = torch.cat(
+                    [bucket_memory_pos, pointer_pos], dim=0
+                )
+
+        bucket_curr = curr[:, :: self.slot_count, :][:, :bucket_count]
+        bucket_curr_pos = (
+            curr_pos[:, :: self.slot_count, :][:, :bucket_count]
+            if curr_pos is not None
+            else None
+        )
+        output = self._run_attention(
+            bucket_curr,
+            bucket_memory,
+            bucket_curr_pos,
+            bucket_memory_pos,
+            packed_pointer_count,
+            num_spatial_mem,
+        )
+        return output.repeat_interleave(self.slot_count, dim=1)[
+            :, :object_count
+        ]
+
+
 class LearnedObjectSlotDecoder(nn.Module):
     """Decode several object masks from one bucket-level spatial feature."""
 

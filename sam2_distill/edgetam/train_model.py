@@ -75,6 +75,7 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
             "image_encoder_mask_decoder_memory",
             "object_slot_decoder",
             "object_slot_shared_kv",
+            "object_slot_multiplex",
         }:
             raise ValueError(
                 "trainable_module_mode must be one of: image_neck_only, "
@@ -83,7 +84,7 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
                 "image_encoder_memory_perceiver, "
                 "image_encoder_mask_decoder, "
                 "image_encoder_mask_decoder_memory, object_slot_decoder, "
-                "object_slot_shared_kv"
+                "object_slot_shared_kv, object_slot_multiplex"
             )
 
         for param in self.parameters():
@@ -93,7 +94,11 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
             modules = [self.image_encoder.neck]
         elif mode == "image_encoder_only":
             modules = [self.image_encoder]
-        elif mode in {"object_slot_decoder", "object_slot_shared_kv"}:
+        elif mode in {
+            "object_slot_decoder",
+            "object_slot_shared_kv",
+            "object_slot_multiplex",
+        }:
             if self.object_slot_decoder is None:
                 raise ValueError(f"{mode} requires object_slot_count > 0")
             modules = [self.object_slot_decoder]
@@ -112,6 +117,40 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
                 )
                 if isinstance(object_residual, torch.nn.Module):
                     modules.append(object_residual)
+            elif mode == "object_slot_multiplex":
+                if not hasattr(
+                    self.memory_encoder, "multiplex_mask_downsampler"
+                ):
+                    raise ValueError(
+                        "object_slot_multiplex requires "
+                        "SlotPreservingMemoryEncoder"
+                    )
+                if not hasattr(self.memory_attention, "slot_pointer_pos"):
+                    raise ValueError(
+                        "object_slot_multiplex requires "
+                        "SlotPreservingMemoryAttention"
+                    )
+                modules.extend(
+                    [
+                        self.memory_encoder,
+                        self.memory_attention,
+                        self.sam_mask_decoder,
+                    ]
+                )
+                for name in ("obj_ptr_proj", "obj_ptr_tpos_proj"):
+                    module = getattr(self, name, None)
+                    if isinstance(module, torch.nn.Module):
+                        modules.append(module)
+                for name in (
+                    "maskmem_tpos_enc",
+                    "no_mem_embed",
+                    "no_mem_pos_enc",
+                    "no_obj_ptr",
+                    "no_obj_embed_spatial",
+                ):
+                    parameter = getattr(self, name, None)
+                    if isinstance(parameter, torch.nn.Parameter):
+                        parameter.requires_grad = True
         elif mode == "mask_decoder_only":
             modules = [self.sam_mask_decoder]
         elif mode in {

@@ -80,6 +80,9 @@ VARIANTS=(
   EM1_t4_official_temporal_2ep
   EM2_t8_joint_edgetam_5ep
   EM3_t16_memory_refine_2ep
+  SMX1_slot8_t4_bootstrap_2ep
+  SMX2_slot8_t8_fullsav_8ep
+  SMX3_slot8_t16_refine_2ep
 )
 FULL_DATA_TOOL="tools/experiments/sam2_full_data_50.py"
 if [[ -f "${FULL_DATA_TOOL}" ]]; then
@@ -141,7 +144,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == EM* ]]; then
+if [[ "${VARIANT}" == SMX* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_tv_multiplex_v1"
+  DEFAULT_WANDB_PROJECT="sam2-tv-multiplex-v1"
+elif [[ "${VARIANT}" == EM* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/tinyvit21_edgetam_memory_v1"
   DEFAULT_WANDB_PROJECT="tinyvit21-edgetam-memory-v1"
 elif [[ "${VARIANT}" == FD* ]]; then
@@ -304,7 +310,9 @@ configure_full_data_variant() {
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == EM* ]]; then
+  if [[ "$1" == SMX* ]]; then
+    export TASK_EXPERIMENT_SUITE=sam2_tv_multiplex_v1
+  elif [[ "$1" == EM* ]]; then
     export TASK_EXPERIMENT_SUITE=tinyvit21_edgetam_memory_v1
   elif [[ "$1" == FD* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_full_data_50_v1
@@ -419,7 +427,7 @@ configure_variant() {
       export TASK_LAMBDA_MASK_LOGITS=2
       export TASK_LAMBDA_OBJ_PTR=0
       ;;
-    MO*|MX*|FD*)
+    MO*|MX*|FD*|SMX*)
       export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
       export TASK_TRAIN_BATCH_SIZE=1
@@ -553,6 +561,66 @@ configure_variant() {
       export TASK_PERCEIVER_LR_END=7.5e-8
       export TASK_LAMBDA_MEM=0.25
       export TASK_LAMBDA_MASK_LOGITS=1
+      ;;
+    SMX1_slot8_t4_bootstrap_2ep|\
+    SMX2_slot8_t8_fullsav_8ep|\
+    SMX3_slot8_t16_refine_2ep)
+      export BASE_CHECKPOINT="${MX5_SLOT8_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAIN_BATCH_SIZE=1
+      export TASK_MAX_NUM_OBJECTS=8
+      export TASK_TRAINABLE_MODE=object_slot_multiplex
+      export TASK_MEMORY_TOPOLOGY=standard4
+      export TASK_MEMORY_LAYERS=4
+      export TASK_MEMORY_INITIALIZER=current
+      export TASK_MEMORY_LAYOUT=legacy
+      export TASK_OBJECT_SLOT_MODE=multiplex
+      export TASK_OBJECT_SLOT_COUNT=8
+      export TASK_OBJECT_SLOT_MIN_OBJECTS=4
+      export TASK_VIDEO_IDS_FILE=""
+      export TASK_PROB_USE_POINT=0.5
+      export TASK_PROB_USE_BOX=0.5
+      export TASK_PROB_SAMPLE_GT=0.1
+      export TASK_NUM_FRAMES_TO_CORRECT=2
+      export TASK_RANDOM_CORRECTION_FRAMES=true
+      export TASK_NUM_CORRECTION_POINTS=7
+      export TASK_TEACHER_MODEL_CONFIG="${BEST_TV21_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export TASK_LAMBDA_TASK=1
+      export TASK_LAMBDA_IMG=0
+      export TASK_LAMBDA_MEM=0
+      export TASK_LAMBDA_MASK_LOGITS=2
+      export TASK_LAMBDA_OBJ_PTR=0
+      case "$1" in
+        SMX1_*)
+          export TASK_EPOCHS=2
+          export TASK_NUM_FRAMES=4
+          export TASK_MEMORY_LR=3.0e-6
+          export TASK_MEMORY_LR_END=3.0e-7
+          export TASK_MEMORY_AUX_LR=1.0e-5
+          export TASK_MEMORY_AUX_LR_END=1.0e-6
+          ;;
+        SMX2_*)
+          export BASE_CHECKPOINT="${ABLATION_ROOT}/SMX1_slot8_t4_bootstrap_2ep/main/checkpoints/last.pt"
+          export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+          export TASK_EPOCHS=8
+          export TASK_NUM_FRAMES=8
+          export TASK_MEMORY_LR=1.0e-6
+          export TASK_MEMORY_LR_END=1.0e-7
+          export TASK_MEMORY_AUX_LR=3.0e-6
+          export TASK_MEMORY_AUX_LR_END=3.0e-7
+          ;;
+        SMX3_*)
+          export BASE_CHECKPOINT="${ABLATION_ROOT}/SMX2_slot8_t8_fullsav_8ep/main/checkpoints/last.pt"
+          export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+          export TASK_EPOCHS=2
+          export TASK_NUM_FRAMES=16
+          export TASK_MEMORY_LR=5.0e-7
+          export TASK_MEMORY_LR_END=5.0e-8
+          export TASK_MEMORY_AUX_LR=1.0e-6
+          export TASK_MEMORY_AUX_LR_END=1.0e-7
+          ;;
+      esac
       ;;
     FD*)
       configure_full_data_variant "$1" || return $?
