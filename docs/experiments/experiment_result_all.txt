@@ -1,0 +1,1174 @@
+===== GENERATE READ-ONLY UNIVERSAL REPORT =====
+
+Skip missing runs root: /danny-dataset/sam2_distill/runs
+
+Scanning runs root: /group-volume/danny-dataset/sam2_distill/runs
+
+Skip missing runs root: /mnt/data/danny-dataset/sam2_distill/runs
+
+===== All experiment status counts =====
+
+complete                          112
+
+final_checkpoint_incomplete        23
+
+finalization_incomplete             1
+
+not_started                        25
+
+superseded                          9
+
+training_incomplete                 1
+
+training_state_unknown              7
+
+val_incomplete                      3
+ 
+===== All experiments =====
+
+RESULT  suite   experiment      stage   status  progress_pct    val_mIoU        val_AP  val_image_latency_s     val_J&F val_video_latency_s     test_mIoU       test_AP test_image_latency_s    test_J&F        test_video_latency_s
+
+RESULT  edgetam_fidelity_v3     E0_official_upstream    -       training_state_unknown  -       0.8224  0.6862  0.0511  68.0000 30.3483 -       -       -       -       -
+
+RESULT  edgetam_fidelity_v3     E0_official_upstream_seed2      -       training_state_unknown  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_memory_ablation_v1      M0_sam2_mem4    main    complete        100.00  0.8405  0.7167  0.1178  71.5000 38.1633 0.8391  0.7191  0.1020  74.3000 38.8936
+
+RESULT  edgetam_memory_ablation_v1      M1_sam2_mem2    main    complete        100.00  0.8406  0.7167  0.1113  53.3000 37.2029 0.8391  0.7197  0.0873  56.1000 38.8279
+
+RESULT  edgetam_memory_ablation_v1      M2a_edgetam_hybrid2_official    main    complete        100.00  0.8405  0.7166  0.0867  15.6000 36.8407 0.8391  0.7190  0.0817  12.8000 38.4183
+
+RESULT  edgetam_memory_ablation_v1      M2b_edgetam_hybrid2_current     main    complete        100.00  0.8406  0.7167  0.0846  13.2000 38.8273 0.8391  0.7191  0.0646  10.6000 40.4279
+
+RESULT  edgetam_memory_ablation_v1      R0_edgetam_e2e_t4_task  main    complete        100.00  0.8369  0.7096  0.0581  23.0000 33.3275 0.8364  0.7137  0.0581  21.5000 40.1494
+
+RESULT  edgetam_memory_ablation_v1      R1_edgetam_e2e_t4_imgkd main    complete        100.00  0.8379  0.7121  0.0698  23.6000 34.2270 0.8373  0.7165  0.0562  21.7000 35.0037
+
+RESULT  edgetam_memory_ablation_v1      R2_edgetam_e2e_t4_imgmemkd      main    complete        100.00  0.8377  0.7117  0.0623  25.3000 30.0210 0.8374  0.7167  0.0610  23.2000 31.8370
+
+RESULT  edgetam_memory_ablation_v1      R3_edgetam_e2e_t8_imgmemkd      main    complete        100.00  0.8374  0.7114  0.0483  21.9000 28.9706 0.8367  0.7157  0.0457  19.1000 30.2030
+
+RESULT  edgetam_memory_recovery_v2      C0_coherent_m0mem_align main    final_checkpoint_incomplete     100.00  -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_memory_recovery_v2      C1_partial_m0mem_align  main    final_checkpoint_incomplete     100.00  -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_memory_recovery_v2      C2_coherent_m0mem_joint2ep      main    final_checkpoint_incomplete     100.00  -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_memory_recovery_v2      C3_coherent_m0mem_staged        main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_recipe_diagnostics_v5   Q0_official_identity_t8_1ep     main    complete        100.00  0.8224  0.6864  0.0458  68.3000 29.2401 0.8272  0.6990  0.0473  69.5000 30.6959
+
+RESULT  edgetam_recipe_diagnostics_v5   Q1_tinyvit_overfit16_t8_500ep   main    complete        100.00  0.8404  0.7166  0.0344  15.5000 27.8558 0.8389  0.7189  0.0353  15.5000 30.1679
+
+RESULT  edgetam_recipe_diagnostics_v5   Q2_tinyvit_paper_scaled_sav_t8_5ep      main    complete        100.00  0.8355  0.7065  0.0554  55.6000 29.8233 0.8343  0.7103  0.0536  58.0000 31.3072
+
+RESULT  edgetam_tinyvit21_behavior_v4   D1_staged_image_align_1ep       main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   D2_staged_temporal_2ep  main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   D3_staged_t8_refine_1ep main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   E1_a02_official_nonimage        main    complete        -       0.0200  0.0001  0.0517  2.1000  30.7483 0.0151  0.0000  0.0540  2.4000  32.3150
+
+RESULT  edgetam_tinyvit21_behavior_v4   J1_joint_behavior_2ep   main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   J2_joint_temporal_refine_1ep    main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   J3_joint_t8_refine_1ep  main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   S0_scratch_temporal_task_2ep    main    complete        100.00  0.8402  0.7165  0.0452  15.6000 28.2092 0.8389  0.7190  0.0457  13.8000 29.6738
+
+RESULT  edgetam_tinyvit21_behavior_v4   S1_scratch_behavior_2ep main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  edgetam_tinyvit21_behavior_v4   S2_scratch_t8_refine_1ep        main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  repvit_stage1_v1        repvit_m09_proj_sam21l_msehr_cos025_l1010       -       finalization_incomplete 100.00  0.5664  0.2791  0.0387  37.1000 36.7656 0.5417  0.2570  0.0415  37.5000 38.1890
+
+RESULT  repvit_stage1_v1        repvit_m23_proj_sam21l_msehr_cos025_l1010       -       not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  repvit_task_finetune_v2 repvit_P1_encoder_recovery_3ep  repvit_P1_encoder_recovery_3ep  complete        100.00  0.7481  0.5527  0.0692  58.6000 34.6661 0.7446  0.5534  0.0693  57.4000 36.3225
+
+RESULT  repvit_task_finetune_v2 repvit_P2_joint_frozenbn_2ep    repvit_P2_joint_frozenbn_2ep    complete        100.00  0.7557  0.5675  0.0728  59.7000 34.8395 0.7541  0.5687  0.0716  59.5000 38.1917
+
+RESULT  repvit_task_finetune_v2 repvit_P2b_joint_trainbn_1ep    repvit_P2b_joint_trainbn_1ep    complete        100.00  0.7162  0.4993  0.0340  58.1000 30.3690 0.7069  0.4944  0.0348  57.0000 31.7160
+
+RESULT  repvit_task_finetune_v2 repvit_P3_decmem_t8_refine_1ep  repvit_P3_decmem_t8_refine_1ep  complete        100.00  0.7565  0.5683  0.0337  60.3000 30.4289 0.7549  0.5699  0.0332  60.1000 31.6438
+
+RESULT  sam2_full_data_50_v1    main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_full_data_50_v1    main    -       training_state_unknown  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_full_data_50_v1    main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_full_data_50_v1    main    -       training_state_unknown  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_full_data_50_v1    main    -       training_state_unknown  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_full_data_50_v1    main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_full_data_50_v1    main    -       training_state_unknown  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr2e6   mask_decoder_lr2e6      complete        100.00  0.8374  0.7127  0.0378  70.3000 35.9077 0.8352  0.7161  0.0401  70.6000 37.5431
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr2e7   mask_decoder_lr2e7      complete        100.00  0.8375  0.7128  0.0353  70.0000 36.8992 0.8356  0.7161  0.0370  71.5000 38.4295
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr5e7   mask_decoder_lr5e7      complete        100.00  0.8376  0.7128  0.0353  70.2000 36.3961 0.8354  0.7162  0.0364  71.4000 36.6498
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr5e7_boxonly   mask_decoder_lr5e7_boxonly      complete        100.00  0.8376  0.7128  0.0347  70.3000 36.5329 0.8357  0.7161  0.0361  71.7000 38.0166
+
+RESULT  sam2_mask_finetune_ablation_v1  encdec_low_frozenbn     mask_encdec_low_frozenbn        complete        100.00  0.8374  0.7127  0.0342  69.9000 32.0464 0.8355  0.7163  0.0363  71.2000 33.6039
+
+RESULT  sam2_mask_finetune_ablation_v1  encdec_low_trainbn      mask_encdec_low_trainbn complete        100.00  0.8343  0.7039  0.0354  69.2000 37.0937 0.8347  0.7143  0.0374  71.2000 38.3569
+
+RESULT  sam2_mask_finetune_ablation_v2  A00_e2e_t4_box1_control main    complete        100.00  0.8376  0.7131  0.0347  71.6000 36.3856 0.8356  0.7164  0.0386  73.7000 39.2201
+
+RESULT  sam2_mask_finetune_ablation_v2  A01_e2e_t4_box0 main    complete        100.00  0.8377  0.7132  0.0352  71.3000 35.8640 0.8355  0.7161  0.0352  73.7000 36.9851
+
+RESULT  sam2_mask_finetune_ablation_v2  A02_e2e_t4_official_prompt      main    complete        100.00  0.8374  0.7129  0.0341  72.0000 40.6596 0.8347  0.7151  0.0366  74.1000 36.8439
+
+RESULT  sam2_mask_finetune_ablation_v2  A03_decmem_t4   main    complete        100.00  0.8377  0.7134  0.0353  71.8000 36.5912 0.8357  0.7167  0.0369  73.4000 38.0761
+
+RESULT  sam2_mask_finetune_ablation_v2  A04_memory_t4   main    complete        100.00  0.8373  0.7128  0.0345  71.7000 36.5218 0.8353  0.7160  0.0366  73.8000 38.1244
+
+RESULT  sam2_mask_finetune_ablation_v2  A05_e2e_t8      main    complete        100.00  0.8375  0.7132  0.0342  71.9000 35.8575 0.8355  0.7164  0.0364  74.3000 37.5059
+
+RESULT  sam2_mask_finetune_ablation_v2  A06_e2e_t8_s4_t16_hard  refine_t16      complete        100.00  0.8377  0.7138  0.0349  71.4000 36.1557 0.8357  0.7169  0.0367  73.9000 37.9798
+
+RESULT  sam2_mask_finetune_ablation_v2  A07_e2e_t4_warmup5      main    complete        100.00  0.8374  0.7131  0.0347  71.3000 36.6925 0.8356  0.7163  0.0362  73.9000 38.0487
+
+RESULT  sam2_mask_finetune_ablation_v2  A08_e2e_t4_gb8  main    complete        100.00  0.8374  0.7133  0.0351  71.9000 36.4135 0.8355  0.7165  0.0365  73.4000 40.6399
+
+RESULT  sam2_mask_finetune_ablation_v2  A09_e2e_t4_hard50x2     main    complete        100.00  0.8379  0.7137  0.0351  70.8000 35.5106 0.8357  0.7166  0.0358  72.9000 36.1398
+
+RESULT  sam2_mask_finetune_ablation_v2  A10_e2e_t4_box0_imgkd   main    complete        100.00  0.8377  0.7134  0.0350  71.3000 35.1285 0.8361  0.7167  0.0360  72.8000 36.9194
+
+RESULT  sam2_mask_finetune_ablation_v2  A11_e2e_t4_box0_imgmemkd        main    complete        100.00  0.8378  0.7143  0.0337  71.3000 34.7503 0.8358  0.7168  0.0353  73.3000 36.2101
+
+RESULT  sam2_mask_finetune_ablation_v2  smoke_A01_e2e_t4_box0_run327473-sam4-4  -       val_incomplete  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_mask_finetune_ablation_v2  smoke_A01_e2e_t4_box0_run327495-sam4-7  -       val_incomplete  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8410  0.7164  0.0660  69.4000 32.4679 0.8401  0.7227  0.0543  72.4000 32.7959
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8406  0.7165  0.0761  56.9000 31.2964 0.8397  0.7213  0.0696  58.5000 32.7110
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8405  0.7166  0.0564  57.1000 29.2623 0.8397  0.7222  0.0393  58.5000 29.5809
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8406  0.7167  0.0448  56.9000 29.0419 0.8398  0.7213  0.0436  58.4000 30.5399
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8403  0.7166  0.0381  72.3000 28.9992 0.8391  0.7191  0.0335  74.6000 30.5793
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8403  0.7166  0.0406  72.3000 29.1831 0.8391  0.7191  0.0386  74.6000 30.7089
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8403  0.7166  0.0414  63.8000 29.7623 0.8391  0.7191  0.0474  60.9000 31.3841
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8403  0.7166  0.0416  63.6000 29.2640 0.8391  0.7191  0.0417  60.2000 30.7515
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8403  0.7166  0.0350  72.3000 29.0093 0.8391  0.7191  0.0353  74.6000 30.5550
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8403  0.7166  0.0387  63.6000 29.1210 0.8391  0.7191  0.0392  60.3000 30.6492
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8403  0.7166  0.0437  63.7000 29.4598 0.8391  0.7191  0.0419  60.5000 30.8623
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8403  0.7166  0.0364  63.6000 28.9142 0.8391  0.7191  0.0376  60.3000 30.3712
+
+RESULT  sam2_task_finetune_tv21_v1      stage1_encoder_task_2ep stage1_encoder_task_2ep complete        100.00  0.8376  0.7129  0.0372  70.3000 29.7049 0.8356  0.7160  0.0358  71.8000 31.1089
+
+RESULT  sam2_task_finetune_tv21_v1      stage2_encoder_decoder_task_2ep stage2_encoder_decoder_task_2ep complete        100.00  0.8379  0.7129  0.0404  69.9000 29.6395 0.8360  0.7167  0.0360  71.3000 31.1449
+
+RESULT  sam2_task_finetune_tv21_v1      stage3_encoder_decoder_memory_task_1ep  stage3_encoder_decoder_memory_task_1ep  complete        100.00  0.8381  0.7133  0.0422  71.5000 29.9859 0.8364  0.7171  0.0402  74.3000     31.3107
+
+RESULT  sam2_task_finetune_tv21_v2      stage1_encoder_task_2ep_v2      stage1_encoder_task_2ep_v2      complete        100.00  0.8373  0.7128  0.0373  70.2000 35.4660 0.8353  0.7160  0.0387  71.3000 35.3161
+
+RESULT  sam2_task_finetune_tv21_v2      stage2_decoder_only_task_1ep_v2 stage2_decoder_only_task_1ep_v2 complete        100.00  0.8374  0.7129  0.0349  70.0000 32.5604 0.8356  0.7161  0.0371  71.3000 34.0559
+
+RESULT  sam2_task_finetune_tv21_v2      stage3_encoder_decoder_memory_task_1ep_v2       stage3_encoder_decoder_memory_task_1ep_v2       complete        100.00  0.8380  0.7131  0.0356  71.7000 32.7550 0.8356  0.7163      0.0376  73.9000 34.9745
+
+RESULT  sam31_stage1    tv21m_adapter_mse_cos025_5ep_v1 -       superseded      0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam31_stage1    tv21m_adapter_mse_cos025_5ep_v1_smoke   -       superseded      100.00  -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam31_stage1_ablation_v1        n1_cos000_adapter_ft_w2k        -       complete        100.00  0.7011  0.4453  0.3034  25.5000 33.7622 0.6846  0.4310  0.3812  25.3000 34.1967
+
+RESULT  sam31_stage1_ablation_v1        n1_cos025_adapter_ft_w2k        -       complete        100.00  0.7015  0.4467  0.3349  25.5000 32.9352 0.6855  0.4326  0.3785  25.3000 32.3296
+
+RESULT  sam31_stage1_ablation_v1        n1_cos100_adapter_ft_w2k        -       complete        100.00  0.7034  0.4499  0.3437  25.5000 33.9116 0.6867  0.4360  0.3552  25.3000 34.0578
+
+RESULT  sam31_stage1_ablation_v1        n2_adapter_cos025_frozen        -       complete        100.00  0.4601  0.1572  0.3199  25.5000 31.3783 0.4550  0.1597  0.3594  25.4000 29.6099
+
+RESULT  sam31_stage1_ablation_v1        n2_adapter_cos025_ft_w0 -       not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam31_stage1_ablation_v1        n2_projection_cos025_ft_w2k     -       complete        100.00  0.6999  0.4441  0.2952  25.5000 33.0533 0.6823  0.4291  0.3598  25.3000 33.9058
+
+RESULT  sam31_stage1_ablation_v1        n3_cos025_relation010_adapter_ft_w2k    -       not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam31_stage1_ablation_v1        n3_cos150_adapter_ft_w2k        -       training_incomplete     20.00   -       -       -       -       -       -       -       -       -       -
+
+RESULT  sam31_stage1_ablation_v1        n3_relation010_adapter_ft_w2k   -       not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  sav_stage1_ablation_v2  tv11_adapter_sam21l_msehr       -       complete        100.00  0.8029  0.6514  0.0166  65.6000 26.9673 0.8054  0.6635  0.0169  69.0000 31.7065
+
+RESULT  sav_stage1_ablation_v2  tv11_proj_sam21l_msehr  -       complete        100.00  0.8095  0.6617  0.0997  66.8000 36.4113 0.8128  0.6723  0.0929  69.4000 37.2279
+
+RESULT  sav_stage1_ablation_v2  tv11_proj_sam21l_msehr_cos025   -       complete        100.00  0.8095  0.6619  0.0446  67.1000 31.4598 0.8126  0.6725  0.0464  69.5000 32.9804
+
+RESULT  sav_stage1_ablation_v2  tv21_adapter_sam21l_msehr       -       complete        100.00  0.8301  0.7020  0.1062  71.1000 34.4817 0.8306  0.7063  0.1148  72.9000 36.2079
+
+RESULT  sav_stage1_ablation_v2  tv21_adapter_sam21l_msehr_cos025        -       complete        100.00  0.8347  0.7078  0.0343  70.5000 34.7888 0.8359  0.7171  0.0359  74.2000 36.0345
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21bplus_msehr      -       val_incomplete  100.00  -       -       -       -       -       -       -       -       -       -
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_hr025  -       complete        100.00  0.8352  0.7088  0.0402  70.4000 29.9281 0.8363  0.7175  0.0396  73.5000 31.3156
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_image_only     -       complete        100.00  0.7885  0.6297  0.0640  68.5000 32.6563 0.7836  0.6247  0.0605  70.2000 34.4005
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr  -       complete        100.00  0.8307  0.7010  0.0976  70.6000 34.3292 0.8319  0.7089  0.1099  73.9000 36.4368
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr_cos025   -       complete        100.00  0.8314  0.7016  0.1077  70.5000 34.5654 0.8325  0.7096  0.1126  73.7000 36.1136
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr_cos1     -       complete        100.00  0.8338  0.7057  0.0488  70.4000 38.6757 0.8346  0.7121  0.0488  73.8000 40.3627
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr_l1_025   -       complete        100.00  0.8354  0.7084  0.0353  70.9000 29.6253 0.8359  0.7171  0.0332  73.8000 33.7039
+
+RESULT  sav_stage1_ablation_v2  tv5_adapter_sam21l_msehr        -       complete        100.00  0.7951  0.6371  0.0472  64.2000 33.1468 0.7976  0.6465  0.0472  67.1000 34.5249
+
+RESULT  sav_stage1_ablation_v2  tv5_proj_sam21l_msehr   -       complete        100.00  0.7928  0.6321  0.0469  64.2000 31.4687 0.7971  0.6458  0.0464  66.5000 33.0099
+
+RESULT  sav_stage1_ablation_v2  tv5_proj_sam21l_msehr_cos025    -       complete        100.00  0.7923  0.6318  0.1096  63.7000 35.6212 0.7958  0.6444  0.1001  66.2000 36.7279
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv11m_4gpu_b16_mse_cos_5ep_v1   stage1_online_teacher_sav000_018_vbal32_tv11m_4gpu_b16_mse_cos_5ep_v1   -       superseded      100.00  -       -       -       -  --       -       -       -       -
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv11m_8gpu_b8_mse_only_5ep_v1   stage1_online_teacher_sav000_018_vbal32_tv11m_8gpu_b8_mse_only_5ep_v1   -       superseded      100.00  -       -       -       -  --       -       -       -       -
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv21m_4gpu_b4_highres_only_5ep_v1       stage1_online_teacher_sav000_018_vbal32_tv21m_4gpu_b4_highres_only_5ep_v1       -       superseded      40.02   -       -  --       -       -       -       -       -       -
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv21m_4gpu_b4_mse_cos_5ep_v1    stage1_online_teacher_sav000_018_vbal32_tv21m_4gpu_b4_mse_cos_5ep_v1    -       superseded      30.00   -       -       -       -  --       -       -       -       -
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv21m_8gpu_b4_mse_only_5ep_v1   stage1_online_teacher_sav000_018_vbal32_tv21m_8gpu_b4_mse_only_5ep_v1   -       superseded      50.00   -       -       -       -  --       -       -       -       -
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv5m_4gpu_b32_mse_cos_5ep_v1    stage1_online_teacher_sav000_018_vbal32_tv5m_4gpu_b32_mse_cos_5ep_v1    -       superseded      100.00  -       -       -       -  --       -       -       -       -
+
+RESULT  stage1_online_teacher_sav000_018_vbal32_tv5m_4gpu_b32_mse_only_5ep_v1   stage1_online_teacher_sav000_018_vbal32_tv5m_4gpu_b32_mse_only_5ep_v1   -       superseded      100.00  -       -       -       -  --       -       -       -       -
+
+RESULT  tinyvit21_edgetam_memory_v1     main    -       final_checkpoint_incomplete     -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  tinyvit21_edgetam_memory_v1     main    -       training_state_unknown  -       -       -       -       -       -       -       -       -       -       -
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL0_gt_t4_3ep       tv5_PL0_gt_t4_3ep       complete        100.00  0.8004  0.6446  0.0376  66.0000 29.9622 0.8031  0.6570  0.0346  67.3000 31.1594
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL1_sam21l_soft025_t4_3ep   tv5_PL1_sam21l_soft025_t4_3ep   complete        100.00  0.7998  0.6441  0.0326  65.9000 29.6724 0.8031  0.6571  0.0333  68.1000 31.1025
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL2_sam21l_soft050_t4_3ep   tv5_PL2_sam21l_soft050_t4_3ep   complete        100.00  0.7999  0.6436  0.0445  65.6000 30.0294 0.8033  0.6580  0.0378  68.0000 31.1568
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL3_selected_t8_2ep tv5_PL3_selected_t8_2ep not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  tinyvit_capacity_freeze_v2      tv11_F1_decmem_frozen_2ep       tv11_F1_decmem_frozen_2ep       complete        100.00  0.8125  0.6678  0.0504  66.7000 31.3331 0.8156  0.6784  0.0450  69.6000 32.1507
+
+RESULT  tinyvit_capacity_freeze_v2      tv11_F2_joint_low_1ep   tv11_F2_joint_low_1ep   complete        100.00  0.8131  0.6691  0.0503  67.8000 31.6263 0.8154  0.6792  0.0464  69.9000 32.0823
+
+RESULT  tinyvit_capacity_freeze_v2      tv21_F1_decmem_frozen_2ep       tv21_F1_decmem_frozen_2ep       complete        100.00  0.8374  0.7129  0.0461  71.2000 30.7076 0.8355  0.7167  0.0460  74.2000 32.1522
+
+RESULT  tinyvit_capacity_freeze_v2      tv21_F2_joint_low_1ep   tv21_F2_joint_low_1ep   complete        100.00  0.8378  0.7138  0.0476  71.7000 30.7225 0.8356  0.7165  0.0462  74.4000 32.3508
+
+RESULT  tinyvit_capacity_freeze_v2      tv5_F1_decmem_frozen_2ep        tv5_F1_decmem_frozen_2ep        complete        100.00  0.7985  0.6426  0.1131  65.1000 36.6279 0.8016  0.6509  0.1603  67.7000 38.0709
+
+RESULT  tinyvit_capacity_freeze_v2      tv5_F2_joint_low_1ep    tv5_F2_joint_low_1ep    complete        100.00  0.7997  0.6426  0.0463  65.8000 30.8790 0.8022  0.6523  0.0463  67.6000 33.4098
+
+RESULT  tinyvit_max_jf_v1       tv11    selected_best   complete        -       0.8138  0.6714  0.0634  68.5000 33.1316 0.8157  0.6794  0.0666  70.3000 36.1215
+
+RESULT  tinyvit_max_jf_v1       tv11_S1_encoder_t2_2ep  -       complete        -       0.8145  0.6712  0.0692  67.2000 33.4400 0.8161  0.6796  0.0679  70.5000 34.6438
+
+RESULT  tinyvit_max_jf_v1       tv11_S2_e2e_t4_low_1ep  -       complete        -       0.8137  0.6703  0.0715  67.8000 33.5622 0.8153  0.6790  0.0698  70.5000 35.0101
+
+RESULT  tinyvit_max_jf_v1       tv11_S3_decmem_t4_refine_1ep    -       complete        -       0.8138  0.6714  0.0634  68.5000 33.1316 0.8157  0.6794  0.0666  70.3000 36.1215
+
+RESULT  tinyvit_max_jf_v1       tv21    selected_best   complete        -       0.8371  0.7127  0.0319  72.4000 30.4431 0.8353  0.7162  0.0409  74.7000 31.5906
+
+RESULT  tinyvit_max_jf_v1       tv21_S1_e2e_t4_continue_1ep     -       complete        -       0.8370  0.7128  0.0582  72.2000 40.4597 0.8350  0.7162  0.0599  74.8000 41.4881
+
+RESULT  tinyvit_max_jf_v1       tv21_S2_e2e_t4_low_1ep  -       complete        -       0.8372  0.7128  0.0410  71.8000 30.1991 0.8353  0.7162  0.0406  74.7000 31.1600
+
+RESULT  tinyvit_max_jf_v1       tv21_S3_decmem_t4_refine_1ep    -       complete        -       0.8371  0.7127  0.0319  72.4000 30.4431 0.8353  0.7162  0.0409  74.7000 31.5906
+
+RESULT  tinyvit_max_jf_v1       tv5     selected_best   complete        -       0.8012  0.6461  0.1135  65.3000 36.2813 0.8037  0.6568  0.1379  67.9000 38.3224
+
+RESULT  tinyvit_max_jf_v1       tv5_S1_encoder_t2_2ep   -       complete        -       0.8016  0.6463  0.0378  65.2000 30.3016 0.8038  0.6581  0.0391  67.8000 31.5691
+
+RESULT  tinyvit_max_jf_v1       tv5_S2_e2e_t4_low_1ep   -       complete        -       0.8014  0.6460  0.0536  65.1000 33.1267 0.8034  0.6576  0.0540  67.9000 34.7423
+
+RESULT  tinyvit_max_jf_v1       tv5_S3_decmem_t4_refine_1ep     -       complete        -       0.8012  0.6461  0.1135  65.3000 36.2813 0.8037  0.6568  0.1379  67.9000 38.3224
+
+RESULT  weekend_72h_v1  K1a_m0_task_5ep main    complete        100.00  0.8404  0.7165  0.0445  38.7000 28.6094 0.8389  0.7190  0.0433  39.0000 30.1974
+
+RESULT  weekend_72h_v1  K1b_m0_logits_5ep       main    complete        100.00  0.8404  0.7165  0.0503  38.7000 29.0252 0.8389  0.7190  0.0501  38.6000 30.7018
+
+RESULT  weekend_72h_v1  K1c_m0_memlogits_5ep    main    complete        100.00  0.8404  0.7165  0.0434  38.5000 27.8061 0.8389  0.7189  0.0399  38.8000 29.2678
+
+RESULT  weekend_72h_v1  K1d_m0_full_5ep main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  K2a_m0_task_t8_2ep      main    complete        100.00  0.8404  0.7160  0.0519  42.1000 33.6382 0.8389  0.7190  0.0529  40.0000 30.7377
+
+RESULT  weekend_72h_v1  K2b_m0_logits_t8_2ep    main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  K2c_m0_memlogits_t8_2ep main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  K2d_m0_full_t8_2ep      main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W1_official_image_align_2ep     main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W2a_official_logits_5ep main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W2b_official_memlogits_5ep      main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W2c_official_full_5ep   main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W3a_official_logits_t8_3ep      main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W3b_official_memlogits_t8_3ep   main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  W3c_official_full_t8_3ep        main    not_started     0.00    -       -       -       -       -       -       -       -       -       -
+
+RESULT  weekend_72h_v1  repvit_W1_encoder_t2_5ep        repvit_W1_encoder_t2_5ep        complete        100.00  0.7610  0.5777  0.0576  60.9000 34.9615 0.7590  0.5774  0.0658  60.2000 37.6474
+
+RESULT  weekend_72h_v1  repvit_W2_decoder_t2_5ep        repvit_W2_decoder_t2_5ep        complete        100.00  0.7596  0.5738  0.0327  60.4000 30.4041 0.7578  0.5755  0.0333  59.2000 31.7295
+
+RESULT  weekend_72h_v1  repvit_W3_decmem_t4_5ep repvit_W3_decmem_t4_5ep complete        100.00  0.7596  0.5733  0.0350  61.4000 33.7664 0.7581  0.5762  0.0339  60.0000 31.7160
+
+RESULT  weekend_72h_v1  repvit_W4_joint_t4_5ep  repvit_W4_joint_t4_5ep  complete        100.00  0.7613  0.5780  0.0337  60.9000 30.4422 0.7605  0.5789  0.0349  60.4000 31.7166
+
+RESULT  weekend_72h_v1  repvit_W5_selected_t8_3ep       repvit_W5_selected_t8_3ep       complete        100.00  0.7598  0.5740  0.0471  60.4000 30.9195 0.7580  0.5766  0.0441  60.9000 32.8488
+
+RESULT  weekend_72h_v1  repvit_W6_joint_low_t4_3ep      repvit_W6_joint_low_t4_3ep      complete        100.00  0.7616  0.5781  0.0305  60.9000 31.9703 0.7597  0.5775  0.0320  61.1000 33.2961
+
+RESULT  weekend_72h_v1  tv11_W1_decmem_t4_3ep   tv11_W1_decmem_t4_3ep   complete        100.00  0.8141  0.6717  0.0469  68.6000 30.7140 0.8161  0.6791  0.0457  70.5000 32.1338
+
+RESULT  weekend_72h_v1  tv11_W2_joint_t4_3ep    tv11_W2_joint_t4_3ep    complete        100.00  0.8142  0.6717  0.0461  68.0000 31.8576 0.8163  0.6802  0.0520  70.6000 32.2837
+
+RESULT  weekend_72h_v1  tv11_W3_selected_t8_2ep tv11_W3_selected_t8_2ep complete        100.00  0.8140  0.6718  0.0464  68.2000 30.9381 0.8160  0.6803  0.0459  69.7000 32.1517
+
+RESULT  weekend_72h_v1  tv21_W1_decmem_t4_3ep   tv21_W1_decmem_t4_3ep   complete        100.00  0.8372  0.7130  0.0479  71.7000 31.9554 0.8357  0.7166  0.0464  74.5000 32.0183
+
+RESULT  weekend_72h_v1  tv21_W2_joint_t4_3ep    tv21_W2_joint_t4_3ep    complete        100.00  0.8373  0.7131  0.0444  71.5000 31.6897 0.8354  0.7165  0.0445  74.4000 33.6671
+
+RESULT  weekend_72h_v1  tv21_W3_selected_t8_2ep tv21_W3_selected_t8_2ep complete        100.00  0.8374  0.7132  0.0418  72.0000 32.4380 0.8357  0.7166  0.0423  74.8000 33.4526
+
+RESULT  weekend_72h_v1  tv5_W1_decmem_t4_3ep    tv5_W1_decmem_t4_3ep    complete        100.00  0.7997  0.6425  0.0476  66.0000 30.8584 0.8025  0.6552  0.0467  67.6000 32.3247
+
+RESULT  weekend_72h_v1  tv5_W2_joint_t4_3ep     tv5_W2_joint_t4_3ep     complete        100.00  0.8000  0.6436  0.0464  65.8000 30.8608 0.8028  0.6559  0.0467  67.8000 32.5260
+
+RESULT  weekend_72h_v1  tv5_W3_selected_t8_2ep  tv5_W3_selected_t8_2ep  complete        100.00  0.7996  0.6429  0.0457  65.4000 34.0834 0.8027  0.6539  0.0480  67.9000 33.3821
+ 
+All-experiment CSV: /user-volume/all_experiment_report/all_experiments.csv
+
+Generated at: 2026-08-04T18:44:57.857465+00:00
+
+All-experiment report status: 0
+
+All-experiment CSV: /user-volume/all_experiment_report/all_experiments.csv
+
+Universal report status: 0
+ 
+===== COMPLETED OR EVALUATED EXPERIMENTS =====
+
+RESULT  suite   experiment      stage   status  progress_pct    val_mIoU        val_AP  val_J&F test_mIoU       test_AP test_J&F        wandb_run_id
+
+RESULT  edgetam_fidelity_v3     E0_official_upstream    -       training_state_unknown  -       0.8224065273192291      0.6862315591314051      68.0    -       -       -       sd4v4ptj
+
+RESULT  edgetam_memory_ablation_v1      M0_sam2_mem4    main    complete        100.00  0.8405351307558203      0.7166772863357375      71.5    0.8391104476506053      0.7191043746058303      74.3    8pxad6tr
+
+RESULT  edgetam_memory_ablation_v1      M1_sam2_mem2    main    complete        100.00  0.8405667938668541      0.7166694430431517      53.3    0.839094280855623       0.7197134541107877      56.1    muha1isz
+
+RESULT  edgetam_memory_ablation_v1      M2a_edgetam_hybrid2_official    main    complete        100.00  0.8405377805465354      0.7166427688138319      15.6    0.839091240333365       0.719030800933885       12.8ow69rx39
+
+RESULT  edgetam_memory_ablation_v1      M2b_edgetam_hybrid2_current     main    complete        100.00  0.8405656015430518      0.7166869914767766      13.2    0.8391022276959232      0.7190569532389688      10.62nfr05bt
+
+RESULT  edgetam_memory_ablation_v1      R0_edgetam_e2e_t4_task  main    complete        100.00  0.8369205113080364      0.7096474717159081      23.0    0.8364176640253518      0.7136935287182873      21.5    c4xm8e29
+
+RESULT  edgetam_memory_ablation_v1      R1_edgetam_e2e_t4_imgkd main    complete        100.00  0.8379283644517426      0.7120905828357922      23.6    0.8372963318527109      0.716546698165412       21.7    urql35yg
+
+RESULT  edgetam_memory_ablation_v1      R2_edgetam_e2e_t4_imgmemkd      main    complete        100.00  0.8377238743460212      0.7117326392395662      25.3    0.8373937886613493      0.7167000947317275      23.2k2vhiyua
+
+RESULT  edgetam_memory_ablation_v1      R3_edgetam_e2e_t8_imgmemkd      main    complete        100.00  0.8373921116064992      0.7114352649096215      21.9    0.836677156005596       0.7157023016474036      19.192phkgfc
+
+RESULT  edgetam_recipe_diagnostics_v5   Q0_official_identity_t8_1ep     main    complete        100.00  0.8224076420954429      0.686367384159919       68.3    0.8272460384696109      0.6989701912544741      69.5z9aaydbl
+
+RESULT  edgetam_recipe_diagnostics_v5   Q1_tinyvit_overfit16_t8_500ep   main    complete        100.00  0.8404210041599551      0.7165889546717749      15.5    0.8389282878532577      0.7189137312740382      15.5za9k5aqu
+
+RESULT  edgetam_recipe_diagnostics_v5   Q2_tinyvit_paper_scaled_sav_t8_5ep      main    complete        100.00  0.8354847232881983      0.7064973272604517      55.6    0.8342590526683202      0.7103223450408124 58.0     tkmm3hdk
+
+RESULT  edgetam_tinyvit21_behavior_v4   E1_a02_official_nonimage        main    complete        -       0.019951069803653562    0.0001498746584252556   2.1     0.015092186244928125    7.735148514851485e-06   2.4syggusw3
+
+RESULT  edgetam_tinyvit21_behavior_v4   S0_scratch_temporal_task_2ep    main    complete        100.00  0.8402241635979445      0.716485370031678       15.6    0.8388875961138759      0.7189798347135581      13.8rxrixqvf
+
+RESULT  repvit_stage1_v1        repvit_m09_proj_sam21l_msehr_cos025_l1010       -       finalization_incomplete 100.00  0.5664400533142385      0.2791458715896795      37.1    0.5416812205849592      0.2570365713817059  37.5    cg919yjs
+
+RESULT  repvit_task_finetune_v2 repvit_P1_encoder_recovery_3ep  repvit_P1_encoder_recovery_3ep  complete        100.00  0.7481476272585603      0.5527328689794728      58.6    0.7446361309540421      0.5534061444277811  57.4    4bgxyj50
+
+RESULT  repvit_task_finetune_v2 repvit_P2_joint_frozenbn_2ep    repvit_P2_joint_frozenbn_2ep    complete        100.00  0.755748168068578       0.5674546500538835      59.7    0.7540636172912434      0.5686844571097062  59.5    ugc4lcp5
+
+RESULT  repvit_task_finetune_v2 repvit_P2b_joint_trainbn_1ep    repvit_P2b_joint_trainbn_1ep    complete        100.00  0.7162462158867053      0.4993041108740438      58.1    0.7068844428412527      0.4943856587799468  57.0    s9htasm1
+
+RESULT  repvit_task_finetune_v2 repvit_P3_decmem_t8_refine_1ep  repvit_P3_decmem_t8_refine_1ep  complete        100.00  0.7565216643654143      0.5682634561958879      60.3    0.7548627038566683      0.569859009331996   60.1    l29p2u8t
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr2e6   mask_decoder_lr2e6      complete        100.00  0.8374051898780256      0.7126710087356002      70.3    0.8352159703174578      0.7160594907727572      70.6fhqjlq9r
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr2e7   mask_decoder_lr2e7      complete        100.00  0.8374529436253164      0.7128143810694761      70.0    0.8356343245124787      0.7161041931940778      71.5h0guhxr9
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr5e7   mask_decoder_lr5e7      complete        100.00  0.8376204854178472      0.7128498419676677      70.2    0.8354382667732491      0.7161948612125794      71.4ztx9qphr
+
+RESULT  sam2_mask_finetune_ablation_v1  decoder_lr5e7_boxonly   mask_decoder_lr5e7_boxonly      complete        100.00  0.8375546166043807      0.7127799740817288      70.3    0.8356772532056306      0.7161020669016508  71.7    8yu33386
+
+RESULT  sam2_mask_finetune_ablation_v1  encdec_low_frozenbn     mask_encdec_low_frozenbn        complete        100.00  0.837393384736553       0.7126939273411685      69.9    0.8355066699396861      0.7162703942249317  71.2    h4nrpu0h
+
+RESULT  sam2_mask_finetune_ablation_v1  encdec_low_trainbn      mask_encdec_low_trainbn complete        100.00  0.8343270970128693      0.7039450570498362      69.2    0.8347276700442073      0.7142617276694515 71.2     vc4rfs0o
+
+RESULT  sam2_mask_finetune_ablation_v2  A00_e2e_t4_box1_control main    complete        100.00  0.8375522289809123      0.7131179934090907      71.6    0.8355894573968431      0.7163526343237056      73.7    mk5kspey
+
+RESULT  sam2_mask_finetune_ablation_v2  A01_e2e_t4_box0 main    complete        100.00  0.8376700511141297      0.713203655788214       71.3    0.8355138635633269      0.7161260709018991      73.7    odjhtyua
+
+RESULT  sam2_mask_finetune_ablation_v2  A02_e2e_t4_official_prompt      main    complete        100.00  0.8373756945364754      0.7129181411891881      72.0    0.8347273143679699      0.7151394518295137      74.114kt70we
+
+RESULT  sam2_mask_finetune_ablation_v2  A03_decmem_t4   main    complete        100.00  0.8377003237336077      0.7134346695819704      71.8    0.8356644351685071      0.7166789655048068      73.4    vd7tfa7g
+
+RESULT  sam2_mask_finetune_ablation_v2  A04_memory_t4   main    complete        100.00  0.8372838442965623      0.7128323895211267      71.7    0.8353220581048051      0.7159880996340572      73.8    u9i4f7ai
+
+RESULT  sam2_mask_finetune_ablation_v2  A05_e2e_t8      main    complete        100.00  0.8375203877414926      0.7132207306009708      71.9    0.8355403939677659      0.7164361673416478      74.3    4jsxjyz2
+
+RESULT  sam2_mask_finetune_ablation_v2  A06_e2e_t8_s4_t16_hard  refine_t16      complete        100.00  0.8377223662131914      0.7137748073233237      71.4    0.8357415664450115      0.7168678985963954      73.9oru10x1k
+
+RESULT  sam2_mask_finetune_ablation_v2  A07_e2e_t4_warmup5      main    complete        100.00  0.8373735130810358      0.7131001976752044      71.3    0.8356364133015228      0.7162786168922292      73.9    wldkp7po
+
+RESULT  sam2_mask_finetune_ablation_v2  A08_e2e_t4_gb8  main    complete        100.00  0.8374348997240788      0.7132601566538952      71.9    0.8354611762041387      0.7164985150393874      73.4    t3ncp5jf
+
+RESULT  sam2_mask_finetune_ablation_v2  A09_e2e_t4_hard50x2     main    complete        100.00  0.8379027142760822      0.7136752558226633      70.8    0.8356752679388231      0.7166096759019512      72.9    5vtzjbbh
+
+RESULT  sam2_mask_finetune_ablation_v2  A10_e2e_t4_box0_imgkd   main    complete        100.00  0.83765822703223        0.7134405612650483      71.3    0.8360671418089214      0.7166833930676526      72.8    q132za5c
+
+RESULT  sam2_mask_finetune_ablation_v2  A11_e2e_t4_box0_imgmemkd        main    complete        100.00  0.8377533484515133      0.7142622683012839      71.3    0.8358356233927186      0.7168267148556096      73.3ismv3j75
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8409561625804439      0.7164288516091829      69.4    0.8401198417755871      0.7227198020361437      72.4    3xxqpml8
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8405603267092729      0.7164548411522762      56.9    0.8397006245030024      0.7212821963695016      58.5    uph3xhlj
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8404766004604891      0.716608012578275       57.1    0.8397280474500809      0.7222191411374819      58.5    qzvamm3w
+
+RESULT  sam2_multiobject_training_v1    main    -       complete        -       0.8406235560157799      0.7167162854482632      56.9    0.839778302425975       0.721312945432002       58.4    9d5el428
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8402612355249783      0.7166277086675757      72.3    0.8391271723737754      0.719100213257393       74.6    5twsaf73
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8402612355249783      0.7166277086675757      72.3    0.8391271723737754      0.719100213257393       74.6    d5yuknhq
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8402612355249783      0.7166277086675757      63.8    0.8391271723737754      0.719100213257393       60.9    6yar328i
+
+RESULT  sam2_object_slots_v1    main    -       complete        -       0.8402612355249783      0.7166277086675757      63.6    0.8391271723737754      0.719100213257393       60.2    v4vog3bo
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8402612355249783      0.7166277086675757      72.3    0.8391271723737754      0.719100213257393       74.6    5mettlsu
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8402612355249783      0.7166277086675757      63.6    0.8391271723737754      0.719100213257393       60.3    fgzts060
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8402612355249783      0.7166277086675757      63.7    0.8391271723737754      0.719100213257393       60.5    sbyfujsf
+
+RESULT  sam2_object_slots_v2    main    -       complete        -       0.8402612355249783      0.7166277086675757      63.6    0.8391271723737754      0.719100213257393       60.3    jpeb2srz
+
+RESULT  sam2_task_finetune_tv21_v1      stage1_encoder_task_2ep stage1_encoder_task_2ep complete        100.00  0.8376305997786209      0.7128603277230027      70.3    0.8355800516224106      0.7160189661059049 71.8     331hstts
+
+RESULT  sam2_task_finetune_tv21_v1      stage2_encoder_decoder_task_2ep stage2_encoder_decoder_task_2ep complete        100.00  0.8378808639680796      0.7129291073815658      69.9    0.8359912441390963      0.7166907729193716  71.3    fae9uebz
+
+RESULT  sam2_task_finetune_tv21_v1      stage3_encoder_decoder_memory_task_1ep  stage3_encoder_decoder_memory_task_1ep  complete        100.00  0.8380620019183158      0.713338728204812       71.5    0.8364234698792883  0.7171388115033064      74.3    5ub0a9y2
+
+RESULT  sam2_task_finetune_tv21_v2      stage1_encoder_task_2ep_v2      stage1_encoder_task_2ep_v2      complete        100.00  0.8372838442965623      0.7128323895211267      70.2    0.8353220581048051      0.7159880996340572  71.3    rjjya960
+
+RESULT  sam2_task_finetune_tv21_v2      stage2_decoder_only_task_1ep_v2 stage2_decoder_only_task_1ep_v2 complete        100.00  0.8374193331471915      0.712884100504441       70.0    0.8356401089006227      0.7161226503919846  71.3    rso2ko7v
+
+RESULT  sam2_task_finetune_tv21_v2      stage3_encoder_decoder_memory_task_1ep_v2       stage3_encoder_decoder_memory_task_1ep_v2       complete        100.00  0.8379882775074953      0.7130694835787952      71.70.8356089631824895      0.7163318726685969      73.9    n1zib7mq
+
+RESULT  sam31_stage1_ablation_v1        n1_cos000_adapter_ft_w2k        -       complete        100.00  0.7011479926289453      0.4453027518668978      25.5    0.684616154747843       0.4310076643629829      25.3k0othn97
+
+RESULT  sam31_stage1_ablation_v1        n1_cos025_adapter_ft_w2k        -       complete        100.00  0.7015060012162346      0.4467032003520739      25.5    0.6854691434782302      0.4325693816167884      25.3p3iow86e
+
+RESULT  sam31_stage1_ablation_v1        n1_cos100_adapter_ft_w2k        -       complete        100.00  0.7033912460463061      0.4499052775304507      25.5    0.6867268485533631      0.4360299481171192      25.3rttzqjta
+
+RESULT  sam31_stage1_ablation_v1        n2_adapter_cos025_frozen        -       complete        100.00  0.4600589448450309      0.15724554066315738     25.5    0.4549580887042385      0.15967327979679155     25.4dheevqnm
+
+RESULT  sam31_stage1_ablation_v1        n2_projection_cos025_ft_w2k     -       complete        100.00  0.6998799178982761      0.44408002842475874     25.5    0.6822996702016407      0.42912976036567496     25.37ll2x8qv
+
+RESULT  sav_stage1_ablation_v2  tv11_adapter_sam21l_msehr       -       complete        100.00  0.802879192446331       0.6514373971979217      65.6    0.8053803658295106      0.6635020878055309      69.0    n0npj42x
+
+RESULT  sav_stage1_ablation_v2  tv11_proj_sam21l_msehr  -       complete        100.00  0.8095418852827098      0.6617397603717181      66.8    0.8127810301838058      0.6723337492140212      69.4    7woradoj
+
+RESULT  sav_stage1_ablation_v2  tv11_proj_sam21l_msehr_cos025   -       complete        100.00  0.8094801144661494      0.661876626224211       67.1    0.8126047530179668      0.6725315360149534      69.5    ci6juty3
+
+RESULT  sav_stage1_ablation_v2  tv21_adapter_sam21l_msehr       -       complete        100.00  0.8301465751895061      0.7019549475743039      71.1    0.8305815206751502      0.7063316799921565      72.9    xp8aaheh
+
+RESULT  sav_stage1_ablation_v2  tv21_adapter_sam21l_msehr_cos025        -       complete        100.00  0.8346948407337069      0.7077975021435482      70.5    0.8359363152131585      0.7171010347581146      74.2hlg1hh8a
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_hr025  -       complete        100.00  0.8351636764858531      0.7087739155434145      70.4    0.8363223502441373      0.7175235783404644      73.5    w3kixzum
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_image_only     -       complete        100.00  0.7885371874900174      0.6297305662738214      68.5    0.7835647633585251      0.6246785907462092      70.2    4w1ensds
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr  -       complete        100.00  0.8307429882347813      0.7010092855089962      70.6    0.8318672362198942      0.7088571133294909      73.9    fovv6o9x
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr_cos025   -       complete        100.00  0.8314086191104224      0.701553521209424       70.5    0.832494261792891       0.7096464813050657      73.7    8blojdod
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr_cos1     -       complete        100.00  0.8337694305163679      0.7056785202262426      70.4    0.8345702462431361      0.712090945892995       73.8    f4btay3j
+
+RESULT  sav_stage1_ablation_v2  tv21_proj_sam21l_msehr_l1_025   -       complete        100.00  0.8354250854618935      0.7083512950946789      70.9    0.8358569529420339      0.7171368317143751      73.8    jqwvvf6p
+
+RESULT  sav_stage1_ablation_v2  tv5_adapter_sam21l_msehr        -       complete        100.00  0.7951336073058396      0.6371129308596696      64.2    0.7975562643811343      0.646488935079905       67.1    tzy3sdv4
+
+RESULT  sav_stage1_ablation_v2  tv5_proj_sam21l_msehr   -       complete        100.00  0.7928396455297234      0.6320530033642703      64.2    0.797075855312936       0.6458072811660199      66.5    dbnlshx9
+
+RESULT  sav_stage1_ablation_v2  tv5_proj_sam21l_msehr_cos025    -       complete        100.00  0.792311243251169       0.6318468092396708      63.7    0.7958304326366463      0.6444221547334502      66.2    t76p32bz
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL0_gt_t4_3ep       tv5_PL0_gt_t4_3ep       complete        100.00  0.8003685743698875      0.6445691889170373      66.0    0.8030783392886394      0.6569614143064706      67.3hfxebhnn
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL1_sam21l_soft025_t4_3ep   tv5_PL1_sam21l_soft025_t4_3ep   complete        100.00  0.7998013674493315      0.6441111145633281      65.9    0.8031019753552721      0.6570824844412284  68.1    125i31ph
+
+RESULT  tinyvit5_pseudolabel_v1 tv5_PL2_sam21l_soft050_t4_3ep   tv5_PL2_sam21l_soft050_t4_3ep   complete        100.00  0.7999103451753911      0.6435770946859134      65.6    0.803336029175566       0.6580207049256503  68.0    6j2yslqy
+
+RESULT  tinyvit_capacity_freeze_v2      tv11_F1_decmem_frozen_2ep       tv11_F1_decmem_frozen_2ep       complete        100.00  0.8125082453577721      0.6677920101892829      66.7    0.8155977262022033      0.6783864418763925  69.6    rhm80bk5
+
+RESULT  tinyvit_capacity_freeze_v2      tv11_F2_joint_low_1ep   tv11_F2_joint_low_1ep   complete        100.00  0.8130535432948071      0.6691448070920339      67.8    0.8154327922695813      0.6792325153504268 69.9     s1jihjjx
+
+RESULT  tinyvit_capacity_freeze_v2      tv21_F1_decmem_frozen_2ep       tv21_F1_decmem_frozen_2ep       complete        100.00  0.837440754475888       0.712928631665683       71.2    0.8354923093654401      0.7166992355101179  74.2    lm3xsscz
+
+RESULT  tinyvit_capacity_freeze_v2      tv21_F2_joint_low_1ep   tv21_F2_joint_low_1ep   complete        100.00  0.8377898755013002      0.7137945795413291      71.7    0.8356048665150203      0.7164771053755637 74.4     y8xjlec2
+
+RESULT  tinyvit_capacity_freeze_v2      tv5_F1_decmem_frozen_2ep        tv5_F1_decmem_frozen_2ep        complete        100.00  0.7985275920530193      0.6425542243341408      65.1    0.8016392626779922      0.6509144248938796  67.7    ywur6yme
+
+RESULT  tinyvit_capacity_freeze_v2      tv5_F2_joint_low_1ep    tv5_F2_joint_low_1ep    complete        100.00  0.7996577368655143      0.6426232573124442      65.8    0.8021582652716499      0.6522866679300177 67.6     k8a3c0wb
+
+RESULT  tinyvit_max_jf_v1       tv11    selected_best   complete        -       0.8137566650801069      0.6714143945439027      68.5    0.8157130807824582      0.6793617541099539      70.3    bb6vcv3d
+
+RESULT  tinyvit_max_jf_v1       tv11_S1_encoder_t2_2ep  -       complete        -       0.8145259489763189      0.6712145917486436      67.2    0.8161269172296852      0.6796112491352724      70.5    uyo3cg53
+
+RESULT  tinyvit_max_jf_v1       tv11_S2_e2e_t4_low_1ep  -       complete        -       0.8137276232439937      0.6703016386468812      67.8    0.8153067513266717      0.678996519287034       70.5    ozudq8bi
+
+RESULT  tinyvit_max_jf_v1       tv11_S3_decmem_t4_refine_1ep    -       complete        -       0.8137566650801069      0.6714143945439027      68.5    0.8157130807824582      0.6793617541099539      70.3    bb6vcv3d
+
+RESULT  tinyvit_max_jf_v1       tv21    selected_best   complete        -       0.837139490988097       0.7127477644103589      72.4    0.835252829398046       0.7162300691156105      74.7    rvjh6zfe
+
+RESULT  tinyvit_max_jf_v1       tv21_S1_e2e_t4_continue_1ep     -       complete        -       0.8370074142566188      0.7127601475408761      72.2    0.8349909307894902      0.7162094028869478      74.8    w4z6lg3p
+
+RESULT  tinyvit_max_jf_v1       tv21_S2_e2e_t4_low_1ep  -       complete        -       0.8371930644332326      0.7128125751667684      71.8    0.8352579985411791      0.7162492785713461      74.7    h0nyosb6
+
+RESULT  tinyvit_max_jf_v1       tv21_S3_decmem_t4_refine_1ep    -       complete        -       0.837139490988097       0.7127477644103589      72.4    0.835252829398046       0.7162300691156105      74.7    rvjh6zfe
+
+RESULT  tinyvit_max_jf_v1       tv5     selected_best   complete        -       0.8012072871918688      0.6461430362250544      65.3    0.8036847257145581      0.6567924136277472      67.9    8f0ba0pf
+
+RESULT  tinyvit_max_jf_v1       tv5_S1_encoder_t2_2ep   -       complete        -       0.8016048293809076      0.6463175141870385      65.2    0.8038290948283869      0.6581181077968956      67.8    s60leoc9
+
+RESULT  tinyvit_max_jf_v1       tv5_S2_e2e_t4_low_1ep   -       complete        -       0.8014486920321764      0.6460303463853232      65.1    0.8034293621117968      0.657609081327325       67.9    7agzwkel
+
+RESULT  tinyvit_max_jf_v1       tv5_S3_decmem_t4_refine_1ep     -       complete        -       0.8012072871918688      0.6461430362250544      65.3    0.8036847257145581      0.6567924136277472      67.9    8f0ba0pf
+
+RESULT  weekend_72h_v1  K1a_m0_task_5ep main    complete        100.00  0.8404239032465627      0.716529911697501       38.7    0.8389379611766007      0.7189707031934568      39.0    bca11wka
+
+RESULT  weekend_72h_v1  K1b_m0_logits_5ep       main    complete        100.00  0.8404017797985531      0.7165076736471441      38.7    0.838923641781661       0.7189687434989627      38.6    cmeu731b
+
+RESULT  weekend_72h_v1  K1c_m0_memlogits_5ep    main    complete        100.00  0.8404022534366551      0.7164836995672472      38.5    0.8389334694590526      0.7188630656145587      38.8    ptvgqi56
+
+RESULT  weekend_72h_v1  K2a_m0_task_t8_2ep      main    complete        100.00  0.8404004590465126      0.7159682627066527      42.1    0.8389120607736825      0.7190106810319541      40.0    7fr4d79g
+
+RESULT  weekend_72h_v1  repvit_W1_encoder_t2_5ep        repvit_W1_encoder_t2_5ep        complete        100.00  0.761025358987658       0.5777145506721912      60.9    0.7590181910719126      0.5773996865100199 60.2     kc8evzut
+
+RESULT  weekend_72h_v1  repvit_W2_decoder_t2_5ep        repvit_W2_decoder_t2_5ep        complete        100.00  0.7596327048523265      0.573843378064656       60.4    0.7578466910479003      0.5754667539997856 59.2     1nc3oft5
+
+RESULT  weekend_72h_v1  repvit_W3_decmem_t4_5ep repvit_W3_decmem_t4_5ep complete        100.00  0.7595819409459255      0.5733283173034687      61.4    0.7580639143967682      0.5762418241489051      60.0    a8uybcgl
+
+RESULT  weekend_72h_v1  repvit_W4_joint_t4_5ep  repvit_W4_joint_t4_5ep  complete        100.00  0.7612742483360578      0.5779963504559923      60.9    0.7604775175493387      0.5789428328228469      60.4    507sfftk
+
+RESULT  weekend_72h_v1  repvit_W5_selected_t8_3ep       repvit_W5_selected_t8_3ep       complete        100.00  0.7598429728513443      0.5739973263280227      60.4    0.7580487884655335      0.5766275432440314 60.9     3jk3mmm1
+
+RESULT  weekend_72h_v1  repvit_W6_joint_low_t4_3ep      repvit_W6_joint_low_t4_3ep      complete        100.00  0.7616166512039816      0.5781404345932574      60.9    0.7596500036489456      0.5774594384254795 61.1     w49p3bol
+
+RESULT  weekend_72h_v1  tv11_W1_decmem_t4_3ep   tv11_W1_decmem_t4_3ep   complete        100.00  0.8141068885183885      0.6716534384996584      68.6    0.8161084708022226      0.6791020178853876      70.5    hyn8zq0d
+
+RESULT  weekend_72h_v1  tv11_W2_joint_t4_3ep    tv11_W2_joint_t4_3ep    complete        100.00  0.8142117064200204      0.6717415461150726      68.0    0.8162701639989934      0.6801970153161796      70.6    alcdaikn
+
+RESULT  weekend_72h_v1  tv11_W3_selected_t8_2ep tv11_W3_selected_t8_2ep complete        100.00  0.8140401795465835      0.6718419411394856      68.2    0.8160146592878834      0.6802658978960302      69.7    dz8ttkkq
+
+RESULT  weekend_72h_v1  tv21_W1_decmem_t4_3ep   tv21_W1_decmem_t4_3ep   complete        100.00  0.8371502400332551      0.713023848580842       71.7    0.8357291483354496      0.7165558192104395      74.5    ip2oxq8j
+
+RESULT  weekend_72h_v1  tv21_W2_joint_t4_3ep    tv21_W2_joint_t4_3ep    complete        100.00  0.837266128653536       0.7130694561960673      71.5    0.8353765928889372      0.7164609872468627      74.4    jtiz8js7
+
+RESULT  weekend_72h_v1  tv21_W3_selected_t8_2ep tv21_W3_selected_t8_2ep complete        100.00  0.8374209374087882      0.7132338966768567      72.0    0.8356666848782417      0.7165972068463222      74.8    38j3u0jq
+
+RESULT  weekend_72h_v1  tv5_W1_decmem_t4_3ep    tv5_W1_decmem_t4_3ep    complete        100.00  0.7997306881002968      0.6424551359792747      66.0    0.8025164656718202      0.6551982647416617      67.6    f6h5wrv0
+
+RESULT  weekend_72h_v1  tv5_W2_joint_t4_3ep     tv5_W2_joint_t4_3ep     complete        100.00  0.7999681881789313      0.6435583101050689      65.8    0.8027546192436188      0.6559248516170106      67.8    lrxcziw0
+
+RESULT  weekend_72h_v1  tv5_W3_selected_t8_2ep  tv5_W3_selected_t8_2ep  complete        100.00  0.7995896858237123      0.6428748640093473      65.4    0.8026669398992632      0.6539090649621322      67.9    8yyl1sml
+ 
+Evaluated rows: 114
+ 
+===== STARTED BUT NOT FULLY EVALUATED =====
+
+ACTIVE  suite   experiment      stage   status  progress_pct    checkpoint_epoch        checkpoint_step target_unit     target_value    next_action     issues  wandb_run_id
+
+ACTIVE  edgetam_memory_recovery_v2      C0_coherent_m0mem_align main    final_checkpoint_incomplete     100.00  1       12585   epoch   1       finish validation/export of final checkpoint    -       1fqkzaub
+
+ACTIVE  edgetam_memory_recovery_v2      C1_partial_m0mem_align  main    final_checkpoint_incomplete     100.00  1       12585   epoch   1       finish validation/export of final checkpoint    -       7ymgmv0a
+
+ACTIVE  edgetam_memory_recovery_v2      C2_coherent_m0mem_joint2ep      main    final_checkpoint_incomplete     100.00  2       25170   epoch   2       finish validation/export of final checkpoint    -       808j2hls
+
+ACTIVE  repvit_stage1_v1        repvit_m09_proj_sam21l_msehr_cos025_l1010       -       finalization_incomplete 100.00  -       126135  step    126135  rerun evaluation finalization and W&B sync      -       cg919yjs
+
+ACTIVE  sam2_full_data_50_v1    main    -       final_checkpoint_incomplete     -       5       62925   -       -       finish validation/export of final checkpoint    -       2mjh5ut3
+
+ACTIVE  sam2_full_data_50_v1    main    -       training_state_unknown  -       4       50340   -       -       inspect checkpoint target and training logs     -       ijid6zpj
+
+ACTIVE  sam2_full_data_50_v1    main    -       final_checkpoint_incomplete     -       8       100680  -       -       finish validation/export of final checkpoint    -       14up4h0x
+
+ACTIVE  sam2_full_data_50_v1    main    -       training_state_unknown  -       7       88095   -       -       inspect checkpoint target and training logs     -       nbuv9k6e
+
+ACTIVE  sam2_full_data_50_v1    main    -       training_state_unknown  -       7       88095   -       -       inspect checkpoint target and training logs     -       q18ycsg1
+
+ACTIVE  sam2_full_data_50_v1    main    -       final_checkpoint_incomplete     -       8       100680  -       -       finish validation/export of final checkpoint    -       m790int7
+
+ACTIVE  sam2_full_data_50_v1    main    -       training_state_unknown  -       4       50340   -       -       inspect checkpoint target and training logs     -       j2r110uv
+
+ACTIVE  sam2_mask_finetune_ablation_v2  smoke_A01_e2e_t4_box0_run327473-sam4-4  -       val_incomplete  -       1       2       -       -       run full sav_val image and VOS evaluation       sav_val=missing 89oyj04t
+
+ACTIVE  sam2_mask_finetune_ablation_v2  smoke_A01_e2e_t4_box0_run327495-sam4-7  -       val_incomplete  -       1       2       -       -       run full sav_val image and VOS evaluation       sav_val=missing gfg3gl8a
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       ecckuq0i
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       7yv0ol70
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       f9afgfko
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       2u94oa54
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       wleft286
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       nfhyoshy
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       9qeb61dc
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       npbuevkf
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       gijv64tt
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       x2mw6d65
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       wr9i9lbn
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       5dzhg6do
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       xxi2gdan
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       qamhsf1o
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       n76h4ols
+
+ACTIVE  sam2_multiplex_overnight_v4     main    -       final_checkpoint_incomplete     -       3       37755   -       -       finish validation/export of final checkpoint    -       m14lqqt6
+
+ACTIVE  sam31_stage1_ablation_v1        n3_cos150_adapter_ft_w2k        -       training_incomplete     20.00   -       50453   step    252265  resume training with the same W&B run   -       yhwfo56j
+
+ACTIVE  sav_stage1_ablation_v2  tv21_proj_sam21bplus_msehr      -       val_incomplete  100.00  -       252265  step    252265  run full sav_val image and VOS evaluation       sav_val=missing 9xjiaa9u
+
+ACTIVE  tinyvit21_edgetam_memory_v1     main    -       final_checkpoint_incomplete     -       2       25170   -       -       finish validation/export of final checkpoint    -       xgw90n7f
+
+ACTIVE  tinyvit21_edgetam_memory_v1     main    -       training_state_unknown  -       2       25170   -       -       inspect checkpoint target and training logs     -       ftg434pq
+ 
+Started/incomplete rows: 33
+ 
+===== ALL MULTI-OBJECT LATENCY RESULTS =====
+
+LATENCY result_path     objects samples videos  median_ms_per_frame     p90_ms_per_frame        median_fps      end_to_end_fps  peak_memory_mb  target_pass
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD01_tv21_t4_decmem_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        1       3       1       17.468947499733545      17.53420716087366   57.244433301734574      23.712729537924606      8254.453125     -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD01_tv21_t4_decmem_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        2       3       1       21.202833773889417      21.24014357361814   47.16350704175527       22.276898553761136      8834.939453125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD01_tv21_t4_decmem_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        4       3       1       26.971169834121547      26.975469957266387  37.07662686306206       19.7300521137615        10083.59130859375       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD01_tv21_t4_decmem_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        8       3       1       41.73523018393537       41.75202059655868   23.960572293307195      15.201056227676789      12520.66552734375       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD46_mem4_t8_decmem_8ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        1       3       1       17.593044087547682      17.68594147444799   56.84064650913925       23.99610430272327       8253.72802734375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD46_mem4_t8_decmem_8ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        2       3       1       20.97984921058704       23.555679565359807  47.66478490681291       22.17810913405534       8834.939453125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD46_mem4_t8_decmem_8ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        4       3       1       27.487099684517958      27.625147749123904  36.38070263787225       19.970412705365025      10074.42529296875       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_full_data_50_v1/FD46_mem4_t8_decmem_8ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv        8       3       1       41.519558712326244      41.56504899006465   24.085034403391237      15.250526160284522      12530.91162109375       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8/aggregate.csv     1       2       1       13.72528987743988       13.769524494699876      72.85938865829934   26.254746657469276      9144.5283203125 -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8/aggregate.csv     2       2       1       21.823824914814583      22.50951816006724       45.89226963868654   22.009313474645413      9582.2880859375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8/aggregate.csv     4       2       1       36.86141731570764       38.71729239082799       27.236512765644903  14.01918621584242       10458.4580078125        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8/aggregate.csv     8       2       1       70.69226322888301       71.72178530102147       14.150508986566404  9.974813843815022       12207.3623046875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8_bucket4/aggregate.csv     1       2       1       27.92274598513955       28.27960264547889       35.82223868589744   19.5953469043565        10413.51513671875       -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8_bucket4/aggregate.csv     2       2       1       28.190641098752103      28.682286627590656      35.489631608709225  19.49491545979388       12297.4619140625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8_bucket4/aggregate.csv     4       2       1       35.044442478503136      35.14011333503857       28.535527303381066  17.212612898023835      16065.3623046875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8_bucket4/aggregate.csv     8       2       1       63.64249335601926       64.1163271903221        15.714133226250134  11.505344862682326      17862.208984375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8/aggregate.csv    1       2       1       13.79868688768354       13.806865598107207      72.47070370292617   27.09930600467305       9145.65478515625        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8/aggregate.csv    2       2       1       20.97453062165657       21.14882740641719       47.682016246391534  22.05478140510008       9582.2880859375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8/aggregate.csv    4       2       1       37.28683654475829       37.77304756615696       26.826243336853697  16.52647239765468       10456.966796875 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8/aggregate.csv    8       2       1       66.83303083550057       67.1044033492819        14.96304670849257   10.952806211827138      12207.3623046875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4/aggregate.csv      1       2       1       14.013001738629978      14.013223903382134  71.36229760366179       27.34709015552761       9144.67041015625        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4/aggregate.csv      2       2       1       21.20773571800312       21.25106405177764   47.152913222724635      21.718950309795567      9583.2724609375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4/aggregate.csv      4       2       1       26.256562645771893      26.258760802126652  38.08571687171032       20.43336526433163       10957.6279296875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4/aggregate.csv      8       2       1       45.30433629607332       45.31138319650601   22.072943112303967      14.766473479173442      12791.400390625 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1/tv21_best/point_n1-2-4-8/aggregate.csv        1       2       1       13.780249849539892      13.78446516323963       72.56763535673925   27.38301935402299       9145.65478515625        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1/tv21_best/point_n1-2-4-8/aggregate.csv        2       2       1       20.759523184648877      20.77278681099415       48.17069394816674   22.574278031575247      9582.2880859375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1/tv21_best/point_n1-2-4-8/aggregate.csv        4       2       1       36.185193543547186      36.66429959879867       27.643184841954305  16.983481285752816      10456.966796875 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_scaling_v1/tv21_best/point_n1-2-4-8/aggregate.csv        8       2       1       66.67969349193675       68.55038920931261       15.01553584069914   11.121482385369525      12207.3623046875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO0_mem4_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       2       1       17.531509944719488 17.73733523449507        57.05243965835774       24.156184713927196      8256.69677734375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO0_mem4_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       2       1       20.876640776686113 21.155687152119032       47.913802206221234      22.512004598518125      8836.908203125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO0_mem4_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       2       1       27.269567436827668 27.55124478311888        36.67702989089799       18.988966614256327      10078.58544921875       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO0_mem4_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       2       1       41.39010917138437  41.571686649373895       24.161088050509463      15.44519317048249       12550.97412109375       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO1_mem2_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       2       1       15.305015666346097 15.413027532270242       65.343142967477 25.93252075750741       8228.166015625  -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO1_mem2_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       2       1       17.19657350170972  17.314572450865448       58.155397870905716      24.868206668325115      8810.39794921875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO1_mem2_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       2       1       20.481069715179757 20.49974213546977        48.825638144373045      22.531487628552277      10057.58642578125       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO1_mem2_task_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       2       1       29.13515856650112  29.155673338100314       34.32281902264107       18.935656580853017      12514.53271484375       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO2_mem2_logits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     1       2       1       14.522788081125451 14.657057294750523       68.86649940624937       26.902487521945375      8231.02392578125        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO2_mem2_logits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     2       2       1       16.328324587887217 16.379377205759802       61.2442060148277        25.502040230358922      8810.39013671875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO2_mem2_logits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     4       2       1       20.16927086876641  20.314366217895312       49.58438386016611       23.00455678160052       10053.21728515625       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO2_mem2_logits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     8       2       1       28.585243091822186 28.58982939048317        34.98308679795108       19.532626405091897      12481.72216796875       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO3_mem2_memlogits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  1       2       1       15.251268719419322 1
+ 
+6.16777779534459        65.9403928327473        26.25854061921582       8228.166015625  -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO3_mem2_memlogits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  2       2       1       16.36114535885381  16.58785609945912        61.138757638281106      25.35108209183123       8810.39794921875        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO3_mem2_memlogits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  4       2       1       20.20510520850276  20.518986147924746       49.51111151687275       23.4019872448937        10057.58642578125       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_training_v1/MO3_mem2_memlogits_dense8_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  8       2       1       28.41815948486328  28.42805165412097        35.18877391968654       19.172369078915345      12514.53271484375       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX13_slot8_r2_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    1       1       1       16.59072344673091  16.59072344673091        60.27464704663275       24.975385053990646      8256.6005859375 -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX13_slot8_r2_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    2       1       1       20.16973852276288  20.16973852276288        49.579224781294705      22.988106336471578      8834.95263671875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX13_slot8_r2_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    4       1       1       18.70390493101601  18.70390493101601        53.46477132386062       23.722096953199244      9734.55810546875        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX13_slot8_r2_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    8       1       1       21.259620499893508 21.259620499893508       47.03752825714876       22.194537280135467      11705.109375    1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX14_slot8_r4_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    1       1       1       16.958308348367954 16.958308348367954       58.968145846707564      24.75891371169771       8256.60302734375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX14_slot8_r4_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    2       1       1       20.596661084684833 20.596661084684833       48.551558715678205      22.517241642235994      8834.955078125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX14_slot8_r4_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    4       1       1       18.83135904911263  18.83135904911263        53.10291187120251       23.655050048752027      9734.560546875  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX14_slot8_r4_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    8       1       1       21.289476482518786 21.289476482518786       46.97156366532168       22.44238493339447       11706.20947265625       1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX15_slot8_r8_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    1       1       1       17.988213951346175 17.988213951346175       55.591956083286604      22.581519782226923      8254.73291015625        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX15_slot8_r8_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    2       1       1       20.776361166017836 20.776361166017836       48.131623820422256      21.439869346880457      8835.45751953125        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX15_slot8_r8_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    4       1       1       19.596954489704864 19.596954489704864       51.02833710846977       23.18171379848358       9709.494140625  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX15_slot8_r8_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv    8       1       1       21.38786847414128  21.38786847414128        46.75547734964973       22.41202238086624       11712.37890625  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX16_slot8_r16_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv   1       1       1       17.47620721058599  17.47620721058599        57.2206536550026        23.522896440047838      8253.75830078125        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX16_slot8_r16_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv   2       1       1       21.382068656384945 21.382068656384945       46.76815962338554       22.096500573093653      8836.22314453125        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX16_slot8_r16_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv   4       1       1       19.640215152296527 19.640215152296527       50.91593917101617       23.57332534599637       9733.548828125  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX16_slot8_r16_mean_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv   8       1       1       21.30222342394549  21.30222342394549        46.943456563126446      22.107249243573467      11701.1689453125        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX17_slot8_r8_mean_ptr4_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       1       1       17.725382131877645  17.725382131877645      56.41627314773554       23.376516442433637      8256.61376953125        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX17_slot8_r8_mean_ptr4_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       1       1       21.27551590253053   21.27551590253053       47.00238549237995       22.046293820228982      8834.9658203125 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX17_slot8_r8_mean_ptr4_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       1       1       19.523521445306212  19.523521445306212      51.220267962489785      22.8470820017248        9736.32177734375        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX17_slot8_r8_mean_ptr4_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       1       1       21.57749001514809   21.57749001514809       46.344593337685154      21.851791674292894      11712.275390625 1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX18_slot8_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       1       1       17.619812896410966  17.619812896410966      56.75429165332925       24.22256396068378       8255.72021484375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX18_slot8_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       1       1       21.858385703044718  21.858385703044718      45.749032594877626      21.80563959108965       8836.23193359375        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX18_slot8_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       1       1       19.835072229134624  19.835072229134624      50.415747845432904      22.354127037494173      9716.47509765625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX18_slot8_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       1       1       21.786473052383496  21.786473052383496      45.900040708544026      21.783834301451833      11717.4580078125        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX19_slot8_r8_latest_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     1       1       1       16.40036827402896   16.40036827402896       60.974240534803386      25.17541794281311       8255.5  -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX19_slot8_r8_latest_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     2       1       1       20.34194406346771   20.34194406346771       49.159509871817484      22.739598105091996      8836.22412109375        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX19_slot8_r8_latest_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     4       1       1       18.459237403846508  18.459237403846508      54.173418875452654      23.80094272534354       9716.025390625  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX19_slot8_r8_latest_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv     8       1       1       20.646977781093327  20.646977781093327      48.43323853991413       22.70447589845069       11670.4716796875        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX20_slot8_r8_recency050_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 1       1       1       16.73304809193159   16.73304809193159       59.76197489578627       24.078738287092268      8255.72021484375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX20_slot8_r8_recency050_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 2       1       1       20.659121976972653  20.659121976972653      48.40476769122295       22.74303484208393       8835.71728515625        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX20_slot8_r8_recency050_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 4       1       1       19.18455143780287   19.18455143780287       52.125273986313545      23.5683088581636        9719.79296875   1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX20_slot8_r8_recency050_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 8       1       1       21.3037656571973    21.3037656571973        46.94005820807357       22.42912511101041       11697.7666015625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX21_slot8_r8_recency025_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 1       1       1       16.411550147137767  16.411550147137767      60.93269624346873       24.697842096831845      8256.61865234375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX21_slot8_r8_recency025_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 2       1       1       19.84138474157401   19.84138474157401       50.39970813653353       22.97601096050505       8834.970703125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX21_slot8_r8_recency025_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 4       1       1       18.66989525613086   18.66989525613086       53.56216445143782       23.653887924531762      9736.32666015625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX21_slot8_r8_recency025_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 8       1       1       21.16477031035927   21.16477031035927       47.24832754317877       22.272558138580774      11712.2802734375        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX22_slot8_r8_recency075_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 1       1       1       16.942307590667543  16.942307590667543      59.02383690347101       24.732531302108434      8255.72021484375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX22_slot8_r8_recency075_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 2       1       1       20.32469762168054   20.32469762168054       49.20122397950417       22.906598361756338      8835.71728515625        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX22_slot8_r8_recency075_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 4       1       1       19.778517919496217  19.778517919496217      50.55990565472417       23.41360252654542       9719.79296875   1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX22_slot8_r8_recency075_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 8       1       1       21.385944143323034  21.385944143323034      46.75968445901945       22.537356479175944      11697.7666015625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX23_slot4_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       1       1       17.0046077206217    17.0046077206217        58.80759006203286       23.557884480679785      8255.71142578125        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX23_slot4_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       1       1       20.996909954681477  20.996909954681477      47.62605555571474       21.90609137019448       8834.9580078125 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX23_slot4_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       1       1       18.626399900250394  18.626399900250394      53.68723990439811       23.41769710274505       9677.5  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX23_slot4_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       1       1       30.907242006525912  30.907242006525912      32.35487656222626       18.32545383969731       11593.2353515625        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX24_slot6_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       1       1       16.677470508449037  16.677470508449037      59.96113136541817       24.540979611318765      8254.7314453125 -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX24_slot6_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       1       1       19.736881663316282  19.736881663316282      50.66656511695249       22.887289987922628      8836.2158203125 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX24_slot6_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       1       1       18.3476768337704    18.3476768337704        54.502813029681136      23.906058693621837      9718.49072265625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX24_slot6_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       1       1       32.77712695878641   32.77712695878641       30.50908034915289       17.668732658612925      12002.11279296875       0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX25_slot8_r8_mean_ptr8_objkd025_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      1       1       1       17.771409265697002  17.771409265697002      56.270157591285404      24.554543624764648      8254.74365234375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX25_slot8_r8_mean_ptr8_objkd025_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      2       1       1       21.45944124023462   21.45944124023462       46.59953578498052       22.244501693880544      8835.46826171875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX25_slot8_r8_mean_ptr8_objkd025_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      4       1       1       21.343430465665357  21.343430465665357      46.852824413988884      21.77629619484009       9719.892578125  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX25_slot8_r8_mean_ptr8_objkd025_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      8       1       1       21.27946611044222   21.27946611044222       46.99366021731541       21.944382544505732      11718.4443359375        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX26_slot8_r8_mean_ptr8_objkd100_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      1       1       1       16.717003741911775  16.717003741911775      59.81933218647704       25.193690568745918      8253.75927734375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX26_slot8_r8_mean_ptr8_objkd100_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      2       1       1       19.861612835064015  19.861612835064015      50.34837846776389       23.070101640277034      8836.22412109375        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX26_slot8_r8_mean_ptr8_objkd100_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      4       1       1       18.794516692387646  18.794516692387646      53.20700799957418       23.636228353587008      9720.984375     1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX26_slot8_r8_mean_ptr8_objkd100_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      8       1       1       21.0954408321915    21.0954408321915        47.40360763042253       22.439039062139955      11702.7802734375        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX27_slot8_min2_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  1       1       1       16.522655247485844  16.522655247485844      60.52295984037821       25.40899849066858       8256.61865234375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX27_slot8_min2_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  2       1       1       17.526749425150197  17.526749425150197      57.05564538767464       24.52087877097136       8728.1923828125 1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX27_slot8_min2_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  4       1       1       18.641962258723275  18.641962258723275      53.64242165719772       23.974439769242636      9736.32666015625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX27_slot8_min2_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  8       1       1       21.361963958318892  21.361963958318892      46.81217522654674       22.15068558332094       11712.2802734375        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX28_slot8_min3_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  1       1       1       16.80481457633191   16.80481457633191       59.50675596316375       25.245222775996496      8254.24365234375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX28_slot8_min3_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  2       1       1       20.488207607433715  20.488207607433715      48.808564378133845      22.703294990274387      8836.962890625  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX28_slot8_min3_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  4       1       1       19.854536870944088  19.854536870944088      50.36632214088254       22.878597057562637      9714.962890625  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/MX28_slot8_min3_r8_mean_ptr8_screen3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv  8       1       1       21.094417864264084  21.094417864264084      47.405906455190376      22.340316798321563      11695.4755859375        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX1_slot4_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       3       1       16.755242777410253      16.772325250223794  59.68281171957828       24.953380746424262      8254.4609375    -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX1_slot4_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       3       1       20.137664617906356      20.218462619031296  49.65819120409835       23.18780893352333       8834.947265625  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX1_slot4_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       3       1       26.599798200587774      26.79800368138942   37.59427016923396       20.143386766831917      10090.255859375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX1_slot4_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       3       1       46.13387534266402       46.15122492649946   21.676045911434905      14.44952715826542       11977.34375     0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       3       1       16.220040786369093      16.400932086438967  61.65212610564915       25.453812164558457      8253.74365234375        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       3       1       20.0584772428305        20.167948939548484  49.85423309525802       23.390521108963185      8834.955078125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       3       1       26.476474973405228      26.498761458386635  37.76937832564448       20.31413666417177       10093.3671875   0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX2_slot8_decoder_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       3       1       40.87514492907915       40.89239577730668   24.46474506047772       15.697549263241633      12512.89453125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX3_slot4_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      1       3       1       16.486509815500728      16.753657638127432  60.655651874831214      25.139188448765697      8255.68994140625        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX3_slot4_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      2       3       1       20.121892175540843      20.215885147195436  49.69711552353658       22.633255364920927      8834.9365234375 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX3_slot4_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      4       3       1       18.04965919140598       19.279389504086357  55.4027081284799        24.216662754515422      9669.8857421875 1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX3_slot4_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      8       3       1       28.969694368926614      28.992521699261047  34.51883155082979       19.186475860808695      11580.5537109375        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX4_slot8_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      1       3       1       16.701873626303055      16.890593288659023  59.87352211940721       24.96294070045711       8254.72216796875        -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX4_slot8_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      2       3       1       20.186951013025023      20.25717750095345   49.53695084288756       23.222164268297583      8836.19482421875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX4_slot8_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      4       3       1       18.0282151037506        18.076822116071806  55.46860819249708       24.480210406321685      9711.84375      1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/MX4_slot8_sharedkv_kd_3ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv      8       3       1       20.393983794954316      20.457071342088025  49.03406857896054       22.843435933925598      11661.8095703125        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       1       3       1       16.635510010709023 17.12104051149097        60.11237403339334       25.15748435154485       8254.46875      -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       2       3       1       20.12881181877235  20.214352584604562       49.680031240959245      23.26595116081638       8834.955078125  0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       4       3       1       26.58611559790784  26.659617777271517       37.61361814279833       20.262932334900864      10084.1318359375        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX5_slot8_decoder_t8_logits2_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv       8       3       1       40.991409183961565 40.997640805897014       24.39535551247317       15.636067083691838      12496.962890625 0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX6_slot8_sharedkv_t8_mem1_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 1       3       1       16.588963057588913      16.80732684723776   60.28104327729709       25.08281312932113       8255.447265625  -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX6_slot8_sharedkv_t8_mem1_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 2       3       1       20.0038754413354        20.07117315998365   49.99031327367848       23.446133140527863      8834.94921875   0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX6_slot8_sharedkv_t8_mem1_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 4       3       1       18.00992774680771       18.02482101809362   55.52493125227845       24.39004812425946       9728.4970703125 1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX6_slot8_sharedkv_t8_mem1_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 8       3       1       20.38281052855068       20.3969140999533    49.06094763522805       23.058044356344613      11698.3291015625        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX7_slot8_sharedkv_t8_mem4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 1       3       1       16.424631876549846      16.71179139344343   60.8841651682765        25.473701479735844      8255.478515625  -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX7_slot8_sharedkv_t8_mem4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 2       3       1       20.232532568404388      20.463433187968775  49.42534982306783       23.243939540959435      8836.20263671875        0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX7_slot8_sharedkv_t8_mem4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 4       3       1       18.01713788560752       18.211437905656883  55.502711160290424      24.6891628575378        9713.779296875  1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX7_slot8_sharedkv_t8_mem4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 8       3       1       20.52392963769621       20.5281653647022    48.72361276094538       23.25055817946989       11679.7861328125        1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX8_slot8_sharedkv_t8_mem1_logits4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 1       3       1       16.875397100851966 16.893395316819177       59.25786480897177       25.35468722367547       8255.447265625  -
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX8_slot8_sharedkv_t8_mem1_logits4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 2       3       1       20.02755667339882  20.251448802842663       49.93120310717827       23.357630475929437      8834.94921875   0
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX8_slot8_sharedkv_t8_mem1_logits4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 4       3       1       18.21721808278355  18.25284339616011        54.89312338776164       24.31690160227318       9728.4970703125 1
+
+LATENCY /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/MX8_slot8_sharedkv_t8_mem1_logits4_5ep/main/multiobject_latency/point_n1-2-4-8/aggregate.csv 8       3       1       20.496827285287196 20.54770363783785        48.78803856232954       23.10034544169639       11698.3291015625        1
+ 
+Latency aggregate files: 35
+ 
+===== BUCKET / OBJECT-SLOT / MULTIPLEX DECISIONS =====
+ 
+============================================================
+
+REPORT FILE: /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/comparisons/tv21_bucket4_vs_legacy/comparison.md
+
+============================================================
+
+# SAM2 object-bucket comparison
+ 
+- Decision: **REJECT**
+
+- Legacy: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8`
+
+- Bucket: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1_v1/tv21_best/point_n1-2-4-8_bucket4`
+
+- Binary-mask agreement: 0.9999888020833333
+ 
+| Objects | Legacy FPS | Bucket FPS | FPS gain | Legacy ms | Bucket ms | Latency reduction | Memory delta MB | Target |
+
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+
+| 1 | 72.86 | 35.82 | -50.8% | 13.73 | 27.92 | -103.4% | +1269 |  |
+
+| 2 | 45.89 | 35.49 | -22.7% | 21.82 | 28.19 | -29.2% | +2715 | 1 |
+
+| 4 | 27.24 | 28.54 | +4.8% | 36.86 | 35.04 | +4.9% | +5607 | 0 |
+
+| 8 | 14.15 | 15.71 | +11.0% | 70.69 | 63.64 | +10.0% | +5655 | 0 |
+ 
+Failed checks: binary_mask_equivalence, promotion_count_target_pass
+ 
+============================================================
+
+REPORT FILE: /group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/comparisons/tv21_bucket4_persistent_vs_legacy/comparison.md
+
+============================================================
+
+# SAM2 object-bucket comparison
+ 
+- Decision: **REJECT**
+
+- Legacy: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8`
+
+- Bucket: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4`
+
+- Binary-mask agreement: 0.9999849392361111
+
+- Minimum per-mask IoU: 0.9690141081809998
+
+- Bit-exact match: False
+ 
+| Objects | Legacy FPS | Bucket FPS | FPS gain | Legacy ms | Bucket ms | Latency reduction | Memory delta MB | Target |
+
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+
+| 1 | 72.47 | 71.36 | -1.5% | 13.80 | 14.01 | -1.6% | -1 |  |
+
+| 2 | 47.68 | 47.15 | -1.1% | 20.97 | 21.21 | -1.1% | +1 | 0 |
+
+| 4 | 26.83 | 38.09 | +42.0% | 37.29 | 26.26 | +29.6% | +501 | 0 |
+
+| 8 | 14.96 | 22.07 | +47.5% | 66.83 | 45.30 | +32.2% | +584 | 0 |
+ 
+Failed checks: binary_mask_equivalence, promotion_count_target_pass
+ 
+============================================================
+
+REPORT FILE: /group-volume/danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/comparison/screen_results.md
+
+============================================================
+
+# SAM2 multiplex overnight screen
+ 
+- Runtime reference: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4`
+
+- Quality cohort: fixed 32-video SA-V val subset; each candidate is compared with MX5 on the same videos.
+
+- Promotion gates: J&F retention ≥ 95%; learned-path mask IoU ≥ 0.95; N=8 faster than the runtime reference.
+
+- N=1 retention is reported but is not a screen blocker; deployment can route N<4 through the legacy path.
+ 
+| Rank | Pareto | Variant | Status | Gate | Mini J&F | Retention | Mask IoU | N1 FPS | N1 ret. | N2 FPS | N4 FPS | N8 FPS | N8 gain | N8 ms | Promote |
+
+|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+
+|  | 0 | MX13_slot8_r2_mean_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 0 | MX14_slot8_r4_mean_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 1 | MX15_slot8_r8_mean_screen3ep | complete | fail | 53.60 | 0.757 | 1.000 | 55.59 | 0.779 | 48.13 | 51.03 | 46.76 | 111.8% | 21.39 | 0 |
+
+|  | 0 | MX16_slot8_r16_mean_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 1 | MX17_slot8_r8_mean_ptr4_screen3ep | complete | fail | 53.70 | 0.758 | 1.000 | 56.42 | 0.791 | 47.00 | 51.22 | 46.34 | 110.0% | 21.58 | 0 |
+
+|  | 0 | MX18_slot8_r8_mean_ptr8_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 1 | MX19_slot8_r8_latest_ptr8_screen3ep | complete | fail | 53.00 | 0.749 | 1.000 | 60.97 | 0.854 | 49.16 | 54.17 | 48.43 | 119.4% | 20.65 | 0 |
+
+|  | 0 | MX20_slot8_r8_recency050_ptr8_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 0 | MX21_slot8_r8_recency025_ptr8_screen3ep | complete | fail | 52.90 | 0.747 | 1.000 | 60.93 | 0.854 | 50.40 | 53.56 | 47.25 | 114.1% | 21.16 | 0 |
+
+|  | 0 | MX22_slot8_r8_recency075_ptr8_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 0 | MX23_slot4_r8_mean_ptr8_screen3ep | complete | fail | 53.70 | 0.758 | 0.000 | 58.81 | 0.824 | 47.63 | 53.69 | 32.35 | 46.6% | 30.91 | 0 |
+
+|  | 0 | MX24_slot6_r8_mean_ptr8_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 0 | MX25_slot8_r8_mean_ptr8_objkd025_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 0 | MX26_slot8_r8_mean_ptr8_objkd100_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | 0 | MX27_slot8_min2_r8_mean_ptr8_screen3ep | complete | fail | 29.50 | 0.417 | 1.000 | 60.52 | 0.848 | 57.06 | 53.64 | 46.81 | 112.1% | 21.36 | 0 |
+
+|  | 0 | MX28_slot8_min3_r8_mean_ptr8_screen3ep | pending | pending | - | - | - | - | - | - | - | - | -% | - | 0 |
+ 
+============================================================
+
+REPORT FILE: /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v1/comparison/object_slot_results.md
+
+============================================================
+
+# SAM2 learned object-slot results
+ 
+- Runtime reference: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4`
+
+- Quality reference: val J&F 72.4, test J&F 74.7
+
+- Gates: full quality retention ≥ 95%; learned-path mask IoU ≥ 0.95; N=1 FPS retention ≥ 95%; N=8 faster than reference
+ 
+| Rank | Variant | Status | Val J&F | Test J&F | Min quality | Learned mask IoU | N1 FPS | N1 retention | N8 FPS | N8 gain | N8 ms | Promote |
+
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+
+|  | MX1_slot4_decoder_kd_3ep | complete | 72.30 | 74.60 | 0.999 | 0.000 | 59.68 | 0.836 | 21.68 | -1.8% | 46.13 | 0 |
+
+|  | MX2_slot8_decoder_kd_3ep | complete | 72.30 | 74.60 | 0.999 | 1.000 | 61.65 | 0.864 | 24.46 | 10.8% | 40.88 | 0 |
+
+|  | MX3_slot4_sharedkv_kd_3ep | complete | 63.80 | 60.90 | 0.815 | 0.413 | 60.66 | 0.850 | 34.52 | 56.4% | 28.97 | 0 |
+
+|  | MX4_slot8_sharedkv_kd_3ep | complete | 63.60 | 60.20 | 0.806 | 1.000 | 59.87 | 0.839 | 49.03 | 122.1% | 20.39 | 0 |
+ 
+============================================================
+
+REPORT FILE: /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v2/comparison/object_slot_results.md
+
+============================================================
+
+# SAM2 learned object-slot results
+ 
+- Runtime reference: `/group-volume/danny-dataset/sam2_distill/runs/sam2_multiobject_bucket_mx1p_v1/tv21_best/point_n1-2-4-8_bucket4_persistent_m4`
+
+- Quality reference: val J&F 72.4, test J&F 74.7
+
+- Gates: full quality retention ≥ 95%; learned-path mask IoU ≥ 0.95; N=1 FPS retention ≥ 95%; N=8 faster than reference
+ 
+| Rank | Variant | Status | Val J&F | Test J&F | Min quality | Learned mask IoU | N1 FPS | N1 retention | N8 FPS | N8 gain | N8 ms | Promote |
+
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+
+|  | MX5_slot8_decoder_t8_logits2_5ep | pending | - | - | - | - | - | - | - | -% | - | 0 |
+
+|  | MX6_slot8_sharedkv_t8_mem1_5ep | complete | 63.60 | 60.30 | 0.807 | 1.000 | 60.28 | 0.845 | 49.06 | 122.3% | 20.38 | 0 |
+
+|  | MX7_slot8_sharedkv_t8_mem4_5ep | complete | 63.70 | 60.50 | 0.810 | 1.000 | 60.88 | 0.853 | 48.72 | 120.7% | 20.52 | 0 |
+
+|  | MX8_slot8_sharedkv_t8_mem1_logits4_5ep | complete | 63.60 | 60.30 | 0.807 | 1.000 | 59.26 | 0.830 | 48.79 | 121.0% | 20.50 | 0 |
+ 
+===== FINAL REPORT LOCATION =====
+
+CSV: /user-volume/all_experiment_report/all_experiments.csv
+
+Terminal log: /user-volume/all_experiment_report/all_results_20260804_184359.log
+
+Read-only report status: 0
+ 

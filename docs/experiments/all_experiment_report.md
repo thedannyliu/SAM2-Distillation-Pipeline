@@ -37,3 +37,8 @@ scripts/company/45_report_all_experiments.sh
 
 The default output is `${REPORT_DIR}/all_experiments.csv`. Re-running the
 command atomically replaces the CSV and never starts training or evaluation.
+
+The normalized snapshot from 2026-08-04 is recorded in
+[`all_experiment_results_2026-08-04.md`](all_experiment_results_2026-08-04.md),
+with its unmodified terminal evidence in
+[`experiment_result_all.txt`](experiment_result_all.txt).
