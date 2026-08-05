@@ -18,6 +18,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", required=True, type=Path)
     parser.add_argument("--max-videos", type=int, default=2)
     parser.add_argument("--max-objects-per-video", type=int, default=2)
+    parser.add_argument(
+        "--video-list-file",
+        type=Path,
+        help="Optional ordered video-ID list; supports IDs across nested SA-V shards.",
+    )
     parser.add_argument("--ann-every", type=int, default=4)
     parser.add_argument("--frame-sample-rate", type=int, default=1)
     parser.add_argument("--use-auto", action="store_true", help="Use *_auto.json when *_manual.json is unavailable.")
@@ -63,18 +68,16 @@ def detect_ann_root(shard: Path) -> Path:
     return found
 
 
-def extract_frames(video_root: Path, image_root: Path, sample_rate: int, selected_videos: list[str]) -> None:
+def extract_frames(video_paths: list[Path], image_root: Path, sample_rate: int) -> None:
     try:
         import cv2
     except ImportError as exc:
         raise SystemExit("Frame extraction requires cv2/opencv-python.") from exc
 
-    wanted = set(selected_videos)
-    videos = [path for path in sorted(video_root.rglob("*.mp4")) if path.stem in wanted]
-    if not videos:
-        raise FileNotFoundError(f"No selected mp4 files under {video_root}")
+    if not video_paths:
+        raise FileNotFoundError("No selected mp4 files")
     image_root.mkdir(parents=True, exist_ok=True)
-    for video in videos:
+    for video in video_paths:
         out_dir = image_root / video.stem
         if out_dir.exists() and any(out_dir.glob("*.jpg")):
             continue
@@ -139,6 +142,34 @@ def discover_videos(video_root: Path, ann_root: Path, max_videos: int, use_auto:
     return ids
 
 
+def discover_assets(root: Path, use_auto: bool) -> tuple[dict[str, Path], dict[str, Path]]:
+    videos = {path.stem: path for path in sorted(root.rglob("*.mp4"))}
+    manual = {
+        path.name.removesuffix("_manual.json"): path
+        for path in sorted(root.rglob("*_manual.json"))
+    }
+    automatic = {
+        path.name.removesuffix("_auto.json"): path
+        for path in sorted(root.rglob("*_auto.json"))
+    }
+    annotations = automatic if use_auto else {}
+    annotations.update(manual)
+    return videos, annotations
+
+
+def requested_video_ids(path: Path) -> list[str]:
+    values = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if not values:
+        raise ValueError(f"Empty video list: {path}")
+    if len(values) != len(set(values)):
+        raise ValueError(f"Duplicate video IDs in {path}")
+    return values
+
+
 def write_masks(
     ann_path: Path,
     out_ann_root: Path,
@@ -187,9 +218,24 @@ def write_masks(
 
 def main() -> None:
     args = parse_args()
-    video_root = detect_video_root(args.shard_root)
-    ann_root = detect_ann_root(args.shard_root)
-    videos = discover_videos(video_root, ann_root, args.max_videos, args.use_auto)
+    video_paths, annotation_paths = discover_assets(args.shard_root, args.use_auto)
+    if args.video_list_file is None:
+        videos = sorted(set(video_paths) & set(annotation_paths))
+    else:
+        requested = requested_video_ids(args.video_list_file)
+        missing_videos = [video_id for video_id in requested if video_id not in video_paths]
+        missing_annotations = [
+            video_id for video_id in requested if video_id not in annotation_paths
+        ]
+        if missing_videos or missing_annotations:
+            raise FileNotFoundError(
+                "Requested SA-V assets are incomplete: "
+                f"missing videos={missing_videos[:10]}, "
+                f"missing annotations={missing_annotations[:10]}"
+            )
+        videos = requested
+    if args.max_videos > 0:
+        videos = videos[: args.max_videos]
     if not videos:
         raise RuntimeError(f"No benchmarkable videos under {args.shard_root}")
 
@@ -197,14 +243,12 @@ def main() -> None:
     out_ann_root = args.out_root / "Annotations_6fps"
     args.out_root.mkdir(parents=True, exist_ok=True)
     out_ann_root.mkdir(parents=True, exist_ok=True)
-    extract_frames(video_root, image_root, args.frame_sample_rate, videos)
+    extract_frames([video_paths[video_id] for video_id in videos], image_root, args.frame_sample_rate)
 
     summaries = []
     kept = []
     for video_id in videos:
-        ann_path = choose_annotation(ann_root, video_id, args.use_auto)
-        if ann_path is None:
-            continue
+        ann_path = annotation_paths[video_id]
         summary = write_masks(ann_path, out_ann_root, args.ann_every, args.max_objects_per_video)
         if summary["masks_written"] > 0:
             kept.append(video_id)
@@ -217,8 +261,7 @@ def main() -> None:
     summary = {
         "status": "pass",
         "shard_root": str(args.shard_root),
-        "video_root": str(video_root),
-        "ann_root": str(ann_root),
+        "video_list_file": str(args.video_list_file) if args.video_list_file else None,
         "out_root": str(args.out_root),
         "image_root": str(image_root),
         "annotation_root": str(out_ann_root),

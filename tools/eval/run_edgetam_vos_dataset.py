@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
+import statistics
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -77,16 +80,45 @@ def main() -> None:
     hydra_overrides_extra = [
         "++model.non_overlap_masks=" + ("false" if args.per_obj_png_file else "true")
     ]
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    device = args.device
+    if world_size > 1 and args.device == "cuda":
+        device = f"cuda:{local_rank}"
+        torch.cuda.set_device(local_rank)
     predictor = build_sam2_video_predictor(
         config_file=args.sam2_cfg,
         ckpt_path=str(args.checkpoint),
-        device=args.device,
+        device=device,
         apply_postprocessing=False,
         hydra_overrides_extra=hydra_overrides_extra,
     )
-    video_names = load_video_names(args.image_root, args.video_list_file)
-    if not video_names:
+    original_propagate = predictor.propagate_in_video
+    model_frame_latencies_ms = []
+
+    def timed_propagate(*propagate_args, **propagate_kwargs):
+        iterator = iter(original_propagate(*propagate_args, **propagate_kwargs))
+        while True:
+            if str(device).startswith("cuda"):
+                torch.cuda.synchronize(device)
+            frame_started = time.perf_counter()
+            try:
+                output = next(iterator)
+            except StopIteration:
+                break
+            if str(device).startswith("cuda"):
+                torch.cuda.synchronize(device)
+            model_frame_latencies_ms.append(
+                (time.perf_counter() - frame_started) * 1000.0
+            )
+            yield output
+
+    predictor.propagate_in_video = timed_propagate
+    all_video_names = load_video_names(args.image_root, args.video_list_file)
+    if not all_video_names:
         raise RuntimeError(f"No videos selected under {args.image_root}")
+    video_names = all_video_names[rank::world_size]
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     inference_fn = (
@@ -94,6 +126,7 @@ def main() -> None:
         if args.track_object_appearing_later_in_video
         else vos_module.vos_inference
     )
+    started = time.perf_counter()
     for video_name in video_names:
         inference_fn(
             predictor=predictor,
@@ -105,6 +138,13 @@ def main() -> None:
             per_obj_png_file=args.per_obj_png_file,
         )
 
+    elapsed = time.perf_counter() - started
+    processed_frames = sum(
+        1
+        for video_name in video_names
+        for path in (args.image_root / video_name).iterdir()
+        if path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+    )
     summary = {
         "status": "pass",
         "sam2_cfg": args.sam2_cfg,
@@ -113,12 +153,30 @@ def main() -> None:
         "input_mask_root": str(args.input_mask_root),
         "prediction_root": str(args.out_dir),
         "video_names": video_names,
-        "device": args.device,
+        "requested_video_count": len(all_video_names),
+        "world_size": world_size,
+        "rank": rank,
+        "device": device,
+        "elapsed_sec": elapsed,
+        "processed_frames": processed_frames,
+        "wall_ms_per_frame": elapsed * 1000.0 / max(processed_frames, 1),
+        "model_timed_frames": len(model_frame_latencies_ms),
+        "model_frame_latency_sum_ms": sum(model_frame_latencies_ms),
+        "model_frame_mean_ms": sum(model_frame_latencies_ms)
+        / max(len(model_frame_latencies_ms), 1),
+        "model_frame_median_ms": statistics.median(model_frame_latencies_ms)
+        if model_frame_latencies_ms
+        else None,
         "per_obj_png_file": args.per_obj_png_file,
         "track_object_appearing_later_in_video": args.track_object_appearing_later_in_video,
-        "num_prediction_pngs": count_pngs(args.out_dir),
+        "num_prediction_pngs": sum(
+            count_pngs(args.out_dir / video_name) for video_name in video_names
+        ),
     }
-    (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    summary_name = "summary.json" if world_size == 1 else f"summary.rank{rank:03d}.json"
+    (args.out_dir / summary_name).write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(summary, indent=2))
 
 
