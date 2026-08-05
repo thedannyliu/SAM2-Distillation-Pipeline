@@ -206,13 +206,72 @@ TinyViT student defaults:
 - Add projection/adapters so TinyViT feature dims and spatial sizes match the three teacher targets above.
 - Stage 1 trainable modules: TinyViT encoder plus projection/adapters.
 - Frozen modules: teacher all modules, SAM2 prompt encoder, SAM2 mask decoder, and memory modules.
- ## 8. Goal Implementation Tips
+
+## 8. Full SA-V Stage 2 Data Defaults
+
+The current full-data memory, temporal, and multiplex experiments use the
+complete prepared SA-V train release at its 6 FPS annotation cadence. This is
+different from the older controlled cache that retained only 16 frames per
+video.
+
+Current company artifacts:
+- Data Lake source: `s3://sdp-ril/danny-dataset/SA-V/sav_train`
+- Audited raw train release: `/group-volume/danny-dataset/SA-V/sav_train`
+- Full 6 FPS frame cache: `/group-volume/danny-dataset/SA-V/sav_train_6fps_full/JPEGImages`
+- Full training manifest: `/group-volume/danny-dataset/sam2_distill/manifests/sav_train_6fps_full.parquet`
+- Cohort root: `/group-volume/danny-dataset/sam2_distill/cohorts/sav_train_6fps_full`
+- Full validation split: `/group-volume/danny-dataset/SA-V/sav_val`
+- Full test split: `/group-volume/danny-dataset/SA-V/sav_test`
+- Preparation runbook: `docs/stage2/sav_full_memory_train_data.md`
+- Preparation entry points: `scripts/company/65_prepare_full_sav_memory_data.sh` and `scripts/company/66_prepare_full_sav_frames_4node.sh`
+
+Audited release cardinality:
+- 50,453 MP4 files
+- 50,452 manual annotation JSON files
+- 48,306 automatic annotation JSON files
+- 50,337 videos usable by the SAM2 task adapter because they have a readable
+  matching manual annotation
+- The manifest retains all 50,453 video records; the task adapter excludes the
+  116 MP4 IDs without matching readable manual annotations.
+
+Training semantics:
+- Set `MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_train_6fps_full.parquet` explicitly for full-data experiments.
+- Leave `TASK_VIDEO_IDS_FILE` empty for general memory training over every
+  usable video.
+- Use `dense4_unique.txt` for a more diverse multi-object cohort and
+  `dense8_unique.txt` only for strict high-density multiplex experiments.
+- The full-data expansion increases temporal coverage per video; it does not
+  automatically increase the number of video samples in one epoch. With
+  50,337 usable videos and four GPUs at batch size one per GPU, one epoch is
+  approximately `ceil(50337 / 4) = 12,585` optimizer updates. T8/T16 still
+  take longer per update than T4 because each sample decodes more frames.
+- Do not claim data scaling from repeated dense-cohort IDs. Record whether an
+  experiment uses all unique videos, dense4, dense8, or repeated sampling.
+- For the SAM3.1-aligned multiplex curriculum, run full `sav_val` image and VOS
+  evaluation after SMX1, SMX2, and SMX3. Run full `sav_test` only after SMX3.
+
+Before launching a new full-data suite, run the preparation audit and treat it
+as a hard input gate:
+
+```bash
+SAV_ROOT=/group-volume/danny-dataset/SA-V \
+SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill \
+scripts/company/65_prepare_full_sav_memory_data.sh audit
+```
+
+The `/group-volume` locations above document the current shared company
+staging used by these experiments. New long-lived large datasets and
+intermediate runs should follow the general storage policy and move to
+`/danny-dataset` when that mount is available; do not silently change paths for
+an existing reproducibility record.
+
+## 9. Goal Implementation Tips
 
  Can submit several jobs in parallel, every GPU can be used to run smoke run. Don't waste time and token on keep checking the samme job.
  Keep the codebase concise, always make sure that each srcipt is neccesary.
  Can use documentation to track each experiment. Keep documenting.
 
-## 9. Company Terminal Commands
+## 10. Company Terminal Commands
 
 - Company commands must run in the foreground and keep live output visible in the current terminal.
 - Use `tee` when a persistent log is needed so output remains visible while it is recorded.
