@@ -80,6 +80,10 @@ VARIANTS=(
   EM1_t4_official_temporal_2ep
   EM2_t8_joint_edgetam_5ep
   EM3_t16_memory_refine_2ep
+  ETV1_image_reanchor_1ep
+  ETV2_t4_bootstrap_2ep
+  ETV3_t8_joint_3ep
+  ETV4_t16_refine_1ep
   SMX1_slot8_t4_bootstrap_2ep
   SMX2_slot8_t8_fullsav_8ep
   SMX3_slot8_t16_refine_2ep
@@ -144,7 +148,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == SMX* ]]; then
+if [[ "${VARIANT}" == ETV* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/edgetam_tv21_sam21l_v1/formal"
+  DEFAULT_WANDB_PROJECT="sam2-edgetam-tv21-sam21l-v1"
+elif [[ "${VARIANT}" == SMX* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/sam2_tv_multiplex_v1"
   DEFAULT_WANDB_PROJECT="sam2-tv-multiplex-v1"
 elif [[ "${VARIANT}" == EM* ]]; then
@@ -310,7 +317,9 @@ configure_full_data_variant() {
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == SMX* ]]; then
+  if [[ "$1" == ETV* ]]; then
+    export TASK_EXPERIMENT_SUITE=edgetam_tv21_sam21l_v1
+  elif [[ "$1" == SMX* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_tv_multiplex_v1
   elif [[ "$1" == EM* ]]; then
     export TASK_EXPERIMENT_SUITE=tinyvit21_edgetam_memory_v1
@@ -359,6 +368,8 @@ configure_variant() {
   export TASK_ENCODER_LR_END=0
   export TASK_HEAD_LR=1.0e-6
   export TASK_HEAD_LR_END=1.0e-7
+  export TASK_MASK_DECODER_LR=0
+  export TASK_MASK_DECODER_LR_END=0
   export TASK_MEMORY_LR=3.0e-6
   export TASK_MEMORY_LR_END=3.0e-7
   export TASK_MEMORY_AUX_LR=1.0e-6
@@ -399,8 +410,38 @@ configure_variant() {
   export TASK_LOSS_MASK_WEIGHT=20
   export TASK_LOSS_DICE_WEIGHT=1
   export TASK_WEIGHT_DECAY=0.05
+  export TASK_EDGETAM_VIDEO_AUGMENTATION=0
 
   case "$1" in
+    ETV*)
+      export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_MAX_NUM_OBJECTS=3
+      export TASK_MEMORY_TOPOLOGY=edgetam_hybrid2
+      export TASK_MEMORY_LAYERS=2
+      export TASK_MEMORY_INITIALIZER=official_temporal
+      export TASK_MEMORY_LAYOUT=official
+      export TASK_NUM_GLOBAL_LATENTS=256
+      export TASK_NUM_2D_LATENTS=256
+      export TASK_LR_WARMUP_FRACTION=0.1
+      export TASK_PROB_USE_POINT=0.5
+      export TASK_PROB_USE_BOX=0.5
+      export TASK_PROB_SAMPLE_GT=0.1
+      export TASK_NUM_FRAMES_TO_CORRECT=2
+      export TASK_RANDOM_CORRECTION_FRAMES=true
+      export TASK_NUM_CORRECTION_POINTS=7
+      export TASK_TEACHER_MODEL_CONFIG="${SAM2_MODEL_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${SAM2_CHECKPOINT}"
+      export TASK_LAMBDA_TASK=1
+      export TASK_LAMBDA_IMG=0
+      export TASK_LAMBDA_MEM=0
+      export TASK_LAMBDA_MASK_LOGITS=0
+      export TASK_LAMBDA_OBJ_PTR=0
+      export TASK_LOSS_MASK_WEIGHT=20
+      export TASK_LOSS_DICE_WEIGHT=1
+      export TASK_WEIGHT_DECAY=0.1
+      export TASK_EDGETAM_VIDEO_AUGMENTATION=1
+      ;;
     EM1_*|EM2_*|EM3_*)
       export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
@@ -518,6 +559,82 @@ configure_variant() {
   esac
 
   case "$1" in
+    ETV1_image_reanchor_1ep)
+      export TASK_TRAINABLE_MODE=image_encoder_mask_decoder
+      export TASK_NUM_FRAMES=1
+      export TASK_EPOCHS=1
+      export TASK_TRAIN_BATCH_SIZE=32
+      export TASK_MAX_NUM_OBJECTS=8
+      export TASK_NUM_FRAMES_TO_CORRECT=1
+      export TASK_RANDOM_CORRECTION_FRAMES=false
+      export TASK_ENCODER_LR=1.0e-6
+      export TASK_ENCODER_LR_END=1.0e-7
+      export TASK_MEMORY_AUX_LR=5.0e-6
+      export TASK_MEMORY_AUX_LR_END=5.0e-7
+      export TASK_MASK_DECODER_LR=5.0e-6
+      export TASK_MASK_DECODER_LR_END=5.0e-7
+      export TASK_LR_WARMUP_FRACTION=0.05
+      export TASK_LAMBDA_IMG=1
+      export TASK_EDGETAM_VIDEO_AUGMENTATION=0
+      ;;
+    ETV2_t4_bootstrap_2ep)
+      export BASE_CHECKPOINT="${ETV_T4_BASE_CHECKPOINT:-${ABLATION_ROOT}/ETV1_image_reanchor_1ep/main/checkpoints/last.pt}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_NUM_FRAMES=4
+      export TASK_EPOCHS=2
+      export TASK_TRAIN_BATCH_SIZE=6
+      export TASK_MEMORY_LR=2.8125e-5
+      export TASK_MEMORY_LR_END=2.8125e-6
+      export TASK_MEMORY_AUX_LR=2.8125e-5
+      export TASK_MEMORY_AUX_LR_END=2.8125e-6
+      export TASK_PERCEIVER_LR=2.8125e-5
+      export TASK_PERCEIVER_LR_END=2.8125e-6
+      export TASK_LAMBDA_MEM=1
+      export TASK_LAMBDA_MASK_LOGITS=1
+      ;;
+    ETV3_t8_joint_3ep)
+      export BASE_CHECKPOINT="${ABLATION_ROOT}/ETV2_t4_bootstrap_2ep/main/checkpoints/last.pt"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=image_encoder_mask_decoder_memory
+      export TASK_MEMORY_INITIALIZER=current_full
+      export TASK_NUM_FRAMES=8
+      export TASK_EPOCHS=3
+      export TASK_TRAIN_BATCH_SIZE=4
+      export TASK_ENCODER_LR=6.0e-7
+      export TASK_ENCODER_LR_END=6.0e-8
+      export TASK_MEMORY_LR=1.875e-5
+      export TASK_MEMORY_LR_END=1.875e-6
+      export TASK_MEMORY_AUX_LR=1.875e-5
+      export TASK_MEMORY_AUX_LR_END=1.875e-6
+      export TASK_PERCEIVER_LR=1.875e-5
+      export TASK_PERCEIVER_LR_END=1.875e-6
+      export TASK_MASK_DECODER_LR=2.0e-6
+      export TASK_MASK_DECODER_LR_END=2.0e-7
+      export TASK_LAMBDA_IMG=1
+      export TASK_LAMBDA_MEM=1
+      export TASK_LAMBDA_MASK_LOGITS=1
+      ;;
+    ETV4_t16_refine_1ep)
+      export BASE_CHECKPOINT="${ABLATION_ROOT}/ETV3_t8_joint_3ep/main/checkpoints/last.pt"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_MEMORY_INITIALIZER=current_full
+      export TASK_NUM_FRAMES=16
+      export TASK_EPOCHS=1
+      export TASK_TRAIN_BATCH_SIZE=2
+      export TASK_MEMORY_LR=9.375e-6
+      export TASK_MEMORY_LR_END=9.375e-7
+      export TASK_MEMORY_AUX_LR=9.375e-6
+      export TASK_MEMORY_AUX_LR_END=9.375e-7
+      export TASK_PERCEIVER_LR=9.375e-6
+      export TASK_PERCEIVER_LR_END=9.375e-7
+      export TASK_TEACHER_MODEL_CONFIG=""
+      export TASK_TEACHER_CHECKPOINT=""
+      export TASK_LAMBDA_IMG=0
+      export TASK_LAMBDA_MEM=0
+      export TASK_LAMBDA_MASK_LOGITS=0
+      ;;
     EM1_t4_official_temporal_2ep)
       export TASK_TRAINABLE_MODE=memory_perceiver_full
       export TASK_NUM_FRAMES=4
@@ -1308,6 +1425,9 @@ configure_variant() {
   if [[ -n "${TASK_EPOCHS_OVERRIDE:-}" ]]; then
     export TASK_EPOCHS="${TASK_EPOCHS_OVERRIDE}"
   fi
+  if [[ -n "${TASK_MAX_VIDEOS_OVERRIDE:-}" ]]; then
+    export TASK_MAX_VIDEOS="${TASK_MAX_VIDEOS_OVERRIDE}"
+  fi
 }
 
 checkpoint_reached_epoch() {
@@ -1674,6 +1794,9 @@ case "${ACTION}" in
       echo "Trainable mode: ${TASK_TRAINABLE_MODE}"
       echo "Epochs/max objects: ${TASK_EPOCHS}/${TASK_MAX_NUM_OBJECTS}"
       echo "T/global batch: ${TASK_NUM_FRAMES}/$((TASK_TRAIN_BATCH_SIZE * NPROC))"
+      echo "LR encoder/decoder: ${TASK_ENCODER_LR}/${TASK_MASK_DECODER_LR}"
+      echo "LR memory/aux/perceiver: ${TASK_MEMORY_LR}/${TASK_MEMORY_AUX_LR}/${TASK_PERCEIVER_LR}"
+      echo "EdgeTAM video augmentation: ${TASK_EDGETAM_VIDEO_AUGMENTATION}"
       echo "Prompt point/box/GT: ${TASK_PROB_USE_POINT}/${TASK_PROB_USE_BOX}/${TASK_PROB_SAMPLE_GT}"
       echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
       echo "Loss task/image/memory/logits/obj: ${TASK_LAMBDA_TASK}/${TASK_LAMBDA_IMG}/${TASK_LAMBDA_MEM}/${TASK_LAMBDA_MASK_LOGITS}/${TASK_LAMBDA_OBJ_PTR}"

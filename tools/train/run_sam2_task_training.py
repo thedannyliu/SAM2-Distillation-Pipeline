@@ -71,6 +71,9 @@ def init_wandb(args: argparse.Namespace):
             "frames": int(os.environ.get("TASK_NUM_FRAMES", "0")),
             "encoder_lr": float(os.environ.get("TASK_ENCODER_LR", "0")),
             "head_lr": float(os.environ.get("TASK_HEAD_LR", "0")),
+            "mask_decoder_lr": float(
+                os.environ.get("TASK_MASK_DECODER_LR", "0")
+            ),
             "freeze_batchnorm": os.environ.get(
                 "TASK_FREEZE_BATCHNORM", "true"
             ).lower()
@@ -100,6 +103,10 @@ def init_wandb(args: argparse.Namespace):
             "lambda_obj_ptr": float(
                 os.environ.get("TASK_LAMBDA_OBJ_PTR", "0")
             ),
+            "edgetam_video_augmentation": os.environ.get(
+                "TASK_EDGETAM_VIDEO_AUGMENTATION", "0"
+            )
+            == "1",
             "prompt_pt_probability": float(
                 os.environ.get("TASK_PROB_USE_POINT", "1")
             ),
@@ -515,6 +522,49 @@ def apply_mask_ablation_overrides(config) -> None:
     for key, value in prompt_values.items():
         model[key] = value
 
+    if os.environ.get("TASK_EDGETAM_VIDEO_AUGMENTATION", "0") == "1":
+        config.vos.train_transforms.transforms = OmegaConf.create(
+            [
+                {
+                    "_target_": (
+                        "training.dataset.transforms.RandomHorizontalFlip"
+                    ),
+                    "consistent_transform": True,
+                },
+                {
+                    "_target_": "training.dataset.transforms.RandomAffine",
+                    "degrees": 25,
+                    "consistent_transform": True,
+                    "shear": 20,
+                },
+                {
+                    "_target_": "training.dataset.transforms.RandomResizeAPI",
+                    "sizes": int(config.scratch.resolution),
+                    "square": True,
+                    "consistent_transform": True,
+                },
+                {
+                    "_target_": "training.dataset.transforms.ColorJitter",
+                    "consistent_transform": True,
+                    "brightness": 0.1,
+                    "contrast": 0.1,
+                    "saturation": 0.1,
+                    "hue": None,
+                },
+                {
+                    "_target_": "training.dataset.transforms.RandomGrayscale",
+                    "consistent_transform": True,
+                    "p": 0.05,
+                },
+                {"_target_": "training.dataset.transforms.ToTensorAPI"},
+                {
+                    "_target_": "training.dataset.transforms.NormalizeAPI",
+                    "mean": [0.485, 0.456, 0.406],
+                    "std": [0.229, 0.224, 0.225],
+                },
+            ]
+        )
+
     task_loss = config.trainer.loss.all
     task_loss.weight_dict.loss_mask = float(
         os.environ.get(
@@ -729,6 +779,25 @@ def apply_edgetam_memory_overrides(config) -> None:
                     "end_value": encoder_lr_end,
                 },
                 "param_names": ["image_encoder.*"],
+            }
+        )
+    mask_decoder_lr = float(os.environ.get("TASK_MASK_DECODER_LR", "0"))
+    if mask_decoder_lr > 0:
+        mask_decoder_lr_end = float(
+            os.environ.get(
+                "TASK_MASK_DECODER_LR_END", str(mask_decoder_lr)
+            )
+        )
+        lr_options.append(
+            {
+                "scheduler": {
+                    "_target_": (
+                        "fvcore.common.param_scheduler.CosineParamScheduler"
+                    ),
+                    "start_value": mask_decoder_lr,
+                    "end_value": mask_decoder_lr_end,
+                },
+                "param_names": ["sam_mask_decoder.*"],
             }
         )
     config.trainer.optim.options.lr = OmegaConf.create(lr_options)

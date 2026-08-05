@@ -242,7 +242,7 @@ ceiling was 72 GiB peak reserved HBM per GPU.
 | T16 | 1 | 4 | 16 | 0.905 | 4.422 | 25.607 | yes |
 | T16 | 2 | 8 | 16 | 1.329 | 6.019 | 52.635 | yes |
 
-### Locked batch decision pending command approval
+### Locked batch decision
 
 | Stage | Batch/GPU | True global | Updates/pass | Train h/pass | Decision |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -264,17 +264,18 @@ There is also no verified accumulation/resume/scheduler path in the current
 trainer. The formal run therefore uses the measured true DDP batch, no
 accumulation, and batch-scaled learning rates.
 
-### Proposed formal run matrix
+### Approved formal run matrix
 
-These settings are locked for review; the foreground company command is not
-released until they are approved and its resolved configs pass a smoke audit.
+These settings are approved. The full run remains conditional on the input
+audit and one bounded forward/backward update for every stage passing on the
+company container.
 
 | Stage | Initializer | Trainable modules | Batch/GPU | Passes | Start LR | KD weights | Gate |
 | --- | --- | --- | ---: | ---: | --- | --- | --- |
 | image | selected TV21 + frozen official temporal | image encoder + matched mask decoder | 32 | 1 | encoder `1e-6`, decoder `5e-6` | image 1 | image mIoU/AP drop <= 0.005 |
 | T4 | image winner or selected TV21 + `official_temporal` | complete EdgeTAM temporal path | 6 | 2 | temporal `2.8125e-5` | memory 1, logits 1 | full-val box J&F >= 55 |
 | T8 | T4 + `current_full` | image encoder + mask decoder + complete temporal path | 4 | 3, optionally 5 | encoder `6e-7`, decoder `2e-6`, temporal `1.875e-5` | image 1, memory 1, logits 1 | full-val box J&F >= 60; promotion >= 68.8 |
-| T16 | selected T8 + `current_full` | complete EdgeTAM temporal path | 2 | 1, optionally 2 | temporal `9.375e-6` | none | no more than 0.3 J&F drop and hard-motion gain |
+| T16 | selected T8 + `current_full` | complete EdgeTAM temporal path | 2 | 1, optionally 2 | temporal `9.375e-6` | none | full-val J&F >= 60 and no more than 0.3 drop from T8 |
 
 Every listed LR uses cosine decay to one tenth of its start value. All stages
 use BF16 AdamW, weight decay 0.1, gradient clip 0.1, frozen BatchNorm, task
@@ -284,13 +285,14 @@ three objects, 50/50 point/box prompts, 10% GT correction sampling, two random
 correction frames, and seven correction clicks. The image stage uses up to
 eight objects. Object-pointer KD and gradient accumulation remain disabled.
 
-Before issuing the formal command, add one dedicated foreground driver for
-this four-stage run, add the separate mask-decoder LR group required by T8,
-and make the published video augmentation overrides explicit in the resolved
-config. Validate `describe`, input audit, exact checkpoint provenance, W&B
-resume ID reuse, and one bounded forward/backward smoke for every stage. The
-driver must stop at each quality gate; it must not automatically spend T8 or
-T16 compute after a failed predecessor.
+The dedicated foreground entry point is
+`scripts/company/72_run_edgetam_tv21_sam21l_v1.sh`. It provides `describe`,
+`audit`, a bounded one-update-per-stage `smoke`, individual stage actions,
+`all`, `test`, and `status`. The formal runner includes the separate T8
+mask-decoder LR group and explicit video augmentation in each resolved config.
+It reuses the same W&B ID and directories on resume. The image gate may fall
+back to the original selected TV21 checkpoint; T4/T8/T16 gates stop downstream
+training when they fail.
 
 ## Phase 1: online SA-V image re-anchoring
 
@@ -437,13 +439,14 @@ Match the published video recipe as closely as the upstream transforms allow:
 
 - horizontal flip;
 - affine rotation 25 degrees and shear 20;
-- color jitter 0.1;
+- clip-consistent color jitter 0.1;
 - grayscale probability 0.05;
-- per-frame color jitter probability 0.1;
 - 1024-square resize/crop.
 
-The resolved config must be inspected before launch because the existing task
-config has weaker augmentation than the published EdgeTAM recipe.
+The available upstream transform stack has no probability wrapper for a
+second per-frame color jitter. The first formal run omits that one transform
+rather than applying jitter to every frame and silently changing its meaning.
+This is recorded as a remaining augmentation difference from the paper.
 
 ### Schedule and learning rates
 
@@ -501,9 +504,13 @@ long-context stage.
 - Run one SA-V pass; extend to two only when full validation improves.
 - Use temporal LR `9.375e-6 -> 9.375e-7`, half the T8 temporal LR.
 
-Accept T16 only if overall J&F does not drop by more than 0.3 and the fixed
-fast-motion/occlusion/disappearance cohort improves. T32 is outside the first
-few-day run and is considered only after T16 passes.
+The automated gate accepts T16 only if full-val J&F is at least 60 and does
+not drop by more than 0.3 from T8. The fixed
+fast-motion/occlusion/disappearance cohort remains a promotion diagnostic: it
+must improve before deployment promotion, but it does not block the first
+full-test measurement because that cohort gate is not yet implemented in the
+driver. T32 is outside the first few-day run and is considered only after T16
+passes.
 
 ## Evaluation matrix
 
@@ -517,6 +524,20 @@ split, and evaluator commit.
 - Full SA-V test only for the selected checkpoint.
 - Report J, F, and J&F.
 - Add DAVIS, MOSE, and YTVOS only when those datasets become available.
+
+### Stage evaluation order
+
+The first formal pipeline runs full SA-V box-prompt validation after image,
+T4, T8, and T16. Validation metrics and gates are written before the next
+stage begins. Full SA-V test is run only after T16 passes its full-validation
+gate, so test data never selects a checkpoint. The paper-comparable GT-mask
+and company point-prompt protocols remain required in the final evaluation
+matrix but do not gate this first training launch.
+
+The driver enforces these dependencies for both `all` and individual actions:
+T8 requires a passing T4 gate, T16 requires a passing T8 gate, and `test`
+requires a passing T16 gate. The image stage is the only non-blocking stage;
+on failure, T4 uses the original selected TV21 checkpoint.
 
 ### Company prompt protocol
 
@@ -568,21 +589,37 @@ stage uses one resumable W&B ID, the same TensorBoard directory, and the same
 checkpoint directory across retries.
 
 ```text
-stage_name/
-  resolved_config.yaml
-  checkpoints/
-    last.pt
-    best.pt
-  tensorboard/
-  logs/
-  val/
-  training_status.json
+/group-volume/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1/formal/
+  ETV{1,2,3,4}_*/main/
+    resolved_config.yaml
+    checkpoints/
+      last.pt
+      best.pt
+    tensorboard/
+    wandb/
+    sav_val_box_benchmark/
+      metrics.csv
+    gate_status.json
+  ETV4_t16_refine_1ep/main/sav_test_box_benchmark/
+    metrics.csv
+
+/user-volume/log/edgetam_tv21_sam21l_v1/formal/
+  describe.log
+  smoke.log
+  train.log
 ```
 
 Retain only the resumable `last.pt` and validation-selected `best.pt`; do not
 write a dense step-checkpoint series. Log global batch, clips/frames seen,
 epoch/pass, ETA, step time, data time, LR per group, gradient norm per module,
 peak HBM, task loss, F16 loss, memory loss, logit loss, and validation metrics.
+
+Operational order is `describe`, `smoke`, then `all`. The `smoke` action uses
+a separate `formal/smoke` run root, disables W&B, and performs exactly one
+four-GPU optimizer update at each formal batch shape. The `all` action repeats
+the read-only input audit, resumes completed work by default, performs the
+four train/val/gate stages in dependency order, and ends with the single T16
+test evaluation. Use `status` for a read-only checkpoint and metric summary.
 
 ## Estimated four-H100 budget after the capacity probe
 
