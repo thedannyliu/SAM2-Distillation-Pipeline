@@ -523,7 +523,7 @@ def apply_mask_ablation_overrides(config) -> None:
         model[key] = value
 
     if os.environ.get("TASK_EDGETAM_VIDEO_AUGMENTATION", "0") == "1":
-        config.vos.train_transforms.transforms = OmegaConf.create(
+        config.vos.train_transforms[0].transforms = OmegaConf.create(
             [
                 {
                     "_target_": (
