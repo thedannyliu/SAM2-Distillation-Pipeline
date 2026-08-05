@@ -316,6 +316,9 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
     ):
         if frames_to_add_correction_pt is None:
             frames_to_add_correction_pt = []
+        self._prepare_multiplex_training_layout(
+            current_vision_feats[-1].shape[1]
+        )
         current_out, sam_outputs, high_res_features, pix_feat = self._track_step(
             frame_idx,
             is_init_cond_frame,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import types
@@ -72,6 +73,63 @@ def autocast_context(device: torch.device):
     if device.type == "cuda":
         return torch.autocast("cuda", dtype=torch.bfloat16)
     return nullcontext()
+
+
+def compile_multiplex_predictor(predictor) -> list[str]:
+    """Compile stable tensor kernels while leaving runtime state in Python."""
+
+    if os.environ.get("SAM2_TV_COMPILE", "0") != "1":
+        return []
+    mode = os.environ.get("SAM2_TV_COMPILE_MODE", "reduce-overhead")
+    compiled = []
+    if hasattr(predictor, "image_encoder"):
+        predictor.image_encoder = torch.compile(
+            predictor.image_encoder,
+            mode=mode,
+            fullgraph=False,
+            dynamic=False,
+        )
+        compiled.append("image_encoder")
+    memory_encoder = getattr(predictor, "memory_encoder", None)
+    for name in (
+        "multiplex_mask_downsampler",
+        "pix_feat_proj",
+        "fuser",
+        "out_proj",
+    ):
+        module = getattr(memory_encoder, name, None)
+        if module is not None:
+            setattr(
+                memory_encoder,
+                name,
+                torch.compile(
+                    module,
+                    mode=mode,
+                    fullgraph=False,
+                    dynamic=False,
+                ),
+            )
+            compiled.append(f"memory_encoder.{name}")
+    layers = getattr(getattr(predictor, "memory_attention", None), "layers", None)
+    if layers is not None:
+        for index, layer in enumerate(layers):
+            layers[index] = torch.compile(
+                layer,
+                mode=mode,
+                fullgraph=False,
+                dynamic=False,
+            )
+        compiled.append("memory_attention.layers")
+    decoder = getattr(predictor, "sam_mask_decoder", None)
+    if decoder is not None and hasattr(decoder, "transformer"):
+        decoder.transformer = torch.compile(
+            decoder.transformer,
+            mode=mode,
+            fullgraph=False,
+            dynamic=False,
+        )
+        compiled.append("sam_mask_decoder.transformer")
+    return compiled
 
 
 def strip_module_prefix(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -228,6 +286,7 @@ def build_edgetam_trainer_predictor(
     predictor = predictor.to(device).eval()
     for param in predictor.parameters():
         param.requires_grad_(False)
+    compiled_modules = compile_multiplex_predictor(predictor)
     return predictor, {
         "model_kind": "edgetam-trainer",
         "sam2_cfg": args.sam2_cfg,
@@ -237,6 +296,7 @@ def build_edgetam_trainer_predictor(
         "num_tensors": len(state_dict),
         "sam2_package": str(Path(sam2_package.__file__).resolve()),
         "strict_load": True,
+        "compiled_modules": compiled_modules,
     }
 
 

@@ -27,6 +27,9 @@ from tools.data.select_sav_dense_training_videos import (
 from tools.train.summarize_mask_finetune_ablations import (
     add_multiobject_latency,
 )
+from tools.eval.run_sam2_vos_prompt_dataset import (
+    compile_multiplex_predictor,
+)
 from sam2_distill.models.task_finetune import (
     initialize_edgetam_memory_model,
     initialize_object_slot_model,
@@ -40,6 +43,7 @@ from sam2_distill.models.sam2_object_slots import (
     LearnedObjectSlotDecoder,
     LowRankObjectMemoryResidual,
     ObjectSlotModelMixin,
+    PersistentMultiplexLayout,
     SharedSlotMemoryAttention,
     SlotPreservingMemoryAttention,
     SlotPreservingMemoryEncoder,
@@ -365,12 +369,69 @@ class FakePositionEncoding(torch.nn.Module):
 class FakeMaskDownsampler(torch.nn.Module):
     def __init__(self):
         super().__init__()
+        self.last_input_channels = None
         self.encoder = torch.nn.Sequential(
             torch.nn.Conv2d(1, 4, kernel_size=1),
         )
 
     def forward(self, value):
+        self.last_input_channels = value.shape[1]
         return self.encoder(value)
+
+
+def test_persistent_multiplex_layout_keeps_removed_slots_tombstoned():
+    layout = PersistentMultiplexLayout(4, ["a", "b", "c"])
+    layout.update(["a", "c"])
+    layout.update(["a", "c", "d"])
+
+    assert layout.assignments == [[0, -1116, 1, 2]]
+    selected = layout.select(["d", "a", "c"])
+    assert selected.assignments == [[1, -1116, 2, 0]]
+
+    values = torch.tensor([[10.0], [20.0], [30.0]])
+    multiplexed = selected.mux(values)
+    assert multiplexed[:, :, 0].tolist() == [[20.0, 0.0, 30.0, 10.0]]
+    assert torch.equal(selected.demux(multiplexed), values)
+
+
+def test_compile_multiplex_predictor_compiles_tensor_kernels(
+    monkeypatch,
+):
+    predictor = torch.nn.Module()
+    predictor.image_encoder = torch.nn.Linear(2, 2)
+    predictor.memory_encoder = torch.nn.Module()
+    predictor.memory_encoder.multiplex_mask_downsampler = torch.nn.Linear(2, 2)
+    predictor.memory_encoder.pix_feat_proj = torch.nn.Linear(2, 2)
+    predictor.memory_encoder.fuser = torch.nn.Linear(2, 2)
+    predictor.memory_encoder.out_proj = torch.nn.Linear(2, 2)
+    predictor.memory_attention = torch.nn.Module()
+    predictor.memory_attention.layers = torch.nn.ModuleList(
+        [torch.nn.Linear(2, 2), torch.nn.Linear(2, 2)]
+    )
+    predictor.sam_mask_decoder = torch.nn.Module()
+    predictor.sam_mask_decoder.transformer = torch.nn.Linear(2, 2)
+    calls = []
+
+    def fake_compile(module, **kwargs):
+        calls.append((module, kwargs))
+        return module
+
+    monkeypatch.setenv("SAM2_TV_COMPILE", "1")
+    monkeypatch.setattr(torch, "compile", fake_compile)
+
+    compiled = compile_multiplex_predictor(predictor)
+
+    assert compiled == [
+        "image_encoder",
+        "memory_encoder.multiplex_mask_downsampler",
+        "memory_encoder.pix_feat_proj",
+        "memory_encoder.fuser",
+        "memory_encoder.out_proj",
+        "memory_attention.layers",
+        "sam_mask_decoder.transformer",
+    ]
+    assert len(calls) == 8
+    assert all(call[1]["mode"] == "reduce-overhead" for call in calls)
 
 
 def test_slot_preserving_memory_encoder_uses_mask_channels_per_bucket():
@@ -390,7 +451,8 @@ def test_slot_preserving_memory_encoder_uses_mask_channels_per_bucket():
     )
 
     first_conv = module.multiplex_mask_downsampler.encoder[0]
-    assert first_conv.in_channels == 4
+    assert first_conv.in_channels == 8
+    assert torch.count_nonzero(first_conv.weight[:, 4:]) == 0
     assert result["vision_features"].shape == (6, 4, 2, 2)
     assert torch.equal(
         result["vision_features"][0], result["vision_features"][3]
@@ -423,6 +485,29 @@ def test_slot_memory_padding_stays_background_after_sigmoid():
     assert torch.allclose(
         result["vision_features"], torch.full((1, 4, 1, 1), 0.5)
     )
+
+
+def test_slot_memory_forces_multiplex_for_partial_runtime_bucket():
+    module = SlotPreservingMemoryEncoder(
+        out_dim=4,
+        mask_downsampler=FakeMaskDownsampler(),
+        fuser=torch.nn.Identity(),
+        position_encoding=FakePositionEncoding(),
+        in_dim=4,
+        slot_count=4,
+        min_objects=4,
+    ).eval()
+    layout = PersistentMultiplexLayout(4, ["only"])
+    module.set_multiplex_layout(layout.select(["only"]))
+
+    result = module(
+        torch.randn(1, 4, 2, 2),
+        torch.randn(1, 1, 2, 2),
+    )
+
+    assert result["vision_features"].shape == (1, 4, 2, 2)
+    assert module.multiplex_mask_downsampler.last_input_channels == 8
+    assert module.mask_downsampler.last_input_channels is None
 
 
 def test_slot_preserving_attention_packs_private_pointer_tokens():
@@ -667,6 +752,37 @@ def test_object_slot_initializer_copies_base_and_keeps_new_parameters(tmp_path):
     )
 
 
+def test_object_slot_initializer_expands_selected_mask_memory_kernel(tmp_path):
+    source = torch.nn.Module()
+    source.memory_encoder = torch.nn.Module()
+    source.memory_encoder.mask_downsampler = torch.nn.Module()
+    source.memory_encoder.mask_downsampler.encoder = torch.nn.Sequential(
+        torch.nn.Conv2d(1, 4, kernel_size=1),
+    )
+    target = torch.nn.Module()
+    target.memory_encoder = torch.nn.Module()
+    target.memory_encoder.mask_downsampler = torch.nn.Module()
+    target.memory_encoder.mask_downsampler.encoder = torch.nn.Sequential(
+        torch.nn.Conv2d(1, 4, kernel_size=1),
+    )
+    target.memory_encoder.multiplex_mask_downsampler = torch.nn.Module()
+    target.memory_encoder.multiplex_mask_downsampler.encoder = (
+        torch.nn.Sequential(torch.nn.Conv2d(8, 4, kernel_size=1))
+    )
+    with torch.no_grad():
+        source.memory_encoder.mask_downsampler.encoder[0].weight.fill_(3)
+        source.memory_encoder.mask_downsampler.encoder[0].bias.fill_(5)
+    checkpoint = tmp_path / "selected.pt"
+    torch.save({"model": source.state_dict()}, checkpoint)
+
+    initialize_object_slot_model(target, str(checkpoint))
+
+    expanded = target.memory_encoder.multiplex_mask_downsampler.encoder[0]
+    assert torch.all(expanded.weight[:, :4] == 3)
+    assert torch.count_nonzero(expanded.weight[:, 4:]) == 0
+    assert torch.all(expanded.bias == 5)
+
+
 def test_object_slot_initializer_reinitializes_changed_slot_capacity(tmp_path):
     source = torch.nn.Module()
     source.projection = torch.nn.Linear(2, 2, bias=False)
@@ -762,6 +878,17 @@ class FakeBucketPredictor:
     def _get_orig_video_res_output(self, inference_state, masks):
         return masks, masks
 
+    @staticmethod
+    def _multiplex_missing_output(template):
+        return {
+            key: (
+                [torch.zeros_like(item) for item in value]
+                if isinstance(value, list)
+                else torch.zeros_like(value)
+            )
+            for key, value in template.items()
+        }
+
 
 def test_bucket_adapter_runs_one_tracker_call_per_bucket():
     predictor = FakeBucketPredictor()
@@ -779,9 +906,6 @@ def test_bucket_adapter_runs_one_tracker_call_per_bucket():
     frames = list(adapter.propagate_in_video(state))
 
     assert predictor.batch_sizes == [4, 1, 4, 1]
-    assert predictor.output_dict_ids[0] == predictor.output_dict_ids[2]
-    assert predictor.output_dict_ids[1] == predictor.output_dict_ids[3]
-    assert predictor.output_dict_ids[0] != predictor.output_dict_ids[1]
     assert [frame_idx for frame_idx, _, _ in frames] == [0, 1, 2]
     assert frames[-1][2][:, 0, 0, 0].tolist() == [2.0, 3.0, 4.0, 5.0, 6.0]
     assert (
@@ -833,7 +957,7 @@ def test_bucket_adapter_uses_legacy_fast_path_below_threshold():
     assert frames[0][1] == ["a", "b"]
 
 
-def test_bucket_adapter_falls_back_for_unsynchronized_prompt_histories():
+def test_bucket_adapter_batches_unsynchronized_prompt_histories():
     predictor = FakeBucketPredictor()
     adapter = SAM2ObjectBucketAdapter(
         predictor,
@@ -846,7 +970,7 @@ def test_bucket_adapter_falls_back_for_unsynchronized_prompt_histories():
     outputs[1]["cond_frame_outputs"][1] = compact_output(1.0)
     state = {
         "obj_ids": ["a", "b"],
-        "num_frames": 1,
+        "num_frames": 3,
         "device": torch.device("cpu"),
         "output_dict_per_obj": outputs,
         "frames_tracked_per_obj": {index: {} for index in range(2)},
@@ -854,13 +978,12 @@ def test_bucket_adapter_falls_back_for_unsynchronized_prompt_histories():
 
     frames = list(adapter.propagate_in_video(state))
 
-    assert predictor.legacy_calls == 1
-    assert predictor.batch_sizes == []
+    assert predictor.legacy_calls == 0
+    assert predictor.batch_sizes == [1, 2]
     assert frames[0][1] == ["a", "b"]
     assert adapter.execution_stats == {
-        "bucket_sessions": 0,
+        "bucket_sessions": 1,
         "legacy_small_sessions": 0,
-        "legacy_unsynchronized_sessions": 1,
     }
 
 

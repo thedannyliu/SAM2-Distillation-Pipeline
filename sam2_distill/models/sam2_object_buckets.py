@@ -85,6 +85,45 @@ def merge_object_output_dicts(output_dicts: list[dict[str, Any]]) -> dict[str, A
     return merged
 
 
+def merge_object_output_dicts_padded(
+    output_dicts: list[dict[str, Any]],
+    missing_output,
+) -> dict[str, Any]:
+    """Merge asynchronous histories with neutral entries for missing frames."""
+
+    if not output_dicts:
+        raise ValueError("At least one object output dictionary is required")
+    merged: dict[str, Any] = {}
+    for output_key in _OUTPUT_KEYS:
+        frame_indices = sorted(
+            set().union(*(set(output[output_key]) for output in output_dicts))
+        )
+        merged_frames = {}
+        for frame_idx in frame_indices:
+            present = [
+                output[output_key].get(frame_idx) for output in output_dicts
+            ]
+            template = next(value for value in present if value is not None)
+            frame_outputs = [
+                value if value is not None else missing_output(template)
+                for value in present
+            ]
+            keys = set(template)
+            if any(set(output) != keys for output in frame_outputs):
+                raise RuntimeError(
+                    f"Object output keys differ at {output_key}[{frame_idx}]"
+                )
+            merged_frames[frame_idx] = {
+                key: _merge_values(
+                    [output[key] for output in frame_outputs],
+                    f"{output_key}[{frame_idx}].{key}",
+                )
+                for key in keys
+            }
+        merged[output_key] = merged_frames
+    return merged
+
+
 def split_bucket_output(output: dict[str, Any], batch_size: int) -> list[dict[str, Any]]:
     """Split one compact SAM2 frame output back into per-object views."""
     return [
@@ -137,15 +176,52 @@ class SAM2ObjectBucketAdapter:
         self.execution_stats = {
             "bucket_sessions": 0,
             "legacy_small_sessions": 0,
-            "legacy_unsynchronized_sessions": 0,
         }
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.predictor, name)
 
-    def _bucket_indices(self, object_count: int) -> Iterator[list[int]]:
+    def _bucket_indices(
+        self,
+        object_ids: list[Any],
+    ) -> Iterator[list[int]]:
+        layout_buckets = getattr(
+            self.predictor, "_multiplex_bucket_indices", None
+        )
+        if layout_buckets is not None:
+            yield from layout_buckets(object_ids)
+            return
+        object_count = len(object_ids)
         for start in range(0, object_count, self.bucket_size):
             yield list(range(start, min(start + self.bucket_size, object_count)))
+
+    def _legacy_propagate(self, inference_state, **kwargs):
+        propagate = getattr(
+            self.predictor,
+            "_propagate_in_video_legacy",
+            self.predictor.propagate_in_video,
+        )
+        yield from propagate(inference_state, **kwargs)
+
+    def _activate_objects(self, object_ids: list[Any]) -> None:
+        activate = getattr(
+            self.predictor, "_activate_multiplex_object_ids", None
+        )
+        if activate is not None:
+            activate(object_ids)
+
+    def _merge_histories(
+        self,
+        output_dicts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        missing_output = getattr(
+            self.predictor, "_multiplex_missing_output", None
+        )
+        if missing_output is None:
+            return merge_object_output_dicts(output_dicts)
+        return merge_object_output_dicts_padded(
+            output_dicts, missing_output
+        )
 
     @torch.inference_mode()
     def propagate_in_video(
@@ -161,7 +237,7 @@ class SAM2ObjectBucketAdapter:
             raise RuntimeError("No objects are registered in the inference state")
         if object_count < self.min_bucket_objects:
             self.execution_stats["legacy_small_sessions"] += 1
-            yield from self.predictor.propagate_in_video(
+            yield from self._legacy_propagate(
                 inference_state,
                 start_frame_idx=start_frame_idx,
                 max_frame_num_to_track=max_frame_num_to_track,
@@ -171,33 +247,8 @@ class SAM2ObjectBucketAdapter:
 
         self.predictor.propagate_in_video_preflight(inference_state)
         output_dicts = inference_state["output_dict_per_obj"]
-        for output_key in _OUTPUT_KEYS:
-            frame_sets = [
-                set(output[output_key]) for output in output_dicts.values()
-            ]
-            if any(
-                frame_set != frame_sets[0]
-                for frame_set in frame_sets[1:]
-            ):
-                self.execution_stats["legacy_unsynchronized_sessions"] += 1
-                yield from self.predictor.propagate_in_video(
-                    inference_state,
-                    start_frame_idx=start_frame_idx,
-                    max_frame_num_to_track=max_frame_num_to_track,
-                    reverse=reverse,
-                )
-                return
         self.execution_stats["bucket_sessions"] += 1
-        buckets = []
-        for object_indices in self._bucket_indices(object_count):
-            bucket_outputs = [output_dicts[index] for index in object_indices]
-            buckets.append(
-                (
-                    object_indices,
-                    bucket_outputs,
-                    merge_object_output_dicts(bucket_outputs),
-                )
-            )
+        buckets = list(self._bucket_indices(object_ids))
         if start_frame_idx is None:
             start_frame_idx = min(
                 frame_idx
@@ -221,66 +272,71 @@ class SAM2ObjectBucketAdapter:
             )
             processing_order = range(start_frame_idx, end_frame_idx + 1)
 
-        for frame_idx in processing_order:
-            pred_masks_per_obj: list[torch.Tensor | None] = [None] * object_count
-            for object_indices, bucket_outputs, bucket_history in buckets:
-                if frame_idx in bucket_history["cond_frame_outputs"]:
-                    current_out = bucket_history["cond_frame_outputs"][frame_idx]
-                    pred_masks = current_out["pred_masks"].to(
-                        inference_state["device"], non_blocking=True
-                    )
-                    for local_idx, object_idx in enumerate(object_indices):
-                        pred_masks_per_obj[object_idx] = pred_masks[
-                            local_idx : local_idx + 1
+        try:
+            for frame_idx in processing_order:
+                pred_masks_per_obj: list[torch.Tensor | None] = [None] * object_count
+                for object_indices in buckets:
+                    active_indices = []
+                    for object_idx in object_indices:
+                        object_output = output_dicts[object_idx]
+                        current_out = object_output["cond_frame_outputs"].get(
+                            frame_idx
+                        )
+                        if current_out is None:
+                            current_out = object_output[
+                                "non_cond_frame_outputs"
+                            ].get(frame_idx)
+                        if current_out is None:
+                            active_indices.append(object_idx)
+                        else:
+                            pred_masks_per_obj[object_idx] = current_out[
+                                "pred_masks"
+                            ].to(inference_state["device"], non_blocking=True)
+
+                    if active_indices:
+                        active_outputs = [
+                            output_dicts[index] for index in active_indices
                         ]
-                elif frame_idx in bucket_history["non_cond_frame_outputs"]:
-                    current_out = bucket_history["non_cond_frame_outputs"][frame_idx]
-                    pred_masks = current_out["pred_masks"].to(
-                        inference_state["device"], non_blocking=True
-                    )
-                    for local_idx, object_idx in enumerate(object_indices):
-                        pred_masks_per_obj[object_idx] = pred_masks[
-                            local_idx : local_idx + 1
-                        ]
-                else:
-                    current_out, pred_masks = (
-                        self.predictor._run_single_frame_inference(
+                        active_ids = [object_ids[index] for index in active_indices]
+                        self._activate_objects(active_ids)
+                        active_history = self._merge_histories(active_outputs)
+                        current_out, pred_masks = self.predictor._run_single_frame_inference(
                             inference_state=inference_state,
-                            output_dict=bucket_history,
+                            output_dict=active_history,
                             frame_idx=frame_idx,
-                            batch_size=len(object_indices),
+                            batch_size=len(active_indices),
                             is_init_cond_frame=False,
                             point_inputs=None,
                             mask_inputs=None,
                             reverse=reverse,
                             run_mem_encoder=True,
                         )
-                    )
-                    bucket_history["non_cond_frame_outputs"][frame_idx] = current_out
-                    split_outputs = split_bucket_output(
-                        current_out, len(object_indices)
-                    )
-                    for local_idx, object_idx in enumerate(object_indices):
-                        bucket_outputs[local_idx]["non_cond_frame_outputs"][
-                            frame_idx
-                        ] = split_outputs[local_idx]
-                        pred_masks_per_obj[object_idx] = pred_masks[
-                            local_idx : local_idx + 1
-                        ]
+                        split_outputs = split_bucket_output(
+                            current_out, len(active_indices)
+                        )
+                        for local_idx, object_idx in enumerate(active_indices):
+                            output_dicts[object_idx]["non_cond_frame_outputs"][
+                                frame_idx
+                            ] = split_outputs[local_idx]
+                            pred_masks_per_obj[object_idx] = pred_masks[
+                                local_idx : local_idx + 1
+                            ]
 
-                frames_tracked_per_obj = inference_state.get(
-                    "frames_tracked_per_obj"
+                    frames_tracked_per_obj = inference_state.get(
+                        "frames_tracked_per_obj"
+                    )
+                    if frames_tracked_per_obj is not None:
+                        for object_idx in object_indices:
+                            frames_tracked_per_obj[object_idx][frame_idx] = {
+                                "reverse": reverse
+                            }
+
+                if any(mask is None for mask in pred_masks_per_obj):
+                    raise RuntimeError(f"Missing bucket output on frame {frame_idx}")
+                all_pred_masks = torch.cat(pred_masks_per_obj, dim=0)
+                _, video_res_masks = self.predictor._get_orig_video_res_output(
+                    inference_state, all_pred_masks
                 )
-                if frames_tracked_per_obj is not None:
-                    for object_idx in object_indices:
-                        frames_tracked_per_obj[object_idx][frame_idx] = {
-                            "reverse": reverse
-                        }
-
-            if any(mask is None for mask in pred_masks_per_obj):
-                raise RuntimeError(f"Missing bucket output on frame {frame_idx}")
-            all_pred_masks = torch.cat(pred_masks_per_obj, dim=0)
-            _, video_res_masks = self.predictor._get_orig_video_res_output(
-                inference_state, all_pred_masks
-            )
-            yield frame_idx, object_ids, video_res_masks
+                yield frame_idx, object_ids, video_res_masks
+        finally:
+            self._activate_objects(object_ids)

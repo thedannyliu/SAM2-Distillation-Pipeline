@@ -727,6 +727,7 @@ def apply_object_slot_overrides(config) -> None:
         )
         model.memory_encoder.slot_count = slot_count
         model.memory_encoder.min_objects = min_objects
+        model.memory_encoder.condition_as_mask_input = True
         model.memory_attention._target_ = (
             "sam2_distill.models.sam2_object_slots."
             "SlotPreservingMemoryAttention"

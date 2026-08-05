@@ -71,7 +71,7 @@ STAGE3=SMX3_slot8_t16_refine_2ep
 
 describe() {
   echo "SAM2-TV multiplex v1"
-  echo "Method: SAM 3.1-style 8-channel mask memory + private slot pointers + one attention/decoder call per bucket"
+  echo "Method: SAM 3.1-style 8 mask + 8 condition channels, private slot pointers, one attention/decoder call per bucket"
   echo "Stage 1: ${STAGE1} | T4 bootstrap from quality-preserving MX5"
   echo "Stage 2: ${STAGE2} | T8 full-SA-V training"
   echo "Stage 3: ${STAGE3} | T16 temporal refinement"
@@ -119,6 +119,7 @@ run_stage() {
   SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT}" \
   MX5_SLOT8_CHECKPOINT="${MX5_SLOT8_CHECKPOINT}" \
   VOS_EXECUTION_MODE=legacy \
+  SAM2_TV_COMPILE="${SAM2_TV_COMPILE:-0}" \
   WANDB_PROJECT="${WANDB_PROJECT}" \
   WANDB_MODE="${WANDB_MODE}" \
   TASK_NUM_WORKERS="${TASK_NUM_WORKERS:-8}" \
@@ -143,7 +144,8 @@ ensure_latency_cohort() {
 
 latency() {
   local run_dir="${RUN_ROOT}/${STAGE3}/main"
-  local out_dir="${run_dir}/multiobject_latency/point_n1-2-4-8"
+  local suffix="${LATENCY_OUTPUT_SUFFIX:-}"
+  local out_dir="${run_dir}/multiobject_latency/point_n1-2-4-8${suffix}"
   ensure_latency_cohort || return 1
   if [[ "${SKIP_DONE:-1}" == "1" && -f "${out_dir}/summary.json" ]]; then
     echo "Skip completed latency: ${out_dir}"
@@ -152,6 +154,7 @@ latency() {
   fi
   mkdir -p "${out_dir}"
   CUDA_VISIBLE_DEVICES="${LATENCY_GPU:-${GPUS%%,*}}" \
+  SAM2_TV_COMPILE="${SAM2_TV_COMPILE:-0}" \
   PYTHONPATH="${REPO_ROOT}:${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}:${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}:${PYTHONPATH:-}" \
     python tools/benchmark/benchmark_sam2_multiobject_scaling.py \
       --model-kind edgetam-trainer \
@@ -171,8 +174,12 @@ latency() {
       --seed 310107256 \
       --device cuda \
       --wandb-project "${WANDB_PROJECT}" \
-      --wandb-name "${STAGE3}_latency" \
+      --wandb-name "${STAGE3}_latency${suffix}" \
       --wandb-mode "${WANDB_MODE}"
+}
+
+latency_compiled() {
+  SAM2_TV_COMPILE=1 LATENCY_OUTPUT_SUFFIX=_compiled latency
 }
 
 train() {
@@ -250,6 +257,9 @@ case "${ACTION}" in
   latency)
     latency || STATUS="$?"
     ;;
+  latency-compiled)
+    latency_compiled || STATUS="$?"
+    ;;
   all)
     run_all || STATUS="$?"
     ;;
@@ -262,7 +272,7 @@ case "${ACTION}" in
       "${RUNNER}" summarize || STATUS="$?"
     ;;
   *)
-    echo "Usage: $0 {describe|audit|train|evaluate|latency|all|status|summarize}" >&2
+    echo "Usage: $0 {describe|audit|train|evaluate|latency|latency-compiled|all|status|summarize}" >&2
     STATUS=2
     ;;
 esac

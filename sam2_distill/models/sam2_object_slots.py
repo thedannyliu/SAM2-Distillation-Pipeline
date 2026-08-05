@@ -12,6 +12,229 @@ from torch import nn
 
 
 NO_OBJ_SCORE = -1024.0
+_PADDING_SLOT = object()
+_REMOVED_SLOT = object()
+
+
+class PersistentMultiplexLayout:
+    """Stable object-to-slot assignments for one SAM2 video session.
+
+    Removed slots are deliberately not reused. This prevents a newly added
+    object from inheriting temporal memory that belongs to a removed object.
+    Padding slots, in contrast, may be filled by objects added later.
+    """
+
+    def __init__(
+        self,
+        slot_count: int,
+        object_ids: list[Any] | tuple[Any, ...] = (),
+    ) -> None:
+        if slot_count < 1:
+            raise ValueError("slot_count must be positive")
+        self.slot_count = slot_count
+        self._slots: list[list[Any]] = []
+        self.object_ids: list[Any] = []
+        self._index_cache: dict[tuple[str, str], torch.Tensor] = {}
+        self.force_multiplex = False
+        self.update(list(object_ids))
+
+    @classmethod
+    def random_training(
+        cls,
+        object_count: int,
+        slot_count: int,
+    ) -> "PersistentMultiplexLayout":
+        if object_count < 1:
+            raise ValueError("object_count must be positive")
+        layout = cls(slot_count)
+        bucket_count = math.ceil(object_count / slot_count)
+        layout._slots = [
+            [_PADDING_SLOT] * slot_count for _ in range(bucket_count)
+        ]
+        layout._index_cache.clear()
+        positions = torch.randperm(bucket_count * slot_count)[:object_count]
+        for object_idx, position in enumerate(positions.tolist()):
+            bucket_idx, slot_idx = divmod(position, slot_count)
+            layout._slots[bucket_idx][slot_idx] = object_idx
+        layout.object_ids = list(range(object_count))
+        layout.force_multiplex = True
+        return layout
+
+    @property
+    def object_count(self) -> int:
+        return len(self.object_ids)
+
+    @property
+    def assignments(self) -> list[list[int]]:
+        data_indices = {
+            object_id: index for index, object_id in enumerate(self.object_ids)
+        }
+        return [
+            [
+                data_indices.get(value, -1116)
+                if value not in {_PADDING_SLOT, _REMOVED_SLOT}
+                else (-1 if value is _PADDING_SLOT else -1116)
+                for value in bucket
+            ]
+            for bucket in self._selected_slots()
+        ]
+
+    def _selected_slots(self) -> list[list[Any]]:
+        selected = set(self.object_ids)
+        return [
+            bucket
+            for bucket in self._slots
+            if any(value in selected for value in bucket)
+        ]
+
+    def update(self, object_ids: list[Any]) -> None:
+        if len(set(object_ids)) != len(object_ids):
+            raise ValueError("object_ids must be unique")
+        requested = set(object_ids)
+        assigned = {
+            value
+            for bucket in self._slots
+            for value in bucket
+            if value not in {_PADDING_SLOT, _REMOVED_SLOT}
+        }
+        for bucket in self._slots:
+            for slot_idx, value in enumerate(bucket):
+                if (
+                    value not in {_PADDING_SLOT, _REMOVED_SLOT}
+                    and value not in requested
+                ):
+                    bucket[slot_idx] = _REMOVED_SLOT
+
+        new_ids = [object_id for object_id in object_ids if object_id not in assigned]
+        for object_id in new_ids:
+            placed = False
+            for bucket in self._slots:
+                for slot_idx, value in enumerate(bucket):
+                    if value is _PADDING_SLOT:
+                        bucket[slot_idx] = object_id
+                        placed = True
+                        break
+                if placed:
+                    break
+            if not placed:
+                bucket = [_PADDING_SLOT] * self.slot_count
+                bucket[0] = object_id
+                self._slots.append(bucket)
+        self.object_ids = list(object_ids)
+        self._index_cache.clear()
+
+    def select(self, object_ids: list[Any]) -> "PersistentMultiplexLayout":
+        active = set(self.object_ids)
+        if any(object_id not in active for object_id in object_ids):
+            raise ValueError("selected object is not active in this layout")
+        selected = object.__new__(type(self))
+        selected.slot_count = self.slot_count
+        selected._slots = self._slots
+        selected.object_ids = list(object_ids)
+        selected._index_cache = {}
+        selected.force_multiplex = True
+        return selected
+
+    def _cached_index(
+        self,
+        kind: str,
+        device: torch.device | None,
+    ) -> torch.Tensor:
+        resolved_device = torch.device("cpu") if device is None else device
+        cache_key = (kind, str(resolved_device))
+        cached = self._index_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        assignments = self.assignments
+        if kind == "assignments":
+            index = torch.tensor(
+                assignments,
+                dtype=torch.long,
+                device=resolved_device,
+            )
+        elif kind == "demux":
+            positions = [-1] * self.object_count
+            for position, data_idx in enumerate(
+                value for bucket in assignments for value in bucket
+            ):
+                if data_idx >= 0:
+                    positions[data_idx] = position
+            if any(position < 0 for position in positions):
+                raise RuntimeError("multiplex layout cannot demux all objects")
+            index = torch.tensor(
+                positions,
+                dtype=torch.long,
+                device=resolved_device,
+            )
+        else:
+            raise ValueError(f"Unknown multiplex index kind: {kind}")
+        self._index_cache[cache_key] = index
+        return index
+
+    def valid_mask(
+        self,
+        *,
+        device: torch.device | None = None,
+    ) -> torch.Tensor:
+        return self._cached_index("assignments", device) >= 0
+
+    def representative_indices(
+        self,
+        *,
+        device: torch.device | None = None,
+    ) -> torch.Tensor:
+        assignments = self._cached_index("assignments", device)
+        first_valid = assignments.ge(0).to(torch.int64).argmax(dim=1)
+        return assignments.gather(1, first_valid[:, None]).squeeze(1)
+
+    def bucket_indices(self) -> list[list[int]]:
+        return [
+            [index for index in bucket if index >= 0]
+            for bucket in self.assignments
+        ]
+
+    def mux(self, value: torch.Tensor) -> torch.Tensor:
+        if value.shape[0] != self.object_count:
+            raise ValueError(
+                f"layout has {self.object_count} objects but tensor has "
+                f"{value.shape[0]}"
+            )
+        assignments = self._cached_index("assignments", value.device)
+        valid = assignments >= 0
+        gathered = value.index_select(0, assignments.clamp_min(0).flatten())
+        gathered = gathered.view(
+            *assignments.shape,
+            *value.shape[1:],
+        )
+        mask = valid.view(*valid.shape, *([1] * (value.ndim - 1)))
+        return gathered * mask
+
+    def demux(self, value: torch.Tensor) -> torch.Tensor:
+        assignments = self._cached_index("assignments", value.device)
+        if value.shape[:2] != assignments.shape:
+            raise ValueError("multiplex tensor and layout shapes differ")
+        positions = self._cached_index("demux", value.device)
+        return value.flatten(0, 1).index_select(0, positions)
+
+
+def _resolve_multiplex_layout(
+    module: nn.Module,
+    object_count: int,
+) -> PersistentMultiplexLayout:
+    layout = getattr(module, "_multiplex_layout", None)
+    if isinstance(layout, PersistentMultiplexLayout):
+        if layout.object_count != object_count:
+            raise ValueError(
+                "active multiplex layout does not match the object batch"
+            )
+        return layout
+    return PersistentMultiplexLayout(module.slot_count, list(range(object_count)))
+
+
+def _force_multiplex(module: nn.Module) -> bool:
+    layout = getattr(module, "_multiplex_layout", None)
+    return isinstance(layout, PersistentMultiplexLayout) and layout.force_multiplex
 
 
 def _slot_codes(slot_count: int, channels: int) -> torch.Tensor:
@@ -352,8 +575,9 @@ class SharedSlotMemoryAttention(nn.Module):
 def _multiplex_mask_downsampler(
     mask_downsampler: nn.Module,
     slot_count: int,
+    input_channel_multiplier: int = 2,
 ) -> nn.Module:
-    """Clone a SAM2 mask downsampler with one input channel per slot."""
+    """Clone SAM2's downsampler for mask and conditioning slot channels."""
 
     multiplex = copy.deepcopy(mask_downsampler)
     encoder = getattr(multiplex, "encoder", None)
@@ -365,7 +589,7 @@ def _multiplex_mask_downsampler(
             "SAM2 mask downsampler must start with a 1-channel Conv2d"
         )
     replacement = nn.Conv2d(
-        in_channels=slot_count,
+        in_channels=slot_count * input_channel_multiplier,
         out_channels=first.out_channels,
         kernel_size=first.kernel_size,
         stride=first.stride,
@@ -376,7 +600,10 @@ def _multiplex_mask_downsampler(
         padding_mode=first.padding_mode,
     ).to(device=first.weight.device, dtype=first.weight.dtype)
     with torch.no_grad():
-        replacement.weight.copy_(first.weight.repeat(1, slot_count, 1, 1))
+        replacement.weight.zero_()
+        replacement.weight[:, :slot_count].copy_(
+            first.weight.repeat(1, slot_count, 1, 1)
+        )
         if first.bias is not None:
             replacement.bias.copy_(first.bias)
     encoder[0] = replacement
@@ -402,15 +629,19 @@ class SlotPreservingMemoryEncoder(nn.Module):
         in_dim: int = 256,
         slot_count: int = 8,
         min_objects: int = 4,
+        condition_as_mask_input: bool = True,
     ) -> None:
         super().__init__()
         if slot_count < 1 or min_objects < 1:
             raise ValueError("slot_count and min_objects must be positive")
         self.slot_count = slot_count
         self.min_objects = min_objects
+        self.condition_as_mask_input = condition_as_mask_input
         self.mask_downsampler = mask_downsampler
         self.multiplex_mask_downsampler = _multiplex_mask_downsampler(
-            mask_downsampler, slot_count
+            mask_downsampler,
+            slot_count,
+            input_channel_multiplier=(2 if condition_as_mask_input else 1),
         )
         self.pix_feat_proj = nn.Conv2d(in_dim, in_dim, kernel_size=1)
         self.fuser = fuser
@@ -420,6 +651,20 @@ class SlotPreservingMemoryEncoder(nn.Module):
             if out_dim == in_dim
             else nn.Conv2d(in_dim, out_dim, kernel_size=1)
         )
+        self._multiplex_layout: PersistentMultiplexLayout | None = None
+        self._conditioning: bool | torch.Tensor | None = None
+
+    def set_multiplex_layout(
+        self,
+        layout: PersistentMultiplexLayout | None,
+    ) -> None:
+        self._multiplex_layout = layout
+
+    def set_conditioning(
+        self,
+        conditioning: bool | torch.Tensor | None,
+    ) -> None:
+        self._conditioning = conditioning
 
     def _encode(
         self,
@@ -449,7 +694,11 @@ class SlotPreservingMemoryEncoder(nn.Module):
         object_count = masks.shape[0]
         if pix_feat.shape[0] != object_count or masks.shape[1] != 1:
             raise ValueError("SAM2 multiplex memory expects [N,1,H,W] masks")
-        if not self.training and object_count < self.min_objects:
+        if (
+            not self.training
+            and object_count < self.min_objects
+            and not _force_multiplex(self)
+        ):
             return self._encode(
                 pix_feat,
                 masks,
@@ -461,32 +710,50 @@ class SlotPreservingMemoryEncoder(nn.Module):
             masks = masks.sigmoid()
             skip_mask_sigmoid = True
 
-        bucket_count = math.ceil(object_count / self.slot_count)
-        padded_count = bucket_count * self.slot_count
-        if padded_count != object_count:
-            padding = masks.new_zeros(
-                padded_count - object_count,
-                *masks.shape[1:],
+        layout = _resolve_multiplex_layout(self, object_count)
+        multiplex_masks = layout.mux(masks).squeeze(2)
+        if self.condition_as_mask_input:
+            if isinstance(self._conditioning, torch.Tensor):
+                conditioning = self._conditioning.to(
+                    device=masks.device,
+                    dtype=masks.dtype,
+                ).reshape(object_count, 1, 1, 1)
+                conditioning = conditioning.expand_as(masks)
+            else:
+                conditioning = masks.new_full(
+                    masks.shape,
+                    float(bool(self._conditioning)),
+                )
+            multiplex_conditioning = layout.mux(conditioning).squeeze(2)
+            multiplex_masks = torch.cat(
+                [multiplex_masks, multiplex_conditioning], dim=1
             )
-            masks = torch.cat([masks, padding], dim=0)
-        multiplex_masks = masks.view(
-            bucket_count,
-            self.slot_count,
-            masks.shape[-2],
-            masks.shape[-1],
+        representatives = layout.representative_indices(
+            device=pix_feat.device
         )
-        bucket_pix_feat = pix_feat[:: self.slot_count][:bucket_count]
+        bucket_pix_feat = pix_feat.index_select(0, representatives)
         encoded = self._encode(
             bucket_pix_feat,
             multiplex_masks,
             self.multiplex_mask_downsampler,
             skip_mask_sigmoid,
         )
-        encoded["vision_features"] = encoded[
-            "vision_features"
-        ].repeat_interleave(self.slot_count, dim=0)[:object_count]
+        bucket_count = multiplex_masks.shape[0]
+        encoded["vision_features"] = layout.demux(
+            encoded["vision_features"][:, None].expand(
+                bucket_count,
+                self.slot_count,
+                *encoded["vision_features"].shape[1:],
+            )
+        )
         encoded["vision_pos_enc"] = [
-            value.repeat_interleave(self.slot_count, dim=0)[:object_count]
+            layout.demux(
+                value[:, None].expand(
+                    bucket_count,
+                    self.slot_count,
+                    *value.shape[1:],
+                )
+            )
             for value in encoded["vision_pos_enc"]
         ]
         return encoded
@@ -525,17 +792,35 @@ class SlotPreservingMemoryAttention(SharedSlotMemoryAttention):
         self.slot_pointer_pos = nn.Parameter(
             0.02 * _slot_codes(slot_count, memory_dim)
         )
+        self._multiplex_layout: PersistentMultiplexLayout | None = None
 
-    def _pack_pointer_tokens(self, value: torch.Tensor) -> torch.Tensor:
-        sequence, object_count, channels = value.shape
-        bucket_count = math.ceil(object_count / self.slot_count)
-        padded_count = bucket_count * self.slot_count
-        if padded_count != object_count:
-            value = F.pad(value, (0, 0, 0, padded_count - object_count))
+    def set_multiplex_layout(
+        self,
+        layout: PersistentMultiplexLayout | None,
+    ) -> None:
+        self._multiplex_layout = layout
+
+    @staticmethod
+    def _bucket_mean(
+        value: torch.Tensor,
+        layout: PersistentMultiplexLayout,
+    ) -> torch.Tensor:
+        multiplex = layout.mux(value.permute(1, 0, 2))
+        valid = layout.valid_mask(device=value.device)[..., None, None]
+        numerator = (multiplex * valid).sum(dim=1)
+        denominator = valid.sum(dim=1).clamp_min(1)
+        return (numerator / denominator).permute(1, 0, 2)
+
+    def _pack_pointer_tokens(
+        self,
+        value: torch.Tensor,
+        layout: PersistentMultiplexLayout,
+    ) -> torch.Tensor:
+        sequence, _, channels = value.shape
+        multiplex = layout.mux(value.permute(1, 0, 2))
         return (
-            value.view(sequence, bucket_count, self.slot_count, channels)
-            .permute(0, 2, 1, 3)
-            .reshape(sequence * self.slot_count, bucket_count, channels)
+            multiplex.permute(2, 1, 0, 3)
+            .reshape(sequence * self.slot_count, len(layout.assignments), channels)
         )
 
     def forward(
@@ -560,7 +845,11 @@ class SlotPreservingMemoryAttention(SharedSlotMemoryAttention):
         object_count = curr.shape[1]
         if memory.shape[1] != object_count:
             raise ValueError("current features and memory must share object batch")
-        if not self.training and object_count < self.min_objects:
+        if (
+            not self.training
+            and object_count < self.min_objects
+            and not _force_multiplex(self)
+        ):
             return self._run_attention(
                 curr,
                 memory,
@@ -572,26 +861,25 @@ class SlotPreservingMemoryAttention(SharedSlotMemoryAttention):
         if not 0 <= num_obj_ptr_tokens <= memory.shape[0]:
             raise ValueError("Invalid object-pointer token count")
 
-        bucket_count = math.ceil(object_count / self.slot_count)
+        layout = _resolve_multiplex_layout(self, object_count)
+        bucket_count = len(layout.assignments)
         spatial_end = memory.shape[0] - num_obj_ptr_tokens
-        bucket_memory = self._bucket_tensor(
-            memory[:spatial_end], encode_slots=False
-        )
+        bucket_memory = self._bucket_mean(memory[:spatial_end], layout)
         bucket_memory_pos = (
-            self._bucket_tensor(
-                memory_pos[:spatial_end], encode_slots=False
-            )
+            self._bucket_mean(memory_pos[:spatial_end], layout)
             if memory_pos is not None
             else None
         )
         packed_pointer_count = 0
         if num_obj_ptr_tokens:
-            pointers = self._pack_pointer_tokens(memory[spatial_end:])
+            pointers = self._pack_pointer_tokens(
+                memory[spatial_end:], layout
+            )
             packed_pointer_count = pointers.shape[0]
             bucket_memory = torch.cat([bucket_memory, pointers], dim=0)
             if memory_pos is not None:
                 pointer_pos = self._pack_pointer_tokens(
-                    memory_pos[spatial_end:]
+                    memory_pos[spatial_end:], layout
                 )
                 slot_pos = self.slot_pointer_pos.view(
                     1, self.slot_count, 1, self.memory_dim
@@ -609,9 +897,10 @@ class SlotPreservingMemoryAttention(SharedSlotMemoryAttention):
                     [bucket_memory_pos, pointer_pos], dim=0
                 )
 
-        bucket_curr = curr[:, :: self.slot_count, :][:, :bucket_count]
+        representatives = layout.representative_indices(device=curr.device)
+        bucket_curr = curr.index_select(1, representatives)
         bucket_curr_pos = (
-            curr_pos[:, :: self.slot_count, :][:, :bucket_count]
+            curr_pos.index_select(1, representatives)
             if curr_pos is not None
             else None
         )
@@ -623,9 +912,13 @@ class SlotPreservingMemoryAttention(SharedSlotMemoryAttention):
             packed_pointer_count,
             num_spatial_mem,
         )
-        return output.repeat_interleave(self.slot_count, dim=1)[
-            :, :object_count
-        ]
+        expanded = output.permute(1, 0, 2)[:, None].expand(
+            bucket_count,
+            self.slot_count,
+            output.shape[0],
+            output.shape[2],
+        )
+        return layout.demux(expanded).permute(1, 0, 2)
 
 
 class LearnedObjectSlotDecoder(nn.Module):
@@ -652,24 +945,22 @@ class LearnedObjectSlotDecoder(nn.Module):
             torch.zeros(slot_count, hidden_dim)
         )
         nn.init.trunc_normal_(self.slot_token_embed, std=0.02)
+        self._multiplex_layout: PersistentMultiplexLayout | None = None
+
+    def set_multiplex_layout(
+        self,
+        layout: PersistentMultiplexLayout | None,
+    ) -> None:
+        self._multiplex_layout = layout
 
     def _fuse_spatial(
         self, features: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         object_count, channels, height, width = features.shape
-        bucket_count = math.ceil(object_count / self.slot_count)
-        padded_count = bucket_count * self.slot_count
-        if padded_count != object_count:
-            features = F.pad(
-                features,
-                (0, 0, 0, 0, 0, 0, 0, padded_count - object_count),
-            )
-        bucketed = features.view(
-            bucket_count, self.slot_count, channels, height, width
-        )
-        valid = features.new_ones(padded_count)
-        valid[object_count:] = 0
-        valid = valid.view(bucket_count, self.slot_count, 1, 1, 1)
+        layout = _resolve_multiplex_layout(self, object_count)
+        bucketed = layout.mux(features)
+        valid = layout.valid_mask(device=features.device).to(features.dtype)
+        valid = valid[:, :, None, None, None]
         count = valid.sum(dim=1).clamp_min(1)
         mean = (bucketed * valid).sum(dim=1) / count
         centered = (bucketed - mean[:, None]) * valid
@@ -684,7 +975,14 @@ class LearnedObjectSlotDecoder(nn.Module):
     ) -> list[torch.Tensor] | None:
         if features is None:
             return None
-        return [feature[:: self.slot_count] for feature in features]
+        object_count = features[0].shape[0]
+        layout = _resolve_multiplex_layout(self, object_count)
+        representatives = layout.representative_indices(
+            device=features[0].device
+        )
+        return [
+            feature.index_select(0, representatives) for feature in features
+        ]
 
     def forward(
         self,
@@ -694,7 +992,7 @@ class LearnedObjectSlotDecoder(nn.Module):
         high_res_features: list[torch.Tensor] | None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         object_count = image_embeddings.shape[0]
-        shared_image, valid_slots = self._fuse_spatial(image_embeddings)
+        shared_image, _ = self._fuse_spatial(image_embeddings)
         bucket_count = shared_image.shape[0]
         slot_embed = self.slot_token_embed
         token_groups = []
@@ -743,10 +1041,11 @@ class LearnedObjectSlotDecoder(nn.Module):
         else:
             object_scores = ious.new_full((*ious.shape, 1), 10.0)
 
-        valid_masks = masks[valid_slots][:object_count, None]
-        valid_ious = ious[valid_slots][:object_count, None]
-        valid_tokens = mask_tokens[valid_slots][:object_count, None]
-        valid_scores = object_scores[valid_slots][:object_count]
+        layout = _resolve_multiplex_layout(self, object_count)
+        valid_masks = layout.demux(masks)[:, None]
+        valid_ious = layout.demux(ious)[:, None]
+        valid_tokens = layout.demux(mask_tokens)[:, None]
+        valid_scores = layout.demux(object_scores)
         return valid_masks, valid_ious, valid_tokens, valid_scores
 
 
@@ -754,6 +1053,67 @@ class ObjectSlotModelMixin:
     """SAM2 head override used by training and video-predictor classes."""
 
     object_slot_decoder: LearnedObjectSlotDecoder | None
+
+    def _set_multiplex_layout(
+        self,
+        layout: PersistentMultiplexLayout | None,
+    ) -> None:
+        for module in (
+            getattr(self, "memory_encoder", None),
+            getattr(self, "memory_attention", None),
+            getattr(self, "object_slot_decoder", None),
+        ):
+            setter = getattr(module, "set_multiplex_layout", None)
+            if setter is not None:
+                setter(layout)
+
+    def _prepare_multiplex_training_layout(
+        self,
+        object_count: int,
+    ) -> None:
+        if (
+            not self.training
+            or self.object_slot_decoder is None
+            or object_count < 1
+        ):
+            return
+        layout = PersistentMultiplexLayout.random_training(
+            object_count,
+            self.object_slot_decoder.slot_count,
+        )
+        self._set_multiplex_layout(layout)
+
+    def _encode_new_memory(
+        self,
+        current_vision_feats,
+        feat_sizes,
+        pred_masks_high_res,
+        object_score_logits,
+        is_mask_from_pts,
+    ):
+        setter = getattr(
+            getattr(self, "memory_encoder", None),
+            "set_conditioning",
+            None,
+        )
+        conditioning = getattr(
+            self,
+            "_multiplex_conditioning_override",
+            is_mask_from_pts,
+        )
+        if setter is not None:
+            setter(conditioning)
+        try:
+            return super()._encode_new_memory(
+                current_vision_feats=current_vision_feats,
+                feat_sizes=feat_sizes,
+                pred_masks_high_res=pred_masks_high_res,
+                object_score_logits=object_score_logits,
+                is_mask_from_pts=is_mask_from_pts,
+            )
+        finally:
+            if setter is not None:
+                setter(None)
 
     def _object_slot_training_anchor(self) -> torch.Tensor | None:
         if not self.training or self.object_slot_decoder is None:
@@ -789,11 +1149,15 @@ class ObjectSlotModelMixin:
         multimask_output: bool = False,
     ):
         slots = self.object_slot_decoder
+        force_multiplex = (
+            slots is not None and _force_multiplex(slots)
+        )
         if (
             slots is None
             or (
                 not self.training
                 and backbone_features.shape[0] < slots.min_objects
+                and not force_multiplex
             )
             or point_inputs is not None
             or mask_inputs is not None

@@ -282,6 +282,32 @@ def initialize_object_slot_model(
     for key, target in model.state_dict().items():
         source = source_state.get(key)
         is_slot_tensor = key.startswith(new_prefixes)
+        if (
+            source is None
+            and key.startswith(
+                "memory_encoder.multiplex_mask_downsampler."
+            )
+        ):
+            source_key = key.replace(
+                "memory_encoder.multiplex_mask_downsampler.",
+                "memory_encoder.mask_downsampler.",
+                1,
+            )
+            base_source = source_state.get(source_key)
+            if base_source is not None:
+                if (
+                    key.endswith("encoder.0.weight")
+                    and target.ndim == 4
+                    and base_source.ndim == 4
+                    and base_source.shape[1] == 1
+                ):
+                    mask_channels = target.shape[1] // 2
+                    source = torch.zeros_like(target)
+                    source[:, :mask_channels].copy_(
+                        base_source.repeat(1, mask_channels, 1, 1)
+                    )
+                elif tuple(base_source.shape) == tuple(target.shape):
+                    source = base_source
         if source is None or (
             is_slot_tensor
             and tuple(source.shape) != tuple(target.shape)
