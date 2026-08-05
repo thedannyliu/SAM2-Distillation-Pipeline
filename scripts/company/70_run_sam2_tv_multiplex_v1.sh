@@ -75,7 +75,7 @@ describe() {
   echo "Stage 1: ${STAGE1} | T4 bootstrap from quality-preserving MX5"
   echo "Stage 2: ${STAGE2} | T8 full-SA-V training"
   echo "Stage 3: ${STAGE3} | T16 temporal refinement"
-  echo "Evaluation: full sav_val -> full sav_test -> isolated N=1,2,4,8 latency"
+  echo "Evaluation: full sav_val after every stage; full sav_test after Stage 3; then isolated N=1,2,4,8 latency"
   echo "Manifest: ${MANIFEST}"
   echo "Base checkpoint: ${MX5_SLOT8_CHECKPOINT}"
   echo "Run root: ${RUN_ROOT}"
@@ -195,8 +195,8 @@ evaluate() {
 run_all() {
   describe
   audit || return $?
-  run_stage "${STAGE1}" none || return $?
-  run_stage "${STAGE2}" none || return $?
+  run_stage "${STAGE1}" val || return $?
+  run_stage "${STAGE2}" val || return $?
   run_stage "${STAGE3}" full || return $?
   latency
 }
@@ -222,15 +222,22 @@ PY
       echo "checkpoint: pending"
     fi
   done
-  for split in sav_val sav_test; do
-    metrics="${RUN_ROOT}/${STAGE3}/main/${split}_box_benchmark/metrics.csv"
-    echo "===== ${split} ====="
+  for variant in "${STAGE1}" "${STAGE2}" "${STAGE3}"; do
+    metrics="${RUN_ROOT}/${variant}/main/sav_val_box_benchmark/metrics.csv"
+    echo "===== ${variant} | sav_val ====="
     if [[ -f "${metrics}" ]]; then
       column -s, -t < "${metrics}"
     else
       echo "metrics: pending"
     fi
   done
+  metrics="${RUN_ROOT}/${STAGE3}/main/sav_test_box_benchmark/metrics.csv"
+  echo "===== ${STAGE3} | sav_test ====="
+  if [[ -f "${metrics}" ]]; then
+    column -s, -t < "${metrics}"
+  else
+    echo "metrics: pending"
+  fi
   latency_csv="${RUN_ROOT}/${STAGE3}/main/multiobject_latency/point_n1-2-4-8/aggregate.csv"
   echo "===== MULTIOBJECT LATENCY ====="
   if [[ -f "${latency_csv}" ]]; then

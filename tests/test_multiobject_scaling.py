@@ -1249,3 +1249,13 @@ def test_sam2_tv_multiplex_curriculum_is_staged(variant, expected):
 
     for snippet in expected:
         assert snippet in result.stdout
+
+
+def test_sam2_tv_multiplex_runs_full_val_after_each_stage():
+    repo_root = Path(__file__).resolve().parents[1]
+    script = (repo_root / "scripts/company/70_run_sam2_tv_multiplex_v1.sh").read_text()
+
+    run_all = script.split("run_all() {", 1)[1].split("\n}", 1)[0]
+    assert 'run_stage "${STAGE1}" val' in run_all
+    assert 'run_stage "${STAGE2}" val' in run_all
+    assert 'run_stage "${STAGE3}" full' in run_all

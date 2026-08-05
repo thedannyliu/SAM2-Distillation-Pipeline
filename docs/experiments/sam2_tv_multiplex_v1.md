@@ -203,11 +203,18 @@ The `all` action runs, in order:
 
 1. input audit;
 2. SMX1 training;
-3. SMX2 training;
-4. SMX3 training;
-5. full SA-V validation image and VOS evaluation;
-6. full SA-V test image and VOS evaluation;
-7. isolated N=1,2,4,8 propagation latency.
+3. full SA-V validation image and VOS evaluation for SMX1;
+4. SMX2 training;
+5. full SA-V validation image and VOS evaluation for SMX2;
+6. SMX3 training;
+7. full SA-V validation image and VOS evaluation for SMX3;
+8. full SA-V test image and VOS evaluation for SMX3 only;
+9. isolated N=1,2,4,8 propagation latency.
+
+Validation is stage-level rather than epoch-level: it runs once after each of
+the three training stages. All three validation passes use every video in
+`sav_val.txt` (`MAX_VIDEOS=0`) and four evaluation shards. Test remains held
+out until the final SMX3 stage has trained and completed validation.
 
 The initial promotion criteria are:
 

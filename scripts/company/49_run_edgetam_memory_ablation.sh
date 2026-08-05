@@ -1628,6 +1628,22 @@ evaluate_variant() {
   record_summary "${variant_dir}" "${run_dir}"
 }
 
+evaluate_validation() {
+  local name="$1" variant_dir="${ABLATION_ROOT}/$1" run_dir="${ABLATION_ROOT}/$1/main"
+  local eval_skip_done="${SKIP_DONE}"
+  [[ -f "${run_dir}/.full_eval_required" ]] && eval_skip_done=0
+  echo "===== Full SA-V val: ${name} ====="
+  evaluate_split "${name}" "${run_dir}" sav_val "${eval_skip_done}" || return 1
+  mark_best_checkpoint "${run_dir}/checkpoints" || return 1
+  if [[ "${WANDB_MODE}" == "online" ]]; then
+    env -u WANDB_RUN_ID python tools/train/log_task_eval_to_wandb.py \
+      --run-file "${run_dir}/wandb/wandb_run.json" \
+      --metrics "sav_val=${run_dir}/sav_val_box_benchmark/metrics.csv" || return 1
+  fi
+  rm -f "${run_dir}/.full_eval_required"
+  record_summary "${variant_dir}" "${run_dir}"
+}
+
 acquire_lock() {
   local lock_file="${ABLATION_ROOT}/${VARIANT}/.pipeline.lock"
   mkdir -p "$(dirname "${lock_file}")"
@@ -1688,9 +1704,12 @@ case "${ACTION}" in
         if [[ "${STATUS}" -eq 0 && "${EVAL_MODE}" == "full" ]]; then
           evaluate_variant "${VARIANT}"
           STATUS="$?"
+        elif [[ "${STATUS}" -eq 0 && "${EVAL_MODE}" == "val" ]]; then
+          evaluate_validation "${VARIANT}"
+          STATUS="$?"
         elif [[ "${STATUS}" -eq 0 && "${EVAL_MODE}" != "gate" && \
                 "${EVAL_MODE}" != "none" ]]; then
-          echo "[ERROR] EDGETAM_EVAL_MODE must be full, gate, or none" >&2
+          echo "[ERROR] EDGETAM_EVAL_MODE must be full, val, gate, or none" >&2
           STATUS=2
         fi
       fi
