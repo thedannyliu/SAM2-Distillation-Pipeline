@@ -13,7 +13,7 @@ NPROC="${#GPU_ARRAY[@]}"
 
 SAM2_TRAINING_ROOT="${SAM2_TRAINING_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 EDGETAM_ROOT="${EDGETAM_ROOT:-/user-volume/repo/EdgeTAM}"
-NEW_ROOT="${SAM2D_ROOT:-/danny-dataset/sam2_distill}"
+NEW_ROOT="${SAM2D_ROOT:-/group-volume/danny-dataset/sam2_distill}"
 STAGED_ROOT="${STAGED_ROOT:-/group-volume/danny-dataset/sam2_distill}"
 SAV_ROOT="${SAV_ROOT:-/group-volume/danny-dataset/SA-V}"
 MANIFEST="${MANIFEST:-${STAGED_ROOT}/manifests/sav_train_6fps_full.parquet}"

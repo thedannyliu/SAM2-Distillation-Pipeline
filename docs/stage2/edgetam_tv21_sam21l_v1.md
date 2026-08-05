@@ -55,28 +55,32 @@ TinyViT initializer:
 /group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors
 ```
 
-New large and intermediate artifacts must use the data lake:
+New large and intermediate artifacts use Danny's project area in the shared
+company volume:
 
 ```text
 Run root:
-/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1
+/group-volume/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1
 
 Teacher checkpoint:
-/danny-dataset/sam2_distill/checkpoints/sam2.1/sam2.1_hiera_large.pt
+/group-volume/danny-dataset/sam2_distill/checkpoints/sam2.1/sam2.1_hiera_large.pt
 
 EdgeTAM initializer:
-/danny-dataset/sam2_distill/checkpoints/edgetam/edgetam.pt
+/group-volume/danny-dataset/sam2_distill/checkpoints/edgetam/edgetam.pt
 
 TensorBoard:
-/danny-dataset/sam2_distill/logs/edgetam_tv21_sam21l_v1
+/group-volume/danny-dataset/sam2_distill/logs/edgetam_tv21_sam21l_v1
 
-Final selected export only:
-/group-volume/sam2_distill/final_weights/edgetam_tv21_sam21l_v1
+Final selected export:
+/group-volume/danny-dataset/sam2_distill/checkpoints/final_weights/edgetam_tv21_sam21l_v1
+
+Foreground terminal logs:
+/user-volume/log/edgetam_tv21_sam21l_v1
 ```
 
-The currently staged `/group-volume/danny-dataset/...` data is retained to
-preserve completed experiment records. Do not silently rewrite those paths.
-No new teacher feature, image, or frame cache is created by this experiment.
+`/group-volume/danny-dataset/...` is both the current reproducibility root and
+the writable location for new large experiment artifacts. No new teacher
+feature, image, or frame cache is created by this experiment.
 
 ## Baselines and known evidence
 
@@ -206,7 +210,7 @@ scripts/company/71_probe_edgetam_tv21_batch.sh
 Its generated summary is:
 
 ```text
-/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1/
+/group-volume/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1/
   batch_probe/v1/batch_probe_summary.csv
 ```
 

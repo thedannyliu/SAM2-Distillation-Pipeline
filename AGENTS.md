@@ -101,9 +101,9 @@ You are currently running on Georgia Tech's PACE GPU cluster, and this repo is i
 catagory | path | note
 code | /user-volume/repo/<repo> | code should be store here
 env | container image | reproducibility
-small personal files | /user-volume | 50G, personal use
-shared small files | /group-volume | 300G, shared between group; for this project, store final exported weights only
-large datasets | data lake: /danny-dataset | ~10 TB, for large data, teacher cache, runs, and intermediate training checkpoints
+small personal files | /user-volume | 50G, personal use; terminal logs go under `/user-volume/log/<experiment>`
+shared project root | /group-volume/danny-dataset | Danny's project area in the shared volume
+large datasets and runs | /group-volume/danny-dataset | datasets, teacher cache, W&B/TensorBoard files, runs, intermediate checkpoints, and exported weights
 
 ## 7. SAM2 Stage 1 Company Defaults
 
@@ -118,12 +118,13 @@ Default paths:
 - Company code root: `/user-volume/repo/SAM2-Distillation-Pipeline`
 - Company GitHub repo: `https://github.com/thedannyliu/SAM2-Distillation-Pipeline.git`
 - Official SAM2 upstream checkout: `/user-volume/repo/facebookresearch-sam2`
-- Company data/checkpoint/cache root: `/danny-dataset/sam2_distill`
-- Company TensorBoard root: `/danny-dataset/sam2_distill/logs`
-- Company final exported weight root: `/group-volume/sam2_distill/final_weights`
+- Company data/checkpoint/cache root: `/group-volume/danny-dataset/sam2_distill`
+- Company TensorBoard root: `/group-volume/danny-dataset/sam2_distill/logs`
+- Company terminal log root: `/user-volume/log`
+- Company final exported weight root: `/group-volume/danny-dataset/sam2_distill/checkpoints/final_weights`
 - Company W&B project default: `sam2-distill-stage1`
 - PACE scratch simulation root: `/storage/scratch1/9/eliu354/sam2_distill`
-- Storage policy: datasets, teacher embeddings, TensorBoard/W&B run files, `last.pt`, `best.pt`, and step checkpoints live under `/danny-dataset`; `/group-volume` should only receive final selected/exported model weights.
+- Storage policy: datasets, teacher embeddings, TensorBoard/W&B run files, `last.pt`, `best.pt`, step checkpoints, and final exported weights live under `/group-volume/danny-dataset`. Small foreground terminal logs live under `/user-volume/log/<experiment>`.
 
 PACE policy:
 - PACE is for script, import, manifest, and tiny smoke validation only.
@@ -139,14 +140,14 @@ Multi-GPU teacher cache policy:
 - Cache writes use per-shard lock directories, so overlapping assignments skip locked shards instead of concurrently writing the same zarr shard.
 
 COCO Stage 1 pilot:
-- Company pilot root: `/danny-dataset/sam2_distill`.
+- Company pilot root: `/group-volume/danny-dataset/sam2_distill`.
 - Use exactly 1000 COCO train images and 100 COCO val images for the quick pilot.
 - Use `docs/stage1/coco_pilot_2xh100.md` as the step-by-step runbook.
 - Use `scripts/company/04_run_coco_stage1_pilot.sh prepare|cache|train|benchmark|all` on the company cluster.
-- Store overlay mask benchmark results under `/danny-dataset/sam2_distill/runs/stage1_coco_pilot/benchmark_val/overlays`.
+- Store overlay mask benchmark results under `/group-volume/danny-dataset/sam2_distill/runs/stage1_coco_pilot/benchmark_val/overlays`.
 
 Large-scale Stage 1 MSE speed run:
-- Company root: `/danny-dataset/sam2_distill`.
+- Company root: `/group-volume/danny-dataset/sam2_distill`.
 - Use `docs/stage1/large_scale_mse_8xh100.md` as the step-by-step runbook.
 - Use `scripts/company/05_run_stage1_large_mse_8xh100.sh manifest|plan-cache|cache|train|all`.
 - Default GPUs: `0,1,2,3,4,5,6,7`.
@@ -156,19 +157,19 @@ Large-scale Stage 1 MSE speed run:
 
 Stage 1 data defaults:
 - For the 8xH100 large-scale MSE run, use a deterministic fixed 3% SA-1B downloaded shard subset.
-- Default SA-1B link list: `/danny-dataset/SA-1B/sa1b_links.txt`
-- Default 3% image root: `/danny-dataset/SA-1B/images_3pct`
+- Default SA-1B link list: `/group-volume/danny-dataset/SA-1B/sa1b_links.txt`
+- Default 3% image root: `/group-volume/danny-dataset/SA-1B/images_3pct`
 - Use `scripts/company/02_download_sa1b_subset.sh` to select/download/extract the 3% subset.
 - The SA-1B downloader can fetch the link-list file directly with `SA1B_LINK_URL='<current Meta/fbcdn txt URL>'`; use `REFRESH_LINK_FILE=1` when replacing an expired link list.
 - Default downloader selection: `SA1B_DOWNLOAD_PERCENT=3`, `SA1B_SELECTION_MODE=hash`, `KEEP_ARCHIVES=0`, `EXTRACT_ANNOTATIONS=0`.
-- The downloader removes compressed archives after successful extraction and keeps reproducibility metadata under `/danny-dataset/SA-1B/manifests/`.
+- The downloader removes compressed archives after successful extraction and keeps reproducibility metadata under `/group-volume/danny-dataset/SA-1B/manifests/`.
 - Manifest name: `sa1b_3pct_v1.parquet`
 - Sampling seed: `sam2_stage1_sa1b_3pct_v1`
 - Manifest should keep `SAMPLE_PERCENT=100` for the downloaded 3% image root.
 - Validation split: `VAL_FRACTION=0.1`, producing roughly 90% `train` and 10% `val_sa1b`.
 - Manifest fields: `sample_id`, `source`, `image_path`, `height`, `width`, `sha256`, `split`.
 - Training checkpoints: `checkpoints/last.pt` is the resume checkpoint, and `checkpoints/best.pt` is selected by lowest `val/loss_stage1_total`.
-- Intermediate training checkpoints stay under `/danny-dataset/sam2_distill/runs/...`; only copy the final selected checkpoint to `/group-volume/sam2_distill/final_weights`.
+- Intermediate training checkpoints stay under `/group-volume/danny-dataset/sam2_distill/runs/...`; copy the final selected checkpoint to `/group-volume/danny-dataset/sam2_distill/checkpoints/final_weights`.
 - Stage 1 terminal/W&B/TensorBoard progress should include train/val image counts, global batch size, `train/images_seen`, `train/epoch`, `train/progress_pct`, `train/eta_hours`, `train/avg_wall_sec_per_step`, LR, grad norm, image MSE, high-res MSE, total loss, and validation loss.
 - Stage 1 MSE losses use PyTorch mean reduction over all tensor elements. `loss_high_res_mse` is the sum of the separately averaged `high_res_s0` and `high_res_s1` MSE terms.
 
@@ -182,7 +183,7 @@ Stage 1 weights:
   - `huggingface-cli whoami`
 - TinyViT HF fallback download:
   - `hf_hub_download(repo_id="timm/tiny_vit_21m_512.dist_in22k_ft_in1k", filename="model.safetensors")`
-  - Copy the downloaded file to `/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors`.
+  - Copy the downloaded file to `/group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors`.
 
 W&B company smoke test:
 - `python -m pip install -U wandb`
@@ -259,11 +260,10 @@ SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill \
 scripts/company/65_prepare_full_sav_memory_data.sh audit
 ```
 
-The `/group-volume` locations above document the current shared company
-staging used by these experiments. New long-lived large datasets and
-intermediate runs should follow the general storage policy and move to
-`/danny-dataset` when that mount is available; do not silently change paths for
-an existing reproducibility record.
+The `/group-volume/danny-dataset` locations above are the writable company
+project root for current and new experiments. Keep small foreground terminal
+logs under `/user-volume/log/<experiment>` and do not introduce an unverified
+`/danny-dataset` mount into commands or reproducibility records.
 
 ## 9. Goal Implementation Tips
 
