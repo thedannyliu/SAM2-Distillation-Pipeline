@@ -214,8 +214,83 @@ Its generated summary is:
   batch_probe/v1/batch_probe_summary.csv
 ```
 
-Formal learning rates and commands are intentionally deferred until the probe
-results are reviewed.
+### 2026-08-05 capacity results
+
+All candidates completed on four NVIDIA H100 80GB HBM3 GPUs. The acceptance
+ceiling was 72 GiB peak reserved HBM per GPU.
+
+| Stage | Batch/GPU | Global batch | T | Step s | Samples/s | Peak reserved GiB | Pass |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| image | 2 | 8 | 1 | 0.732 | 10.923 | 9.262 | yes |
+| image | 4 | 16 | 1 | 1.125 | 14.223 | 12.361 | yes |
+| image | 8 | 32 | 1 | 1.967 | 16.269 | 20.127 | yes |
+| image | 16 | 64 | 1 | 3.730 | 17.160 | 36.584 | yes |
+| image | 24 | 96 | 1 | 5.456 | 17.596 | 44.980 | yes |
+| image | 32 | 128 | 1 | 7.076 | 18.090 | 59.682 | yes |
+| T4 | 1 | 4 | 4 | 0.582 | 6.867 | 9.023 | yes |
+| T4 | 2 | 8 | 4 | 0.842 | 9.501 | 16.758 | yes |
+| T4 | 4 | 16 | 4 | 1.529 | 10.464 | 30.375 | yes |
+| T4 | 6 | 24 | 4 | 1.959 | 12.253 | 39.750 | yes |
+| T4 | 8 | 32 | 4 | 2.557 | 12.514 | 49.609 | yes |
+| T4 | 10 | 40 | 4 | 3.233 | 12.372 | 73.217 | no |
+| T8 | 1 | 4 | 8 | 1.291 | 3.098 | 15.428 | yes |
+| T8 | 2 | 8 | 8 | 2.202 | 3.633 | 26.584 | yes |
+| T8 | 3 | 12 | 8 | 2.943 | 4.077 | 45.312 | yes |
+| T8 | 4 | 16 | 8 | 3.646 | 4.389 | 51.316 | yes |
+| T8 | 5 | 20 | 8 | 4.371 | 4.576 | 63.883 | yes |
+| T8 | 6 | 24 | 8 | 5.512 | 4.354 | 73.760 | no |
+| T16 | 1 | 4 | 16 | 0.905 | 4.422 | 25.607 | yes |
+| T16 | 2 | 8 | 16 | 1.329 | 6.019 | 52.635 | yes |
+
+### Locked batch decision pending command approval
+
+| Stage | Batch/GPU | True global | Updates/pass | Train h/pass | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| image | 32 | 128 | 394 | 0.77 | Exact published image global batch; 20 GiB physical HBM margin |
+| T4 | 6 | 24 | 2,098 | 1.14 | Batch 8 is only 2.1% faster, so retain more HBM and optimizer updates |
+| T8 | 4 | 16 | 3,147 | 3.19 | Batch 5 is only 4.3% faster and has 12.6 GiB more reserved HBM |
+| T16 | 2 | 8 | 6,293 | 2.32 | 36% faster than batch 1; batch 3 is projected beyond the safe ceiling |
+
+The time column is the measured steady-step extrapolation and excludes full
+validation, startup, checkpoint I/O, and dataloader tail effects.
+
+Video stages do not accumulate gradients to effective global batch 256 in the
+first run. With 50,337 usable SA-V videos, batch 256 gives only about 197
+optimizer updates per pass: T4 two passes would have about 394 updates and T8
+three passes about 591, versus the published EdgeTAM run's roughly 130K T8
+updates on a multi-dataset mixture. Matching only the batch while omitting the
+published step/data exposure would under-train the new temporal interface.
+There is also no verified accumulation/resume/scheduler path in the current
+trainer. The formal run therefore uses the measured true DDP batch, no
+accumulation, and batch-scaled learning rates.
+
+### Proposed formal run matrix
+
+These settings are locked for review; the foreground company command is not
+released until they are approved and its resolved configs pass a smoke audit.
+
+| Stage | Initializer | Trainable modules | Batch/GPU | Passes | Start LR | KD weights | Gate |
+| --- | --- | --- | ---: | ---: | --- | --- | --- |
+| image | selected TV21 + frozen official temporal | image encoder + matched mask decoder | 32 | 1 | encoder `1e-6`, decoder `5e-6` | image 1 | image mIoU/AP drop <= 0.005 |
+| T4 | image winner or selected TV21 + `official_temporal` | complete EdgeTAM temporal path | 6 | 2 | temporal `2.8125e-5` | memory 1, logits 1 | full-val box J&F >= 55 |
+| T8 | T4 + `current_full` | image encoder + mask decoder + complete temporal path | 4 | 3, optionally 5 | encoder `6e-7`, decoder `2e-6`, temporal `1.875e-5` | image 1, memory 1, logits 1 | full-val box J&F >= 60; promotion >= 68.8 |
+| T16 | selected T8 + `current_full` | complete EdgeTAM temporal path | 2 | 1, optionally 2 | temporal `9.375e-6` | none | no more than 0.3 J&F drop and hard-motion gain |
+
+Every listed LR uses cosine decay to one tenth of its start value. All stages
+use BF16 AdamW, weight decay 0.1, gradient clip 0.1, frozen BatchNorm, task
+weights focal/mask 20, Dice 1, IoU 1, class 1, seed `250107256`, and online
+SAM2.1-L teacher tensors only where a KD weight is nonzero. T4/T8 use up to
+three objects, 50/50 point/box prompts, 10% GT correction sampling, two random
+correction frames, and seven correction clicks. The image stage uses up to
+eight objects. Object-pointer KD and gradient accumulation remain disabled.
+
+Before issuing the formal command, add one dedicated foreground driver for
+this four-stage run, add the separate mask-decoder LR group required by T8,
+and make the published video augmentation overrides explicit in the resolved
+config. Validate `describe`, input audit, exact checkpoint provenance, W&B
+resume ID reuse, and one bounded forward/backward smoke for every stage. The
+driver must stop at each quality gate; it must not automatically spend T8 or
+T16 compute after a failed predecessor.
 
 ## Phase 1: online SA-V image re-anchoring
 
@@ -238,7 +313,7 @@ re-anchoring stage rather than foundation pretraining.
 ### Trainable modules
 
 - TinyViT encoder, projection/adapters, and neck.
-- Matched mask decoder at one tenth of the encoder LR.
+- Matched mask decoder at the non-encoder learning rate.
 - Freeze prompt encoder, memory encoder, Perceiver, attention, and pointer path.
 - Freeze all BatchNorm statistics.
 
@@ -257,11 +332,10 @@ F16 KD objective.
 
 ### Schedule and gate
 
-- Run 0.5 SA-V pass, then at most one full pass.
+- Run one complete SA-V pass: 394 optimizer updates at global batch 128.
 - BF16 AdamW, weight decay 0.1, L2 clip 0.1, cosine decay, 5% warmup.
-- Start from approximately `1e-5 -> 1e-6` for the encoder and
-  `1e-6 -> 1e-7` for the decoder; finalize after the batch probe.
-- Require validation feature-MSE reduction.
+- Use encoder LR `1e-6 -> 1e-7` and mask-decoder LR `5e-6 -> 5e-7`.
+- Require the online training F16 MSE to decrease without a task-loss spike.
 - Require image mIoU and AP drops no greater than 0.005.
 
 If the gate fails, discard this checkpoint and initialize Phase 2 directly
@@ -279,7 +353,8 @@ supervision are applied before joint tuning.
 ### Initialization and trainability
 
 - Image/prompt/mask path: Phase 1 winner or the original selected TV21 checkpoint.
-- Temporal path: coherent released EdgeTAM temporal initializer.
+- Temporal path: coherent released EdgeTAM temporal initializer
+  (`TASK_MEMORY_INITIALIZER=official_temporal`).
 - Freeze image encoder, prompt encoder, mask decoder, and BatchNorm.
 - Train memory encoder, Perceiver, two attention blocks, pointer projections,
   temporal embeddings, and no-memory/no-object parameters.
@@ -311,12 +386,14 @@ If enabled later, use cosine loss with weight 0.1 and record it as an ablation.
 
 ### Schedule and gate
 
-- Two complete SA-V passes.
+- Per-GPU batch 6, true global batch 24, and no gradient accumulation.
+- Two complete SA-V passes: approximately 4,196 optimizer updates.
 - BF16 AdamW, weight decay 0.1, L2 clip 0.1, cosine decay, 10% warmup.
-- Paper-scaled starting temporal LR:
+- Use the same LR for memory attention, memory encoder/pointer/temporal
+  parameters, and Perceiver, decayed tenfold:
 
 ```text
-3e-4 * actual_global_batch / 256
+3e-4 * 24 / 256 = 2.8125e-5 -> 2.8125e-6
 ```
 
 - Run full SA-V box validation after the stage.
@@ -370,18 +447,30 @@ config has weaker augmentation than the published EdgeTAM recipe.
 
 ### Schedule and learning rates
 
+- Initialize every module from the selected T4 checkpoint with
+  `TASK_MEMORY_INITIALIZER=current_full`; do not reapply the released temporal
+  initializer.
+- Per-GPU batch 4, true global batch 16, and no gradient accumulation.
 - Run three SA-V passes first.
 - Run a fixed mini-val integrity gate after pass 1 and pass 3.
 - Run full validation after pass 3.
 - Extend to five passes only if full-val J&F is at least 58 and still improving.
 - Use cosine decay, 10% warmup, BF16, weight decay 0.1, and clip 0.1.
-- Scale published video LRs by the measured global batch:
+- Scale the temporal LR from the published EdgeTAM batch-256 recipe:
 
 ```text
-encoder LR = 6e-5 * actual_global_batch / 256
-other LR   = 3e-4 * actual_global_batch / 256
-decoder LR = 0.5 * other LR
+temporal LR = 3e-4 * 16 / 256
+            = 1.875e-5 -> 1.875e-6
 ```
+
+Do not apply that temporal LR to the already selected image path. The
+successful TV21 continuation used global batch 4 with encoder
+`1.5e-7 -> 1.5e-8` and other LR `5e-7 -> 5e-8`. Scaling those rates from
+global batch 4 to 16 gives encoder `6e-7 -> 6e-8` and matched mask decoder
+`2e-6 -> 2e-7`. This requires a separate mask-decoder optimizer group rather
+than letting it inherit the memory-auxiliary default. Three passes are
+approximately 9,441 optimizer updates. The optional extension to five passes
+adds about 6,294 updates.
 
 The fixed mini-val is an integrity check, not a model-selection set. Previous
 32-video gates varied materially; only full validation selects a checkpoint.
@@ -406,8 +495,11 @@ long-context stage.
 - Disable all distillation, following EdgeTAM progressive fine-tuning.
 - Use task losses only.
 - Keep the memory bank at seven frames.
+- Initialize the complete model from the selected T8 checkpoint with
+  `TASK_MEMORY_INITIALIZER=current_full`.
+- Use per-GPU batch 2, true global batch 8, and no gradient accumulation.
 - Run one SA-V pass; extend to two only when full validation improves.
-- Start at half the T8 temporal LR.
+- Use temporal LR `9.375e-6 -> 9.375e-7`, half the T8 temporal LR.
 
 Accept T16 only if overall J&F does not drop by more than 0.3 and the fixed
 fast-motion/occlusion/disappearance cohort improves. T32 is outside the first
@@ -492,21 +584,25 @@ write a dense step-checkpoint series. Log global batch, clips/frames seen,
 epoch/pass, ETA, step time, data time, LR per group, gradient norm per module,
 peak HBM, task loss, F16 loss, memory loss, logit loss, and validation metrics.
 
-## Estimated four-H100 budget
+## Estimated four-H100 budget after the capacity probe
 
-| Phase | Provisional time |
+| Phase | Measured/extrapolated time |
 | --- | ---: |
-| Environment, contract, and capacity probe | 2--4 h |
-| Online image re-anchoring | 2--6 h |
-| T4 bootstrap and validation | 10--16 h |
-| T8 three-to-five-pass training and validation | 24--40 h |
-| Conditional T16 | 8--16 h |
-| Final dual-protocol evaluation and export | 4--8 h |
-| Total | approximately 2--4 days |
+| Environment, contract, and capacity probe | complete |
+| Online image re-anchoring, one pass | 0.77 h training |
+| T4 bootstrap, two passes | 2.28 h training |
+| T8 three passes | 9.56 h training |
+| Optional T8 extension to five passes | additional 6.37 h training |
+| Conditional T16, one pass | 2.32 h training |
+| Full validation, dual-protocol final evaluation, startup, and export | not measured by the probe |
+| Initial image + T4 + T8 three-pass training | approximately 12.6 h before evaluation |
 
-These values are provisional. The completed EM curriculum took about 34 hours
-for nine SA-V passes on 4 H100s with a lighter teacher. The online Hiera-L
-capacity probe is required before commands or wall-time claims are finalized.
+The extrapolation uses the slowest-rank mean step time and
+`ceil(50337 / true_global_batch)` updates per pass. Allow at least 25--35%
+additional wall time for startup, dataloader tails, checkpointing, and
+validation. The full end-to-end sequence is therefore expected to fit within
+roughly one to two days on one four-H100 node, but only measured stage status
+files may be reported as actual duration.
 
 ## Differences from the original EdgeTAM training
 
@@ -518,14 +614,14 @@ capacity probe is required before commands or wall-time claims are finalized.
 | Memory bank/pointers | 7 / 16 | Same |
 | Teacher | Public SAM2 Hiera-B+ | SAM2.1 Hiera-L |
 | Image data | SA-1B | Online annotated frames from SA-V |
-| Image schedule | About 175K steps, global batch 128 | At most 0.5--1 SA-V pass from a strong warm start |
+| Image schedule | About 175K steps, global batch 128 | One SA-V pass (394 updates) from a strong warm start |
 | Video data | SA-V, 10% SA-1B, DAVIS, MOSE, and YTVOS according to Table 5 | Complete SA-V only |
 | Video schedule | T8 about 130K steps, global batch 256 | T4 two passes then T8 three-to-five passes |
 | Progressive stage | T16 about 43K and T32 about 43K steps | Conditional T16 one-to-two passes; no first-round T32 |
 | Image KD | F16 MSE | F16 MSE; the source checkpoint already received high-resolution Stage 1 KD |
 | Video KD | F16 MSE and memory-attention output MSE | F16, memory output, and propagated-mask-logit KD |
 | Object-pointer KD | Not reported | Disabled unless its target contract is verified |
-| Batch | Fixed published global batches | Largest throughput-efficient true batch on 4 H100s |
+| Batch | Image global 128; video global 256 | Image global 128; video true globals 24/16/8 with no accumulation |
 | LR | Published fixed values | Published values linearly scaled by measured global batch |
 | Augmentation | Full published image/video recipe | Image stage is conservative; T8 matches the video recipe |
 | Validation | VOS/PVS/SA across multiple datasets | GT-mask and box/point on SA-V initially |
