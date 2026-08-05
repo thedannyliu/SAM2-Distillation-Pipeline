@@ -31,11 +31,11 @@ object identity has been encoded as a slot dimension**.
 For a bucket capacity `S=8`, the propagation path is:
 
 ```text
-SAM2 per-object masks [N,1,H,W]
+SAM2 per-object masks [N,1,H,W] + condition flags [N,1,H,W]
           |
-          | stable contiguous slot assignment, zero-pad final bucket
+          | persistent object-id assignment; padding and tombstones differ
           v
-bucket masks [B,S,H,W]
+bucket inputs [B,2S,H,W]
           |
           | one multi-channel mask-memory encoder call
           v
@@ -54,18 +54,26 @@ one mask-decoder transformer call per bucket
 demultiplexed masks [N,1,H,W]
 ```
 
+The same `PersistentMultiplexLayout` instance controls all three learned
+modules. Training creates a fresh random assignment per tracking step; video
+inference keeps the assignment by client object ID for the lifetime of the
+session.
+
 ### 1. Slot-preserving mask memory
 
-`SlotPreservingMemoryEncoder` clones SAM2's mask downsampler and changes only
-its first convolution from one mask channel to eight. Its inputs are the eight
-object masks in a bucket, rather than a sum or average of their already encoded
-memories. The remainder of the SAM2 memory encoder—pixel projection, ConvNeXt
-fuser, output projection, and positional encoding—is retained.
+`SlotPreservingMemoryEncoder` clones SAM2's mask downsampler and changes its
+first convolution from one channel to 16: eight mask channels followed by
+eight binary conditioning channels. This matches the released SAM 3.1
+`input_channel_multiplier=2` layout. Its inputs are the eight object masks in
+a bucket, rather than a sum or average of their already encoded memories. The
+remainder of the SAM2 memory encoder—pixel projection, ConvNeXt fuser, output
+projection, and positional encoding—is retained.
 
 The new first-layer channel weights start from the selected SAM2 checkpoint's
-single-channel weights. They are independent parameters after initialization,
-so training can learn a different interpretation for every slot while keeping
-a stable starting scale for a single active channel.
+single-channel weights. Mask-channel weights repeat that initializer;
+conditioning-channel weights start at zero, so enabling the second half does
+not perturb the selected checkpoint before training. They become independent
+parameters during multiplex training.
 
 Code: `sam2_distill/models/sam2_object_slots.py`, class
 `SlotPreservingMemoryEncoder`.
@@ -104,8 +112,65 @@ The selected threshold is recorded in the resolved config as
 `object_slot_min_objects: 4`.
 
 The first prompted frame still uses the original SAM2 prompt encoder and mask
-decoder. Multiplexing begins when masks are written to temporal memory and on
-subsequent propagation frames.
+decoder. Its output masks are then re-encoded jointly into multiplex memory
+before propagation, so the first temporal read already consumes slot-preserving
+bucket memory.
+
+### 5. Runtime state and dynamic objects
+
+The initial implementation incorrectly left the official SAM2
+`propagate_in_video` loop in control. That loop calls
+`_run_single_frame_inference(..., batch_size=1)` once per object, so using
+`execution-mode=legacy` prevented an N>=4 model from entering its multiplex
+path. The current predictor fixes this at the model boundary:
+
+- `SAM2ObjectSlotVideoPredictor` owns a persistent layout in each inference
+  state;
+- additions fill true padding slots; removals become tombstones and are not
+  reused, preventing stale temporal memory from changing identity;
+- all modules receive the same selected layout before each bucket call;
+- mux/demux uses cached device index tensors rather than Python per-slot tensor
+  writes; this is the sparse gather/scatter equivalent of SAM 3.1's cached
+  transition matrices;
+- asynchronous prompt histories retain the frame's shared bucket memory while
+  filling absent per-object masks, scores, and pointers with no-object values,
+  instead of forcing the whole session back to per-object inference;
+- after SAM2's standard prompt consolidation, every affected conditioning
+  frame is re-encoded jointly by bucket with a per-object conditioning vector;
+  this prevents the first temporal read from averaging separately encoded
+  prompt memories;
+- on a mixed conditioning frame, prompted or already-computed objects keep
+  their fixed outputs while the remaining objects run as one bucketed batch;
+- outputs are split back into SAM2's per-object dictionaries, preserving the
+  public predictor API.
+
+Code: `sam2_distill/models/sam2_object_slot_predictor.py`, class
+`SAM2ObjectSlotVideoPredictor`; `sam2_distill/models/sam2_object_slots.py`,
+class `PersistentMultiplexLayout`; and
+`sam2_distill/models/sam2_object_buckets.py`, class
+`SAM2ObjectBucketAdapter`.
+
+SAM2 still stores compact outputs per object, whereas SAM 3.1 stores native
+bucket tensors. The compatibility-history merge is therefore an extra cost:
+missing object histories reuse the bucket's shared memory, while only their
+per-object masks, scores, and pointers receive no-object values. This makes the
+learned path real for full VOS evaluation rather than only for the synchronized
+latency cohort.
+
+### 6. Kernel compilation
+
+`SAM2_TV_COMPILE=1` compiles the image encoder, multiplex mask downsampler,
+memory projection/fuser, individual temporal-attention layers, and mask-decoder
+transformer after strict checkpoint loading. The Python session controller and
+dynamic layout remain eager. This boundary is intentional: object
+additions/removals change Python state, while the selected tensor kernels have
+stable H100 shapes and benefit from fusion.
+
+This is not FlashAttention 3. The company image is pinned to Python 3.10,
+PyTorch 2.4, and CUDA 12.5; the released SAM 3.1 repository specifies Python
+3.12+, PyTorch 2.7+, CUDA 12.6+, and lists FA3 as an optional installation.
+Exact FA3 comparison therefore needs a separate company image and cannot be
+safely installed by mutating this experiment's PyTorch runtime.
 
 ## Training recipe
 
@@ -183,16 +248,37 @@ This is a long curriculum rather than a 20-hour screen. Use the first completed
 SMX1 epoch to estimate remaining wall time on the actual container and storage
 mount; T8 and T16 stages are substantially more expensive than T4.
 
+After eager latency completes, compare compiled kernels using the same final
+checkpoint and cohort:
+
+```bash
+cd /user-volume/repo/SAM2-Distillation-Pipeline
+SAM2_TV_COMPILE=1 \
+WANDB_MODE=online \
+scripts/company/70_run_sam2_tv_multiplex_v1.sh latency-compiled 2>&1 | \
+tee "/user-volume/sam2_tv_multiplex_v1_logs/latency_compiled_$(date +%Y%m%d_%H%M%S).log"
+echo "Compiled latency status: ${PIPESTATUS[0]}"
+```
+
+The output directory is `point_n1-2-4-8_compiled`, so it does not overwrite
+the eager measurement.
+
 ## What matches SAM 3.1
 
 The following mechanisms follow the released SAM 3.1 implementation:
 
 - fixed-capacity object slots grouped into buckets;
+- persistent slot allocation, distinct padding/removal state, and dynamic
+  object add/remove;
 - masks multiplexed as channels before the mask-memory encoder;
+- one conditioning channel per mask slot;
 - one current visual feature and one dense memory stream per bucket;
 - one ordered object-pointer entry per slot;
 - per-slot mask, IoU, and object-score decoder tokens;
-- one temporal read and one decoder transformer call per bucket.
+- one temporal read and one decoder transformer call per bucket;
+- random slot assignments during training and deterministic assignments at
+  inference;
+- native batched propagation for asynchronous object histories.
 
 Primary references:
 
@@ -209,20 +295,45 @@ Primary references:
 |---|---|---|
 | Backbone/model | TinyViT-21M inside SAM2.1 tracking graph | SAM 3.1 native backbone and tracker |
 | Capacity | 8 slots, selected for the measured SAM2 workload | 16 slots by default |
-| State ownership | SAM2 keeps per-object dictionaries; bucket memory is repeated for API compatibility and collapsed before attention | Native bucket-first `MultiplexState` stores bucket tensors directly |
-| Object lifecycle | Stable contiguous object order; objects should be added before propagation | Explicit controller supports persistent slot allocation and richer add/remove flows |
-| Mask-memory input | 8 object-mask channels; first conv begins with 1 output-channel unit | 16 mask channels plus 16 conditioning channels (`input_channel_multiplier=2`), first width 4 |
+| State ownership | Persistent layout plus SAM2 per-object dictionaries; asynchronous holes reuse shared bucket memory while absent per-object outputs are neutral | Native bucket-first `MultiplexState` stores bucket tensors directly |
+| Object lifecycle | Persistent IDs, padding/tombstones, add/remove supported through the SAM2 predictor API | Native controller provides the same semantics without the compatibility merge |
+| Mask-memory input | 8 mask plus 8 conditioning channels; cloned SAM2 downsampler starts at width inherited from SAM2 | 16 mask plus 16 conditioning channels; first width 4 |
 | Memory width | SAM2's 64-channel memory | 256-channel multiplex memory |
-| Temporal reader | SAM2 four-layer, one-head memory attention with packed private pointers | Four-layer decoupled 8-head transformer, saved image features, and separate image/memory handling |
-| Decoder | Existing SAM2 decoder transformer with learned per-slot tokens | Native `MultiplexMaskDecoder` and its exact token/head options |
+| Temporal reader | SAM2 four-layer, one-head memory attention over joint dense memory and private pointers | Four-layer decoupled 8-head transformer jointly receives current image, saved historical image features, multiplex memory, and pointers |
+| Decoder | Existing SAM2 two-way transformer, but separate mask/IoU/object-score token per slot and a shared hypernetwork family | Native `MultiplexMaskDecoder` has independent slot embeddings and additional multimask/token-sharing modes |
 | Temporal/no-object features | SAM2 temporal positions and fixed no-object pointer inherited from the selected checkpoint | v2 temporal memory positions, linear no-object pointer, output-suppression embeddings, and conditioning-mask inputs |
-| Resolution/system work | 1024 input, stride 16, ordinary PyTorch path | 1008 input, stride 14, FlashAttention 3 options, `torch.compile`, operation fusion, batched postprocessing, and reduced CPU/GPU synchronization |
+| Resolution/system work | 1024 input, stride 16; optional compile of stable tensor kernels | 1008 input, stride 14, FA3 options, broader compile/fusion, batched postprocessing, and reduced CPU/GPU synchronization |
 | Training recipe | Full SA-V, global batch 4, three-stage T4/T8/T16 curriculum | Meta's private training mixture, batch scale, schedule, and weights are not reproduced |
-| Dynamic padding mask | Zero-padded final bucket; invalid outputs are removed after decoding | Native multiplex state/controller carries richer validity metadata throughout |
+| Conditioning identity | A second channel per slot is trained; runtime preflight reconstructs a per-object conditioning vector before every affected bucket is jointly re-encoded, while the SAM2 training loader still exposes only a frame-level `is_mask_from_pts` flag | A native per-object `conditioning_objects` set is available directly in both training and inference |
+| Mux/demux dispatch | Cached device index tensors and `index_select`; no per-slot CPU/GPU writes | Cached partial-permutation transition matrices and matrix multiplication |
+| Dynamic padding mask | Shared persistent validity layout across encoder, reader, and decoder | Native multiplex state additionally keeps bucket tensors as the primary state representation |
 
-Therefore this experiment tests the architectural hypothesis fairly inside
-SAM2, but it cannot isolate every source of SAM 3.1's published end-to-end
-speed. If quality succeeds and storage/runtime overhead remains material, the
-next engineering step is to replace SAM2's per-object output dictionaries with
-native bucket-first state rather than changing the learned representation
-again.
+These remaining differences are not import-path problems:
+
+1. **Temporal reader.** The SAM 3.1 reader signature takes current image
+   features, saved historical image features, multiplex memory, and pointer
+   tokens separately. SAM2 checkpoints contain a 64-d cross-attention K/V
+   projection and do not store historical image features in compact outputs.
+   Swapping the class would leave incompatible tensor shapes and no
+   `memory_image` input. A fair port is a new model stage with 256-d memory,
+   modified compact state, and a newly trained reader—not a strict-load change
+   to the current checkpoint.
+2. **Exact decoder.** Token topology is now aligned, but Meta's decoder owns
+   different embedding tables and multimask policies. Replacing the SAM2
+   decoder invalidates the high-resolution upscaler, IoU head, object-score
+   head, and transformer checkpoint. It should be a controlled decoder
+   reinitialization experiment only after the runtime/reader result is known.
+3. **FA3 and full compile.** The released dependencies exceed the pinned
+   company container. The safe integration here is PyTorch 2.4 compile on
+   stable subgraphs; exact FA3 requires a separately versioned image and a
+   correctness/latency comparison.
+4. **Native bucket state.** The persistent controller is aligned, but SAM2's
+   public API and checkpoints still assume per-object compact histories. The
+   compatibility merge is now correct for dynamic objects, yet removing it
+   requires a new state schema and migration logic for interactive sessions.
+
+Consequently the current experiment isolates the most important transferable
+hypothesis—slot-preserving shared memory with a real multiplex runtime—while
+keeping the TV21/SAM2 checkpoint usable. The next architecture experiment, if
+this version clears the 95% J&F gate, is a separately named 256-d decoupled
+reader stage rather than silently changing this experiment mid-run.
