@@ -468,18 +468,44 @@ epoch at global batch four. The full 2+5+2 curriculum schedules about 113,265
 updates. More raw frames increase clip diversity, but do not change updates
 per epoch unless the manifest length or dataset multiplier changes.
 
-At the snapshot:
+Final state on 2026-08-05:
 
 | Stage | State | Persisted progress | Trainable parameters | Evaluation |
 |---|---|---:|---:|---|
 | EM1 | training complete | epoch 2 / 25,170 updates | 4,775,392 | intentionally deferred |
-| EM2 | active | at least epoch 2 / 25,170 updates | 25,561,040 | pending |
-| EM3 | not started | 0 | pending construction | pending |
+| EM2 | training complete | epoch 5 / 62,925 updates | 25,561,040 | intentionally deferred |
+| EM3 | training and evaluation complete | epoch 2 / 25,170 updates | temporal stack | val 44.4; test 45.8 J&F |
 
-This is an engineering feasibility result only: coherent official temporal
-initialization loads, gradients reach the intended modules, and multi-epoch
-training persists. It is not yet an accuracy or latency result. The first
-research decision comes after EM3 full val/test.
+This is a positive engineering-feasibility result but a negative modeling
+result. EM3 reaches 0.8308/0.8313 image mIoU on val/test, yet only 44.4/45.8
+video J&F. Image segmentation remains largely intact while temporal tracking
+collapses. Because EM1 and EM2 were intentionally not evaluated, the current
+artifacts do not localize whether the main loss occurs during temporal
+initialization, joint adaptation, or T16 refinement. Evaluate those saved
+checkpoints before another EdgeTAM training sweep.
+
+### 8.4 Priority-18 full-data result
+
+Eleven of the 18 prioritized runs completed: five standard/EdgeTAM memory
+candidates and six shared-K/V multiplex candidates.
+
+| Method | Mini val J&F/retention | N=8 FPS | Result |
+|---|---:|---:|---|
+| FD01 T4 four-layer | 70.0/0.970 | 23.96 | Best completed quality; passes screen gate |
+| FD46 T8 four-layer | 69.5/0.963 | 24.09 | Passes screen gate |
+| FD03 T8 logit-KD | 68.8/0.953 | 24.26 | Best speed among quality-passing memory runs |
+| FD47 T8 two-layer | 58.9/0.816 | 34.54 | Faster but unacceptable quality loss |
+| FD49 EdgeTAM two-layer | 46.8/0.648 | 14.99 | Dominated by standard two-layer memory |
+| FD21 shared-K/V rank16 weak-memory-KD | 59.1/0.819 | 47.22 | Best completed multiplex Pareto point; fails quality gate |
+
+FD01, FD03, and FD46 should receive full val/test evaluation; the generic
+multiplex summarizer reports `Promote=0` only because standard-memory runs have
+no learned-path mask-IoU field. The six completed shared-K/V candidates all
+have mask IoU 1.0 and 46.35--47.22 N=8 FPS, but remain in a narrow
+58.2--59.1-J&F band. Scaling to full SA-V, changing dense-object sampling,
+increasing residual rank, and changing memory/logit KD did not recover the
+missing object identity. This makes a data-scaling explanation unlikely for
+the current shared-K/V ceiling.
 
 ## 9. Consolidated frontier
 
@@ -492,8 +518,10 @@ research decision comes after EM3 full val/test.
 | MX2/MX5 decoder slots | 72.3/74.6 | about 24.4 | decoder multiplexing can preserve quality |
 | MX4/MX6--MX8 shared K/V | about 63.6/about 60.3 | about 49 | shared temporal compute gives 2.2× speed but loses identity |
 | MX13--MX28 low-rank residual screens | completed screens about 53 J&F | about 46--48 | post-attention residual is insufficient |
+| FD01/FD03/FD46 full-data memory | mini-val 68.8--70.0 | about 24 | three standard-memory candidates clear 95% screen retention |
+| FD11/12/18/19/21/25 full-data shared K/V | mini-val 58.2--59.1 | 46.35--47.22 | more data and KD variants do not break the shared-K/V quality ceiling |
 | EdgeTAM Q2 | 55.6/58.0 | not yet isolated | recipe fidelity recovers part of temporal quality |
-| EM1--EM3 | pending | pending | full-data EdgeTAM/TinyViT feasibility in progress |
+| EM1--EM3 | 44.4/45.8 | not benchmarked | full curriculum runs, but temporal tracking collapses |
 
 The strongest established conclusions are:
 
@@ -505,8 +533,12 @@ The strongest established conclusions are:
    object-specific temporal information.
 4. More epochs, longer rollout, stronger memory/logit KD, and a cheap
    post-attention residual do not repair that representational loss.
-5. The official EdgeTAM trainer path is viable; adapting it to TinyViT remains
-   a quality question pending the EM curriculum.
+5. The official EdgeTAM trainer path is executable, but the completed EM
+   curriculum retains only about 61% J&F while preserving about 99% image mIoU;
+   the unresolved problem is temporal representation alignment.
+6. Full-SA-V scaling does not repair the present shared-K/V identity loss. The
+   next multiplex intervention must place private object information inside
+   the temporal reader rather than after shared attention.
 
 ## 10. Recommended next architecture and experiment
 

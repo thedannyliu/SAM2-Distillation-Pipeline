@@ -53,51 +53,58 @@ about 113,265 updates. Full SA-V increases the frame/clip sampling pool; it does
 not change updates per epoch unless the number of manifest video records or the
 dataset multiplier changes.
 
-## Progress snapshot: 2026-08-04
+## Final result: 2026-08-05
 
-| Stage | Observed state | Persisted progress | Trainable parameters | Evaluation |
+All three stages and the intended full validation/test evaluation completed.
+
+| Stage | State | Updates | Training time | Evaluation |
 |---|---|---:|---:|---|
-| EM1 | Training complete | epoch 2; 25,170 updates | 4,775,392 / 29,800,722 | Intentionally deferred |
-| EM2 | Active; confirmed still running by the operator | 25,170 updates in `checkpoint.pt`, equivalent to the epoch-2 boundary of 5 | 25,561,040 / 29,800,722 | Pending |
-| EM3 | Not started | 0 / 25,170 planned updates | Pending construction | Pending |
+| EM1 | complete | 25,170 | 3.90 h | Intentionally deferred |
+| EM2 | complete | 62,925 | 20.84 h | Intentionally deferred |
+| EM3 | complete | 25,170 | 9.41 h | Full SA-V val and test complete |
 
-EM1 took 14,039.96 seconds, or about 3.90 hours, for its two epochs. At least
-50,340 of the curriculum's 113,265 updates have therefore been persisted across
-EM1 and EM2. This is a lower bound because a running process may have advanced
-beyond its most recent checkpoint.
+The full curriculum consumed 113,265 optimizer updates and approximately 34.15
+training hours on one 4×H100 node. This establishes engineering feasibility:
+official temporal initialization, stage-to-stage checkpoint transfer, low-LR
+joint image/temporal training, long-context refinement, and full evaluation all
+ran without the earlier interface or disconnected-gradient failures.
 
-The result is positive at the engineering-feasibility level:
+The final accuracy result is negative:
 
-1. The best TinyViT-21M task checkpoint accepted the coherent official EdgeTAM
-   temporal initialization and completed two epochs with no recorded checkpoint
-   loading or backward-pass error.
-2. EM2 successfully loaded EM1 through `current_full`, enabled gradients for the
-   encoder plus memory stack, and reached at least 25,170 updates. This removes
-   two failure modes seen in earlier experiments: broken temporal-call
-   interfaces and losses disconnected from trainable parameters.
-3. There is not yet a research-quality result. No validation, test, J&F, or
-   latency metric exists, so the experiment currently demonstrates trainability
-   rather than accuracy or speed.
+| Split | Image mIoU | Image AP | Video J&F | J | F | Seconds/video |
+|---|---:|---:|---:|---:|---:|---:|
+| SA-V val | 0.8308 | 0.6985 | 44.4 | 41.6 | 47.2 | 30.89 |
+| SA-V test | 0.8313 | 0.7064 | 45.8 | 43.1 | 48.5 | 32.72 |
 
-The `.full_eval_required` markers on EM1 and EM2 are expected. Intermediate
-stages run with evaluation disabled; the orchestrator performs full validation
-and test only after EM3. The original resolved configs also showed
-`scratch.max_num_objects: 2` while the effective dataset sampler and experiment
-summary both showed 3. Runtime sampling was therefore three objects, but the
-scratch field was misleading. Commit following this snapshot keeps the scratch
-and sampler fields synchronized for subsequent resolved configs.
+Against the selected TV21 references of 72.4 val and 74.7 test J&F, EM3 retains
+only about 61.3% on both splits. It also falls below the earlier EdgeTAM Q2
+result by 11.2 val and 12.2 test J&F, and below the approximately 60-J&F
+shared-K/V line. It therefore fails both the 60-J&F diagnostic threshold and
+the 95% promotion threshold. A multiplex latency benchmark is not warranted
+for EM3.
 
-No restart or resume action is warranted at this snapshot. The recent error
-scan was empty, EM2 has a valid in-progress checkpoint, and the operator
-confirmed that experiments are still running. Observe the current jobs without
-changing their code or process state unless a real error appears.
+The image results narrow the cause. EM3 retains roughly 99% of the earlier
+0.840/0.839 image mIoU and 97--98% of image AP, while video J&F collapses by
+about 29 points. The model can still segment prompted images; it cannot carry
+object state coherently through time. The primary failure is the TinyViT to
+EdgeTAM temporal representation/interface and its learned memory dynamics, not
+a wholesale failure of the image encoder.
 
-The next decision point is the completed EM3 full validation. If its val J&F is
-below 60, the official temporal path has not surpassed the earlier shared-K/V
-line and should not receive a latency benchmark. A result from 60 to below the
-95% quality-retention threshold is useful but remains an accuracy/speed tradeoff.
-At or above 68.8 val J&F (95% of the 72.4 reference), proceed to full test and
-N=1/2/4/8 latency measurement.
+Only EM3 received full evaluation, so this curriculum does not identify which
+transition caused the largest regression. In particular, the available result
+cannot distinguish among:
+
+1. poor official-temporal adaptation already present after EM1;
+2. encoder/temporal co-adaptation drift introduced by EM2; and
+3. degradation from the final T16 frozen-encoder refinement in EM3.
+
+The next diagnostic should evaluate the already-saved EM1 and EM2 checkpoints
+on the same fixed validation cohort before starting another training run. If
+EM2 is materially better than EM3, discard the T16 refinement. If all three are
+near 44--46 J&F, the current initialization and loss interface are the failure
+and more epochs or more SA-V data are unlikely to repair it. A subsequent
+EdgeTAM experiment should add direct temporal-output/identity supervision and
+stage-wise validation rather than repeat this curriculum unchanged.
 
 ## Company command
 
