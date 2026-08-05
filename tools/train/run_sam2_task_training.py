@@ -8,9 +8,12 @@ import fnmatch
 import json
 import logging
 import os
+import statistics
 import sys
 import time
 from pathlib import Path
+
+import torch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -206,7 +209,7 @@ def _wandb_loss_name(name: str) -> str:
     return aliases.get(name, f"train/{name.replace('/', '_')}")
 
 
-def patch_sam2_training_runtime(wandb_run=None) -> None:
+def patch_sam2_training_runtime(wandb_run=None) -> dict:
     """Use compact console output and direct W&B metric logging."""
     import training.optimizer as optimizer_module
     import training.trainer as trainer_module
@@ -254,6 +257,16 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
     ema_beta = float(os.environ.get("WANDB_LOSS_EMA_BETA", "0.98"))
     outlier_threshold = float(os.environ.get("TASK_LOSS_OUTLIER_THRESHOLD", "0"))
     outlier_path = Path(os.environ.get("TASK_RUN_DIR", ".")) / "loss_outliers.jsonl"
+    capacity_probe = os.environ.get("TASK_CAPACITY_PROBE", "0") == "1"
+    capacity_warmup_steps = int(
+        os.environ.get("TASK_CAPACITY_WARMUP_STEPS", "2")
+    )
+    capacity_state = {
+        "completed_steps": 0,
+        "step_seconds": [],
+        "peak_allocated_bytes": 0,
+        "peak_reserved_bytes": 0,
+    }
 
     def run_step_with_wandb(
         self,
@@ -263,6 +276,11 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
         extra_loss_mts,
         raise_on_error=True,
     ):
+        if capacity_probe and torch.cuda.is_available():
+            torch.cuda.synchronize()
+            if capacity_state["completed_steps"] == capacity_warmup_steps:
+                torch.cuda.reset_peak_memory_stats()
+            step_started_at = time.perf_counter()
         result = original_run_step(
             self,
             batch,
@@ -271,6 +289,20 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
             extra_loss_mts,
             raise_on_error=raise_on_error,
         )
+        if capacity_probe and torch.cuda.is_available():
+            torch.cuda.synchronize()
+            step_seconds = time.perf_counter() - step_started_at
+            if capacity_state["completed_steps"] >= capacity_warmup_steps:
+                capacity_state["step_seconds"].append(step_seconds)
+                capacity_state["peak_allocated_bytes"] = max(
+                    capacity_state["peak_allocated_bytes"],
+                    torch.cuda.max_memory_allocated(),
+                )
+                capacity_state["peak_reserved_bytes"] = max(
+                    capacity_state["peak_reserved_bytes"],
+                    torch.cuda.max_memory_reserved(),
+                )
+            capacity_state["completed_steps"] += 1
         completed_step = int(self.steps[phase])
         log_frequency = int(self.logging_conf.log_scalar_frequency)
         should_log = (completed_step - 1) % log_frequency == 0
@@ -379,6 +411,55 @@ def patch_sam2_training_runtime(wandb_run=None) -> None:
             return result
 
         optimizer_module.Optimizer.step_schedulers = step_schedulers_with_warmup
+
+    return capacity_state
+
+
+def write_capacity_probe_summary(capacity_state: dict) -> None:
+    if os.environ.get("TASK_CAPACITY_PROBE", "0") != "1":
+        return
+
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    per_gpu_batch = int(os.environ.get("TASK_TRAIN_BATCH_SIZE", "1"))
+    step_seconds = capacity_state["step_seconds"]
+    sorted_seconds = sorted(step_seconds)
+
+    def percentile(fraction: float) -> float | None:
+        if not sorted_seconds:
+            return None
+        index = round(fraction * (len(sorted_seconds) - 1))
+        return float(sorted_seconds[index])
+
+    mean_seconds = statistics.fmean(step_seconds) if step_seconds else None
+    payload = {
+        "stage": os.environ.get("TASK_STAGE_NAME", ""),
+        "rank": rank,
+        "world_size": world_size,
+        "num_frames": int(os.environ.get("TASK_NUM_FRAMES", "0")),
+        "per_gpu_batch": per_gpu_batch,
+        "global_batch": per_gpu_batch * world_size,
+        "warmup_steps": int(
+            os.environ.get("TASK_CAPACITY_WARMUP_STEPS", "2")
+        ),
+        "completed_steps": int(capacity_state["completed_steps"]),
+        "measured_steps": len(step_seconds),
+        "step_seconds_mean": mean_seconds,
+        "step_seconds_p50": percentile(0.50),
+        "step_seconds_p90": percentile(0.90),
+        "local_samples_per_second": (
+            per_gpu_batch / mean_seconds
+            if mean_seconds is not None and mean_seconds > 0
+            else None
+        ),
+        "peak_allocated_gib": capacity_state["peak_allocated_bytes"]
+        / (1024**3),
+        "peak_reserved_gib": capacity_state["peak_reserved_bytes"]
+        / (1024**3),
+    }
+    out = Path(os.environ["TASK_RUN_DIR"]) / f"capacity_rank{rank}.json"
+    out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"CAPACITY_PROBE {json.dumps(payload, sort_keys=True)}", flush=True)
 
 
 def apply_mask_ablation_overrides(config) -> None:
@@ -776,7 +857,7 @@ def main() -> None:
         resolved_config.parent.mkdir(parents=True, exist_ok=True)
         OmegaConf.save(config, resolved_config, resolve=True)
     run = init_wandb(args)
-    patch_sam2_training_runtime(run)
+    capacity_state = patch_sam2_training_runtime(run)
     succeeded = False
     started_at = time.time()
     status_path = Path(os.environ["TASK_RUN_DIR"]) / "training_status.json"
@@ -826,6 +907,7 @@ def main() -> None:
         trainer.run()
         succeeded = True
     finally:
+        write_capacity_probe_summary(capacity_state)
         if int(os.environ.get("RANK", "0")) == 0:
             status_path.write_text(
                 json.dumps(
