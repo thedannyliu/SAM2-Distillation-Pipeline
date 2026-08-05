@@ -55,56 +55,95 @@ dataset multiplier changes.
 
 ## Final result: 2026-08-05
 
-All three stages and the intended full validation/test evaluation completed.
+All three stages trained successfully. The saved EM1, EM2, and EM3 checkpoints
+were subsequently evaluated on the complete SA-V validation and test splits.
 
-| Stage | State | Updates | Training time | Evaluation |
-|---|---|---:|---:|---|
-| EM1 | complete | 25,170 | 3.90 h | Intentionally deferred |
-| EM2 | complete | 62,925 | 20.84 h | Intentionally deferred |
-| EM3 | complete | 25,170 | 9.41 h | Full SA-V val and test complete |
+| Stage | State | Updates | Training time | Full val | Full test |
+|---|---|---:|---:|---|---|
+| EM1 | complete | 25,170 | 3.90 h | complete | complete |
+| EM2 | complete | 62,925 | 20.84 h | complete | complete |
+| EM3 | complete | 25,170 | 9.41 h | complete | complete |
 
-The full curriculum consumed 113,265 optimizer updates and approximately 34.15
-training hours on one 4×H100 node. This establishes engineering feasibility:
+The curriculum consumed 113,265 optimizer updates and approximately 34.15
+training hours on one 4xH100 node. This establishes engineering feasibility:
 official temporal initialization, stage-to-stage checkpoint transfer, low-LR
-joint image/temporal training, long-context refinement, and full evaluation all
-ran without the earlier interface or disconnected-gradient failures.
+joint image/temporal training, T16 refinement, checkpoint resume, and full
+evaluation all ran without the earlier interface or disconnected-gradient
+failures.
 
-The final accuracy result is negative:
+### Accuracy
 
-| Split | Image mIoU | Image AP | Video J&F | J | F | Seconds/video |
-|---|---:|---:|---:|---:|---:|---:|
-| SA-V val | 0.8308 | 0.6985 | 44.4 | 41.6 | 47.2 | 30.89 |
-| SA-V test | 0.8313 | 0.7064 | 45.8 | 43.1 | 48.5 | 32.72 |
+| Stage | Split | Image mIoU | Image AP | Video J&F | J | F |
+|---|---|---:|---:|---:|---:|---:|
+| EM1 | SA-V val | 0.8402 | 0.7161 | 27.9 | 25.0 | 30.8 |
+| EM1 | SA-V test | 0.8390 | 0.7191 | 28.8 | 26.2 | 31.3 |
+| EM2 | SA-V val | 0.8308 | 0.6993 | 42.3 | 39.4 | 45.2 |
+| EM2 | SA-V test | 0.8313 | 0.7063 | 44.6 | 41.8 | 47.3 |
+| EM3 | SA-V val | 0.8308 | 0.6985 | 44.4 | 41.6 | 47.2 |
+| EM3 | SA-V test | 0.8313 | 0.7064 | 45.8 | 43.1 | 48.5 |
 
-Against the selected TV21 references of 72.4 val and 74.7 test J&F, EM3 retains
-only about 61.3% on both splits. It also falls below the earlier EdgeTAM Q2
-result by 11.2 val and 12.2 test J&F, and below the approximately 60-J&F
-shared-K/V line. It therefore fails both the 60-J&F diagnostic threshold and
-the 95% promotion threshold. A multiplex latency benchmark is not warranted
-for EM3.
+Using the selected TV21 references of 72.4 val and 74.7 test J&F:
 
-The image results narrow the cause. EM3 retains roughly 99% of the earlier
-0.840/0.839 image mIoU and 97--98% of image AP, while video J&F collapses by
-about 29 points. The model can still segment prompted images; it cannot carry
-object state coherently through time. The primary failure is the TinyViT to
-EdgeTAM temporal representation/interface and its learned memory dynamics, not
-a wholesale failure of the image encoder.
+| Stage | Val J&F retention | Test J&F retention | Val gap | Test gap |
+|---|---:|---:|---:|---:|
+| EM1 | 38.5% | 38.6% | -44.5 | -45.9 |
+| EM2 | 58.4% | 59.7% | -30.1 | -30.1 |
+| EM3 | 61.3% | 61.3% | -28.0 | -28.9 |
 
-Only EM3 received full evaluation, so this curriculum does not identify which
-transition caused the largest regression. In particular, the available result
-cannot distinguish among:
+No stage reaches the 95% quality-retention promotion threshold. EM3 would need
+at least 68.78 val and 70.97 test J&F to satisfy that gate; it remains 24.38
+and 25.17 points below those thresholds.
 
-1. poor official-temporal adaptation already present after EM1;
-2. encoder/temporal co-adaptation drift introduced by EM2; and
-3. degradation from the final T16 frozen-encoder refinement in EM3.
+### Research signal
 
-The next diagnostic should evaluate the already-saved EM1 and EM2 checkpoints
-on the same fixed validation cohort before starting another training run. If
-EM2 is materially better than EM3, discard the T16 refinement. If all three are
-near 44--46 J&F, the current initialization and loss interface are the failure
-and more epochs or more SA-V data are unlikely to repair it. A subsequent
-EdgeTAM experiment should add direct temporal-output/identity supervision and
-stage-wise validation rather than repeat this curriculum unchanged.
+EM1 preserves the single-image model almost exactly but collapses on video.
+Its 0.8402/0.8390 mIoU and 0.7161/0.7191 AP show that TinyViT, box prompting,
+and the image mask decoder remain functional. The 27.9/28.8 J&F therefore
+localizes the initial failure to memory writing, temporal reading, or recurrent
+object-state propagation rather than general image segmentation.
+
+EM2 provides the strongest positive signal. Joint TinyViT and temporal-stack
+adaptation at T8 improves val J&F by 14.4 and test J&F by 15.8 over EM1. J and F
+rise together, so this is a real recovery of region tracking and boundary
+tracking rather than a boundary-only effect. The cost is modest image drift:
+val mIoU retains about 98.9% and val AP about 97.7% of EM1.
+
+EM3 adds only 2.1 val and 1.2 test J&F over EM2 while leaving image quality
+effectively unchanged. T16 frozen-encoder refinement is useful, but has entered
+diminishing returns. Longer context or more repetitions of the same objective
+alone are unlikely to close the remaining approximately 29-point test gap.
+
+The ordering is consistent on val and test, and every stage scores slightly
+higher on test, so these results do not show a val-specific overfitting failure.
+The stages are nevertheless a sequential curriculum, not independent
+ablations: the EM1-to-EM2 and EM2-to-EM3 differences also include additional
+updates, changed trainable modules, learning rates, and inherited checkpoints.
+They establish where recovery occurred, but do not identify a single causal
+hyperparameter.
+
+### Latency validity
+
+The image evaluator reports approximately 416 ms `set_image` latency for EM1
+and EM2 but 42--49 ms for EM3. That nearly 10x difference is not credible as an
+architectural speedup from the small stage change and likely reflects different
+runtime, contention, warmup, or evaluation conditions. These values must not
+be used for a speed claim. A dedicated isolated benchmark with the same node,
+GPU, software revision, warmup, and cohort is required, but is not currently
+warranted for promotion because all three checkpoints fail the quality gate.
+
+### Decision and next experiment
+
+The result is a successful feasibility demonstration but a negative model
+selection result. EdgeTAM-style memory can learn with TinyViT: EM2 recovers
+roughly 15 J&F and EM3 adds a smaller long-context gain. The current objective,
+however, does not teach a sufficiently coherent recurrent object state.
+
+The next experiment should start from EM2 or EM3 and target the temporal state
+transition directly rather than repeat this curriculum unchanged. The highest
+priority supervision is per-propagation-step teacher mask-logit and object
+identity/state distillation, followed by memory write/read consistency and
+correction-frame robustness. Stage-wise full validation should be retained so
+future encoder drift or temporal regressions are localized immediately.
 
 ## Company command
 
@@ -145,25 +184,24 @@ Final metrics are expected under:
 
 ```text
 /group-volume/danny-dataset/sam2_distill/runs/tinyvit21_edgetam_memory_v1/
-  EM3_t16_memory_refine_2ep/main/
-    sav_val_box_benchmark/metrics.csv
-    sav_test_box_benchmark/metrics.csv
+  <EM1_t4_official_temporal_2ep |
+   EM2_t8_joint_edgetam_5ep |
+   EM3_t16_memory_refine_2ep>/main/
+      sav_val_box_benchmark/metrics.csv
+      sav_test_box_benchmark/metrics.csv
 ```
 
-## Decision criteria
+## Decision outcome
 
-The first decision is feasibility rather than promotion:
+| Criterion | Outcome |
+|---|---|
+| Three-stage engineering feasibility | Pass |
+| Full val/test evaluation available for every saved stage | Pass |
+| EM3 exceeds the approximately 60-J&F learned-memory line | Fail |
+| At least 95% TV21 J&F retention | Fail |
+| Eligible for promotion latency benchmark | No |
 
-1. All three stages finish without missing/unexpected checkpoint tensors.
-2. Full SA-V val and test both complete and report video-tracking J&F.
-3. EM3 improves on the earlier roughly 60 J&F shared-K/V learned-memory line and
-   approaches the 72.3/74.6 TV21 quality reference.
-4. Only after quality is established should EM3 receive the full N=1/2/4/8
-   multiplex latency benchmark. This experiment does not claim a speed gain by
-   construction.
-
-If EM1 cannot reach useful validation quality, the next experiment should test
-interface alignment rather than add epochs. If EM1 succeeds but EM2 regresses,
-the encoder LR or image-distillation weight is the primary ablation. If EM2
-succeeds but EM3 regresses, retain EM2 as the candidate and reduce T16 temporal
-LR before trying more data.
+EM2 is the most informative recovery checkpoint and EM3 is the highest-quality
+checkpoint, but neither is a deployment candidate. Preserve both for the next
+temporal-state supervision experiment; do not spend another long run on the
+same initialization and loss schedule without changing the learning signal.
