@@ -265,6 +265,60 @@ project root for current and new experiments. Keep small foreground terminal
 logs under `/user-volume/log/<experiment>` and do not introduce an unverified
 `/danny-dataset` mount into commands or reproducibility records.
 
+### TV21 EdgeTAM v1 data and folder contract
+
+The first company EdgeTAM adaptation validates TinyViT-21M only. It retains
+the selected TV21 image encoder, projection/adapters, prompt encoder, and
+matched mask decoder, and replaces the temporal path with the released
+EdgeTAM two-block memory attention and 2D Perceiver architecture. The frozen
+online teacher is SAM2.1 Hiera Large.
+
+Data contract:
+- Train only on the complete prepared SA-V train release at its 6 FPS
+  annotation cadence.
+- Training manifest:
+  `/group-volume/danny-dataset/sam2_distill/manifests/sav_train_6fps_full.parquet`.
+- Frame/data root: `/group-volume/danny-dataset/SA-V`.
+- Leave `TASK_VIDEO_IDS_FILE` empty to use all 50,337 videos that have a
+  readable matching manual annotation.
+- For the image re-anchor, sample annotated SA-V frames online. Do not write
+  cropped images, duplicate frames, or teacher feature caches.
+- First-round training does not use SA-1B, DAVIS, MOSE, or YTVOS. Record this
+  as an explicit difference from the original EdgeTAM recipe.
+- Use full `/group-volume/danny-dataset/SA-V/sav_val` for model selection and
+  full `/group-volume/danny-dataset/SA-V/sav_test` only for the final selected
+  checkpoint.
+
+Read-only initialization artifacts:
+- Selected TV21 task checkpoint:
+  `/group-volume/danny-dataset/sam2_distill/runs/tinyvit_max_jf_v1/tv21/main/checkpoints/best.pt`.
+- TinyViT initializer:
+  `/group-volume/danny-dataset/sam2_distill/checkpoints/tinyvit/tiny_vit_21m_512.dist_in22k_ft_in1k.safetensors`.
+- SAM2.1 Hiera-L teacher:
+  `/group-volume/danny-dataset/sam2_distill/checkpoints/sam2.1/sam2.1_hiera_large.pt`.
+- Released EdgeTAM temporal initializer:
+  `/group-volume/danny-dataset/sam2_distill/checkpoints/edgetam/edgetam.pt`.
+
+Writable experiment artifacts:
+- Run root:
+  `/group-volume/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1`.
+- Each formal stage stores its resumable `last.pt`, validation-selected
+  `best.pt`, resolved config, W&B files, and evaluation outputs under its run
+  directory. Reuse the same W&B run ID and directories when resuming.
+- TensorBoard root:
+  `/group-volume/danny-dataset/sam2_distill/logs/edgetam_tv21_sam21l_v1`.
+- W&B project: `sam2-edgetam-tv21-sam21l-v1`.
+- Foreground terminal logs:
+  `/user-volume/log/edgetam_tv21_sam21l_v1`.
+- Final selected/exported weights only:
+  `/group-volume/danny-dataset/sam2_distill/checkpoints/final_weights/edgetam_tv21_sam21l_v1`.
+- Batch-probe summary:
+  `/group-volume/danny-dataset/sam2_distill/runs/edgetam_tv21_sam21l_v1/batch_probe/v1/batch_probe_summary.csv`.
+
+Do not create `/danny-dataset`, write large artifacts directly under
+`/user-volume`, or move historical selected checkpoints merely to make paths
+look uniform.
+
 ## 9. Goal Implementation Tips
 
  Can submit several jobs in parallel, every GPU can be used to run smoke run. Don't waste time and token on keep checking the samme job.
