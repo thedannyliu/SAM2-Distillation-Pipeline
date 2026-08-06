@@ -226,8 +226,39 @@ The initial promotion criteria are:
 | N=8 FPS | greater than 22.07 FPS |
 | Primary selection | Pareto trade-off of J&F and N=8 latency |
 
-No result is recorded until full val/test completes. Training loss or the
-32-video screen alone is not sufficient evidence for promotion.
+No final promotion decision is recorded until full val/test completes.
+Stage-level validation is retained as diagnostic evidence, but training loss
+or a small screen alone is not sufficient for promotion.
+
+## Interim result: 2026-08-06
+
+The actual company run uses the isolated root
+`/group-volume/danny-dataset/sam2_distill/runs/sam2_tv_multiplex_sam31_v2`.
+SMX1 completed training and full validation, SMX2 is actively training at
+epoch five of eight, and SMX3 has not started because it depends on SMX2.
+
+| Stage | State | Epoch/update | Val mIoU | Val AP | Val J&F | J | F |
+|---|---|---:|---:|---:|---:|---:|---:|
+| SMX1 | full val complete | 2 / 25,170 | 0.8381 | 0.7104 | 39.6 | 37.0 | 42.2 |
+| SMX2 | active training | 5 / 62,925 | - | - | - | - | - |
+| SMX3 | not started | - | - | - | - | - | - |
+
+SMX1 retains approximately 99.7% of the 0.8403 image-mIoU reference and 99.1%
+of the 0.7166 AP reference, but only 54.7% of the 72.4 val J&F reference. This
+again localizes the failure to recurrent temporal state rather than the image
+encoder or prompted single-frame decoder. The stage is 29.18 J&F points below
+the 68.78 threshold required for 95% retention.
+
+This is a serious bootstrap failure but not yet the final curriculum result.
+SMX1 deliberately trains only two T4 epochs, while SMX2 supplies the main eight
+T8 epochs. The earlier EdgeTAM curriculum showed that joint T8 adaptation can
+recover substantial J&F after a poor bootstrap, so the active SMX2 run remains
+informative and should complete. SMX2 full validation is the decisive checkpoint:
+if it does not recover a large fraction of the 29-point deficit, SMX3's two T16
+refinement epochs are unlikely to make the model promotable.
+
+No SMX test or isolated N=1/2/4/8 latency result exists yet. Test remains
+correctly held out until SMX3 completes.
 
 ## Company command
 

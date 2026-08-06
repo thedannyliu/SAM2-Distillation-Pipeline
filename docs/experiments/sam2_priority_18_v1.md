@@ -3,11 +3,12 @@
 ## Decision
 
 The original 50-run matrix was reduced to 18 prioritized experiments for six
-4×H100 nodes. As of 2026-08-05, 11 of the 18 experiments are complete: five of
-nine memory candidates and six of nine multiplex candidates. The remaining
-seven have no checkpoint or evaluation artifact and remain pending. The
-selected checkpoints and W&B runs stay under `sam2_full_data_50_v1`, so the
-other registered variants remain runnable later.
+4×H100 nodes. As of 2026-08-06, 11 of the 18 experiments have a complete
+64-video quality/latency screen. FD48 and FD50 have reached epoch eight and
+produced latency artifacts but still lack their quality gate. FD04 and FD05 are
+actively training at epoch six, FD13 is interrupted at epoch two, and FD20 and
+FD30 have no checkpoint. The selected checkpoints and W&B runs stay under
+`sam2_full_data_50_v1`, so the other registered variants remain resumable.
 
 Each node runs three long trainings sequentially. A failed experiment is
 recorded and does not stop the next experiment. Every candidate uses its
@@ -80,7 +81,10 @@ FPS. The quality reference is MX5 on the identical cohort.
 | `FD03_tv21_t8_logits1_8ep` | complete | 68.8 | 0.953 | 59.23 | 24.26 | +9.9% | Fastest of the quality-passing memory candidates |
 | `FD47_mem2_t8_decmem_8ep` | complete | 58.9 | 0.816 | 66.98 | 34.54 | +56.5% | Two layers buy speed but lose too much temporal quality |
 | `FD49_edgetam2_temporal_logits2_8ep` | complete | 46.8 | 0.648 | 22.14 | 14.99 | -32.1% | EdgeTAM temporal-only adaptation is worse in both quality and N=8 speed |
-| `FD48`, `FD04`, `FD50`, `FD05` | pending | - | - | - | - | - | Required recovery and longer-context controls are not available yet |
+| `FD48_mem2_t8_joint_logits2_8ep` | trained; quality pending | - | - | - | 34.93 | +58.3% | Epoch eight and latency complete; fixed-cohort J&F is still missing |
+| `FD50_edgetam2_joint_img_logits2_8ep` | trained; quality pending | - | - | - | 45.78 | +107.4% | Epoch eight and latency complete; fixed-cohort J&F is still missing |
+| `FD04_tv21_t8_joint_logits1_8ep` | active | - | - | - | - | - | Epoch six of eight at the latest lock audit |
+| `FD05_tv21_t12_joint_mem025_logits2_8ep` | active | - | - | - | - | - | Epoch six of eight at the latest lock audit |
 
 The `Promote=0` field in the shared screen report must not be used to reject
 FD01, FD03, or FD46. The report requires a learned-path mask-IoU measurement,
@@ -92,8 +96,12 @@ Depth reduction is a genuine Pareto trade-off rather than a free optimization:
 FD47 improves N=8 from roughly 24 to 34.54 FPS, but loses about ten J&F points
 relative to the four-layer controls. FD49 shows that inserting the current
 EdgeTAM two-layer Perceiver path does not solve the problem; it is dominated by
-FD47 on both axes. FD48 and FD50 are still important because they test whether
-joint image/temporal adaptation can recover either failure.
+FD47 on both measured axes. FD48 now matches the FD47 speed band, so its missing
+quality gate is the decisive test of whether joint/logit KD repairs the
+two-layer loss without surrendering speed. FD50's 45.78 N=8 FPS is much faster
+than FD49 despite the nominally related EdgeTAM topology. Do not interpret that
+as a training-induced speedup until both configs are checked under the same
+runtime and cohort; quality is also still unknown.
 
 ### Shared-K/V multiplex candidates
 
@@ -105,7 +113,9 @@ joint image/temporal adaptation can recover either failure.
 | `FD19_sharedkv_r16_ptr8_8ep` | complete | 58.6 | 0.812 | 1.000 | 58.45 | 46.80 | +112.0% |
 | `FD21_sharedkv_r16_mem025_logits2_8ep` | complete | 59.1 | 0.819 | 1.000 | 58.84 | 47.22 | +113.9% |
 | `FD25_sharedkv_r16_mem100_logits4_8ep` | complete | 58.7 | 0.813 | 1.000 | 56.66 | 46.56 | +110.9% |
-| `FD13`, `FD20`, `FD30` | pending | - | - | - | - | - | Dense-8, rank-32, and recency controls are not available yet |
+| `FD13_sharedkv_dense8_t8_r16_8ep` | interrupted | - | - | - | - | - | Checkpoint at epoch two of eight |
+| `FD20_sharedkv_r32_ptr8_8ep` | not started | - | - | - | - | - | Run directory exists without a checkpoint |
+| `FD30_sharedkv_r16_ptr8_recency050_obj025_8ep` | not started | - | - | - | - | - | Run directory exists without a checkpoint |
 
 FD21 is the current completed multiplex Pareto point: it has both the highest
 J&F retention and highest N=8 throughput in this subset. It still retains only
@@ -129,9 +139,10 @@ multiplex fixed cost at low occupancy.
 3. Do not spend another sweep on the same post-attention shared-K/V residual;
    the next multiplex model must preserve private object information inside
    the temporal reader, as in the SAM3.1-aligned bucket experiment.
-4. Complete FD48 and FD50 only if diagnosing recoverability of the compressed
-   and EdgeTAM interfaces remains useful. FD13/FD20/FD30 have lower priority
-   because the completed multiplex results already occupy a narrow plateau.
+4. Complete the missing FD48 and FD50 quality gates before spending more GPU
+   time on those variants. Finish active FD04 and FD05 to close the joint and
+   long-context controls. FD13/FD20/FD30 remain lower priority because the
+   completed multiplex results already occupy a narrow plateau.
 
 ## Entry point
 
