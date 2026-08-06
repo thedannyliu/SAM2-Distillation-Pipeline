@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure the image-encoder share of one SAM2 tracking stream."""
+"""Profile semantic components in one official SAM2.1-L tracking stream."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import json
 import statistics
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -81,15 +82,38 @@ def select_video(args: argparse.Namespace) -> tuple[str, list[Path], list[tuple[
     )
 
 
+ADDITIVE_COMPONENTS = (
+    "image_encoder",
+    "prompt_encoder",
+    "memory_attention",
+    "mask_decoder",
+    "memory_encoder",
+    "object_pointer_projection",
+    "object_pointer_temporal_projection",
+)
+
+NESTED_COMPONENTS = {
+    "image_trunk": "image_encoder",
+    "image_neck": "image_encoder",
+    "mask_decoder_transformer": "mask_decoder",
+    "memory_mask_downsampler": "memory_encoder",
+    "memory_pixel_projection": "memory_encoder",
+    "memory_fuser": "memory_encoder",
+    "memory_output_projection": "memory_encoder",
+}
+
+
 class ComponentEvents:
     def __init__(self, predictor) -> None:
         self.predictor = predictor
         self.original_get = predictor._get_image_feature
-        self.original_encoder = predictor.image_encoder.forward
         self.active_key: tuple[int, int] | None = None
-        self.repeat = 0
-        self.feature_events: dict[tuple[int, int], list[tuple[Any, Any]]] = {}
-        self.encoder_events: dict[tuple[int, int], list[tuple[Any, Any]]] = {}
+        self.events: dict[str, dict[tuple[int, int], list[tuple[Any, Any]]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        self.handles: list[Any] = []
+        self.available_components: list[str] = []
+        self.missing_components: list[str] = []
 
     @staticmethod
     def _events() -> tuple[Any, Any]:
@@ -99,34 +123,79 @@ class ComponentEvents:
     def elapsed(events: list[tuple[Any, Any]]) -> float:
         return sum(float(start.elapsed_time(end)) for start, end in events)
 
-    def install(self) -> None:
-        def image_encoder_forward(*args, **kwargs):
-            start, end = self._events()
+    def _register(self, name: str, module: Any | None) -> None:
+        if module is None:
+            self.missing_components.append(name)
+            return
+        starts: list[tuple[tuple[int, int], Any]] = []
+
+        def before(_module, _inputs):
+            if self.active_key is None:
+                return
+            start, _ = self._events()
             start.record()
-            output = self.original_encoder(*args, **kwargs)
+            starts.append((self.active_key, start))
+
+        def after(_module, _inputs, output):
+            if not starts:
+                return output
+            key, start = starts.pop()
+            _, end = self._events()
             end.record()
-            if self.active_key is not None:
-                self.encoder_events.setdefault(self.active_key, []).append((start, end))
+            self.events[name][key].append((start, end))
             return output
 
-        def get_image_feature(inference_state, frame_idx: int, batch_size: int):
-            key = (self.repeat, int(frame_idx))
-            self.active_key = key
+        self.handles.append(module.register_forward_pre_hook(before))
+        self.handles.append(module.register_forward_hook(after))
+        self.available_components.append(name)
+
+    def install(self) -> None:
+        modules = {
+            "image_encoder": self.predictor.image_encoder,
+            "prompt_encoder": self.predictor.sam_prompt_encoder,
+            "memory_attention": self.predictor.memory_attention,
+            "mask_decoder": self.predictor.sam_mask_decoder,
+            "memory_encoder": self.predictor.memory_encoder,
+            "object_pointer_projection": self.predictor.obj_ptr_proj,
+            "object_pointer_temporal_projection": getattr(
+                self.predictor, "obj_ptr_tpos_proj", None
+            ),
+            "image_trunk": getattr(self.predictor.image_encoder, "trunk", None),
+            "image_neck": getattr(self.predictor.image_encoder, "neck", None),
+            "mask_decoder_transformer": getattr(
+                self.predictor.sam_mask_decoder, "transformer", None
+            ),
+            "memory_mask_downsampler": getattr(
+                self.predictor.memory_encoder, "mask_downsampler", None
+            ),
+            "memory_pixel_projection": getattr(
+                self.predictor.memory_encoder, "pix_feat_proj", None
+            ),
+            "memory_fuser": getattr(self.predictor.memory_encoder, "fuser", None),
+            "memory_output_projection": getattr(
+                self.predictor.memory_encoder, "out_proj", None
+            ),
+        }
+        for name, module in modules.items():
+            self._register(name, module)
+
+        def get_image_feature(*args, **kwargs):
+            if self.active_key is None:
+                return self.original_get(*args, **kwargs)
             start, end = self._events()
             start.record()
             try:
-                return self.original_get(inference_state, frame_idx, batch_size)
+                return self.original_get(*args, **kwargs)
             finally:
                 end.record()
-                self.feature_events.setdefault(key, []).append((start, end))
-                self.active_key = None
+                self.events["image_feature_path"][self.active_key].append((start, end))
 
-        self.predictor.image_encoder.forward = image_encoder_forward
         self.predictor._get_image_feature = get_image_feature
 
     def uninstall(self) -> None:
         self.predictor._get_image_feature = self.original_get
-        self.predictor.image_encoder.forward = self.original_encoder
+        for handle in self.handles:
+            handle.remove()
 
 
 def load_mask(path: Path) -> np.ndarray:
@@ -138,23 +207,70 @@ def percentile(values: list[float], q: float) -> float:
     return float(np.percentile(values, q))
 
 
-def summarize_rows(rows: list[dict[str, float]]) -> dict[str, float]:
+def summarize_rows(
+    rows: list[dict[str, float]],
+    additive_components: tuple[str, ...] = ADDITIVE_COMPONENTS,
+    nested_components: dict[str, str] = NESTED_COMPONENTS,
+) -> dict[str, Any]:
     full = [row["tracking_step_ms"] for row in rows]
-    encoder = [row["image_encoder_ms"] for row in rows]
-    feature = [row["image_feature_path_ms"] for row in rows]
     full_sum = sum(full)
+    component_table = []
+    additive_sum = 0.0
+    for component in additive_components:
+        values = [row[f"{component}_ms"] for row in rows]
+        component_sum = sum(values)
+        additive_sum += component_sum
+        component_table.append(
+            {
+                "component": component,
+                "mean_ms": statistics.mean(values),
+                "median_ms": statistics.median(values),
+                "percent_of_tracking": 100.0 * component_sum / full_sum,
+            }
+        )
+    residual_sum = full_sum - additive_sum
+    component_table.append(
+        {
+            "component": "framework_and_uninstrumented_residual",
+            "mean_ms": residual_sum / len(rows),
+            "median_ms": statistics.median(
+                [row["residual_ms"] for row in rows]
+            ),
+            "percent_of_tracking": 100.0 * residual_sum / full_sum,
+        }
+    )
+    nested_table = []
+    for component, parent in nested_components.items():
+        values = [row[f"{component}_ms"] for row in rows]
+        parent_sum = sum(row[f"{parent}_ms"] for row in rows)
+        component_sum = sum(values)
+        nested_table.append(
+            {
+                "component": component,
+                "parent": parent,
+                "mean_ms": statistics.mean(values),
+                "median_ms": statistics.median(values),
+                "percent_of_tracking": 100.0 * component_sum / full_sum,
+                "percent_of_parent": (
+                    100.0 * component_sum / parent_sum if parent_sum else None
+                ),
+            }
+        )
+    feature = [row["image_feature_path_ms"] for row in rows]
     return {
         "measured_frames": len(rows),
         "tracking_step_mean_ms": statistics.mean(full),
         "tracking_step_median_ms": statistics.median(full),
         "tracking_step_p90_ms": percentile(full, 90),
-        "image_encoder_mean_ms": statistics.mean(encoder),
-        "image_encoder_median_ms": statistics.median(encoder),
+        "component_breakdown": component_table,
+        "component_percent_total": sum(
+            row["percent_of_tracking"] for row in component_table
+        ),
+        "nested_component_breakdown": nested_table,
         "image_feature_path_mean_ms": statistics.mean(feature),
         "image_feature_path_median_ms": statistics.median(feature),
-        "image_encoder_share_of_tracking": sum(encoder) / full_sum,
-        "image_feature_path_share_of_tracking": sum(feature) / full_sum,
-        "non_image_tracking_mean_ms": (full_sum - sum(encoder)) / len(rows),
+        "image_feature_path_percent_of_tracking": 100.0 * sum(feature) / full_sum,
+        "frames_with_negative_residual": sum(row["residual_ms"] < 0 for row in rows),
     }
 
 
@@ -190,7 +306,6 @@ def main() -> None:
     rows: list[dict[str, float]] = []
     try:
         for repetition in range(args.repetitions):
-            timer.repeat = repetition
             state = predictor.init_state(
                 str(args.image_root / video), offload_video_to_cpu=True
             )
@@ -204,37 +319,50 @@ def main() -> None:
                 )
             )
             seen_nonprompt = 0
+            expected_frame_idx = 0
             while True:
                 torch.cuda.synchronize(device)
                 started = time.perf_counter()
+                timer.active_key = (repetition, expected_frame_idx)
                 try:
                     frame_idx, object_ids, masks = next(iterator)
                 except StopIteration:
+                    timer.active_key = None
                     break
                 torch.cuda.synchronize(device)
+                timer.active_key = None
                 tracking_ms = (time.perf_counter() - started) * 1000.0
                 frame_idx = int(frame_idx)
+                if frame_idx != expected_frame_idx:
+                    raise RuntimeError(
+                        f"Expected sequential frame {expected_frame_idx}, got {frame_idx}"
+                    )
+                expected_frame_idx += 1
                 if frame_idx == 0:
                     continue
                 seen_nonprompt += 1
                 if seen_nonprompt <= args.warmup_frames:
                     continue
                 key = (repetition, frame_idx)
-                encoder_events = timer.encoder_events.get(key, [])
-                feature_events = timer.feature_events.get(key, [])
-                if not encoder_events or not feature_events:
-                    raise RuntimeError(f"Missing component timing events for frame {frame_idx}")
-                rows.append(
-                    {
-                        "repetition": repetition,
-                        "frame_idx": frame_idx,
-                        "object_count": len(object_ids),
-                        "tracking_step_ms": tracking_ms,
-                        "image_encoder_ms": timer.elapsed(encoder_events),
-                        "image_feature_path_ms": timer.elapsed(feature_events),
-                        "mask_outputs": int(masks.shape[0]),
-                    }
+                row = {
+                    "repetition": repetition,
+                    "frame_idx": frame_idx,
+                    "object_count": len(object_ids),
+                    "tracking_step_ms": tracking_ms,
+                    "mask_outputs": int(masks.shape[0]),
+                }
+                for component in (*ADDITIVE_COMPONENTS, *NESTED_COMPONENTS):
+                    row[f"{component}_ms"] = timer.elapsed(
+                        timer.events[component].get(key, [])
+                    )
+                feature_events = timer.events["image_feature_path"].get(key, [])
+                if not feature_events or row["image_encoder_ms"] == 0:
+                    raise RuntimeError(f"Missing essential timing events for frame {frame_idx}")
+                row["image_feature_path_ms"] = timer.elapsed(feature_events)
+                row["residual_ms"] = tracking_ms - sum(
+                    row[f"{component}_ms"] for component in ADDITIVE_COMPONENTS
                 )
+                rows.append(row)
                 if seen_nonprompt >= args.warmup_frames + args.measure_frames:
                     break
             predictor.reset_state(state)
@@ -251,6 +379,10 @@ def main() -> None:
             "single-stream synchronized tracking step; excludes model load, video init, "
             "prompt insertion, JPEG decode/preload, and PNG serialization"
         ),
+        "percentage_contract": (
+            "top-level semantic components plus framework_and_uninstrumented_residual "
+            "sum to 100%; nested components are drill-down measurements and are not additive"
+        ),
         "video": video,
         "video_frames": len(frames),
         "object_count": len(objects),
@@ -261,6 +393,8 @@ def main() -> None:
         "torch": torch.__version__,
         "cuda": torch.version.cuda,
         "checkpoint": str(args.checkpoint),
+        "available_instrumented_components": timer.available_components,
+        "missing_optional_components": timer.missing_components,
         **aggregate,
     }
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -268,6 +402,15 @@ def main() -> None:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+    with (args.out_dir / "component_summary.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=("component", "mean_ms", "median_ms", "percent_of_tracking"),
+        )
+        writer.writeheader()
+        writer.writerows(aggregate["component_breakdown"])
     (args.out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
