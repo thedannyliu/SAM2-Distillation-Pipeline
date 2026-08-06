@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--ann-every", type=int, default=4)
     parser.add_argument("--frame-sample-rate", type=int, default=1)
+    parser.add_argument(
+        "--require-first-frame-mask",
+        action="store_true",
+        help="Keep only objects with a non-empty prompt mask on annotation frame 0.",
+    )
     parser.add_argument("--use-auto", action="store_true", help="Use *_auto.json when *_manual.json is unavailable.")
     return parser.parse_args()
 
@@ -175,6 +180,7 @@ def write_masks(
     out_ann_root: Path,
     ann_every: int,
     max_objects: int,
+    require_first_frame_mask: bool = False,
 ) -> dict[str, Any]:
     payload = json.loads(ann_path.read_text(encoding="utf-8"))
     fallback_video_id = ann_path.name.removesuffix("_manual.json").removesuffix("_auto.json")
@@ -185,12 +191,25 @@ def write_masks(
         raise ValueError(f"{ann_path} missing list field 'masklet'")
 
     if masklet_ids:
-        selected_obj_indices = list(range(min(len(masklet_ids), max_objects if max_objects > 0 else len(masklet_ids))))
-        object_names = {idx: f"{int(masklet_ids[idx]):03d}" for idx in selected_obj_indices}
+        candidate_obj_indices = list(range(len(masklet_ids)))
+        object_names = {idx: f"{int(masklet_ids[idx]):03d}" for idx in candidate_obj_indices}
     else:
         first_nonempty = next((frame for frame in masklets if isinstance(frame, list)), [])
-        selected_obj_indices = list(range(min(len(first_nonempty), max_objects if max_objects > 0 else len(first_nonempty))))
-        object_names = {idx: f"{idx:03d}" for idx in selected_obj_indices}
+        candidate_obj_indices = list(range(len(first_nonempty)))
+        object_names = {idx: f"{idx:03d}" for idx in candidate_obj_indices}
+
+    selected_obj_indices = candidate_obj_indices
+    if require_first_frame_mask:
+        first_frame = masklets[0] if masklets and isinstance(masklets[0], list) else []
+        selected_obj_indices = [
+            obj_idx
+            for obj_idx in selected_obj_indices
+            if obj_idx < len(first_frame)
+            and (first_mask := decode_rle(first_frame[obj_idx])) is not None
+            and first_mask.any()
+        ]
+    if max_objects > 0:
+        selected_obj_indices = selected_obj_indices[:max_objects]
 
     written = 0
     for frame_idx_6fps, frame_rles in enumerate(masklets):
@@ -212,6 +231,12 @@ def write_masks(
         "video_id": video_id,
         "annotation": str(ann_path),
         "objects_selected": len(selected_obj_indices),
+        "objects_available": len(candidate_obj_indices),
+        "objects_excluded_without_first_frame_prompt": (
+            len(candidate_obj_indices) - len(selected_obj_indices)
+            if require_first_frame_mask and max_objects <= 0
+            else None
+        ),
         "masks_written": written,
     }
 
@@ -249,7 +274,13 @@ def main() -> None:
     kept = []
     for video_id in videos:
         ann_path = annotation_paths[video_id]
-        summary = write_masks(ann_path, out_ann_root, args.ann_every, args.max_objects_per_video)
+        summary = write_masks(
+            ann_path,
+            out_ann_root,
+            args.ann_every,
+            args.max_objects_per_video,
+            require_first_frame_mask=args.require_first_frame_mask,
+        )
         if summary["masks_written"] > 0:
             kept.append(video_id)
             summaries.append(summary)
@@ -268,6 +299,7 @@ def main() -> None:
         "video_list": str(args.out_root / "sav_train_benchmark.txt"),
         "videos": len(kept),
         "ann_every": args.ann_every,
+        "require_first_frame_mask": args.require_first_frame_mask,
         "video_summaries": summaries,
     }
     (args.out_root / "prepare_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

@@ -1,4 +1,4 @@
-# EventSAM2 COAST action-headroom screen v1
+# EventSAM2 COAST action-headroom screen v2
 
 ## Research question
 
@@ -37,6 +37,14 @@ The initial screen uses a deterministic 32-video subset of `selection`. Raw
 24 FPS frames are decoded from the MP4s for the screen. No 24 FPS copy of the
 full train release is created. Full `sav_val` uses its prepared
 `JPEGImages_24fps` and `Annotations_6fps` layout.
+
+The screen keeps only objects with a non-empty mask on frame 0. This preserves
+one standard multi-object SAM2 propagation and a meaningful frame-shared full
+latency. Objects first annotated later represent an external prompt event; a
+deployed controller must force REFRESH on that event, and they require a
+separate delayed-prompt ablation rather than silently switching the baseline
+to repeated per-object inference. Preparation records how many objects this
+contract excludes in `prepare_summary.json`.
 
 ## Measurements
 
@@ -101,10 +109,10 @@ gate, then creates the frozen split.
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
-mkdir -p /user-volume/log/eventsam2_coast_v1
+mkdir -p /user-volume/log/eventsam2_coast_v2
 
 scripts/company/73_run_eventsam2_coast_screen.sh screen 2>&1 | \
-  tee /user-volume/log/eventsam2_coast_v1/selection_screen32.log
+  tee /user-volume/log/eventsam2_coast_v2/selection_screen32.log
 echo "Selection screen status: ${PIPESTATUS[0]}"
 ```
 
@@ -112,7 +120,7 @@ Inspect:
 
 ```bash
 python -m json.tool \
-  /group-volume/danny-dataset/sam2_distill/runs/eventsam2_coast_v1/selection_screen32/coast_screen/summary.json
+  /group-volume/danny-dataset/sam2_distill/runs/eventsam2_coast_v2/selection_screen32/coast_screen/summary.json
 ```
 
 Only after the screen is complete should the same frozen action be evaluated
@@ -120,7 +128,7 @@ on full validation:
 
 ```bash
 scripts/company/73_run_eventsam2_coast_screen.sh val 2>&1 | \
-  tee /user-volume/log/eventsam2_coast_v1/sav_val.log
+  tee /user-volume/log/eventsam2_coast_v2/sav_val.log
 echo "Full sav_val status: ${PIPESTATUS[0]}"
 ```
 

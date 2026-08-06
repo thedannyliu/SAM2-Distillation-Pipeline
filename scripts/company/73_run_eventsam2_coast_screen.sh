@@ -10,7 +10,7 @@ MANIFEST="${MANIFEST:-${SAM2D_ROOT}/manifests/sav_train_6fps_full.parquet}"
 SAM2_ROOT="${SAM2_ROOT:-/user-volume/repo/facebookresearch-sam2}"
 SAM2_CHECKPOINT="${SAM2_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/sam2.1/sam2.1_hiera_large.pt}"
 SAM2_CONFIG="${SAM2_CONFIG:-configs/sam2.1/sam2.1_hiera_l.yaml}"
-RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/eventsam2_coast_v1}"
+RUN_ROOT="${RUN_ROOT:-${SAM2D_ROOT}/runs/eventsam2_coast_v2}"
 COHORT_ROOT="${COHORT_ROOT:-${SAM2D_ROOT}/cohorts/eventsam2_sav_v1}"
 SCREEN_DATA="${SCREEN_DATA:-${RUN_ROOT}/data/selection_screen32}"
 SCREEN_ROOT="${RUN_ROOT}/selection_screen32"
@@ -29,6 +29,7 @@ describe() {
   echo "Full SA-V validation: ${VAL_ROOT}"
   echo "COAST: 256px DIS optical flow + transient mask warp; no SAM2 encoder/read/decoder/write"
   echo "REFRESH: frozen SAM2.1-L full-trajectory mask reset"
+  echo "Object contract: standard multi-object inference over frame-0 prompted objects"
   echo "This is an optimistic action-headroom screen, not state-consistent deployment."
   echo "sav_test is intentionally not read by this script."
 }
@@ -71,6 +72,7 @@ prepare_screen() {
     --video-list-file "${COHORT_ROOT}/selection_screen.txt" \
     --max-videos 0 \
     --max-objects-per-video "${MAX_SCREEN_OBJECTS}" \
+    --require-first-frame-mask \
     --ann-every 4 \
     --frame-sample-rate 1
 }
@@ -153,7 +155,7 @@ analyze_screen() {
     "${SCREEN_DATA}" \
     "${SCREEN_DATA}/sav_train_benchmark.txt" \
     "${SCREEN_ROOT}" \
-    eventsam2-coast-selection-screen32-v1
+    eventsam2-coast-selection-screen32-v2
 }
 
 analyze_val() {
@@ -161,7 +163,7 @@ analyze_val() {
     "${SAV_ROOT}/sav_val" \
     "${SAV_ROOT}/sav_val/sav_val.txt" \
     "${VAL_ROOT}" \
-    eventsam2-coast-sav-val-v1
+    eventsam2-coast-sav-val-v2
 }
 
 STATUS=0

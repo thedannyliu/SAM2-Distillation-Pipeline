@@ -5,8 +5,10 @@ import cv2
 import numpy as np
 import pytest
 
+from tools.data import prepare_sav_train_shard_benchmark as sav_prepare
 from tools.data.prepare_sav_train_shard_benchmark import discover_assets
 from tools.data.split_sav_eventsam2 import assign_roles
+from tools.eval.run_edgetam_vos_dataset import validate_initial_object_masks
 from tools.eval.merge_vos_rank_summaries import main as merge_main
 from tools.experiments.run_eventsam2_coast_screen import main as coast_main, warp_mask
 
@@ -40,6 +42,51 @@ def test_discover_assets_supports_nested_shards_and_prefers_manual(tmp_path):
 
     assert set(videos) == {"sav_000001", "sav_001001"}
     assert annotations["sav_000001"] == manual
+
+
+def test_prepare_filter_keeps_only_first_frame_prompted_objects(tmp_path, monkeypatch):
+    annotation = tmp_path / "sav_000001_manual.json"
+    annotation.write_text(
+        json.dumps(
+            {
+                "video_id": "sav_000001",
+                "masklet_id": [0, 1],
+                "masklet": [[None, {"on": True}], [{"on": True}, {"on": True}]],
+            }
+        )
+    )
+    monkeypatch.setattr(
+        sav_prepare,
+        "decode_rle",
+        lambda rle: np.ones((8, 8), dtype=bool) if rle and rle.get("on") else None,
+    )
+
+    summary = sav_prepare.write_masks(
+        annotation,
+        tmp_path / "annotations",
+        ann_every=4,
+        max_objects=0,
+        require_first_frame_mask=True,
+    )
+
+    assert summary["objects_selected"] == 1
+    assert summary["objects_excluded_without_first_frame_prompt"] == 1
+    assert not (tmp_path / "annotations" / "sav_000001" / "000").exists()
+    assert (tmp_path / "annotations" / "sav_000001" / "001" / "00000.png").is_file()
+
+
+def test_multiobject_preflight_rejects_missing_first_prompt(tmp_path):
+    image_root = tmp_path / "images"
+    mask_root = tmp_path / "masks"
+    (image_root / "video").mkdir(parents=True)
+    (mask_root / "video" / "000").mkdir(parents=True)
+    (image_root / "video" / "00000.jpg").touch()
+
+    with pytest.raises(RuntimeError, match="first-frame prompt mask"):
+        validate_initial_object_masks(image_root, mask_root, ["video"])
+
+    (mask_root / "video" / "000" / "00000.png").touch()
+    validate_initial_object_masks(image_root, mask_root, ["video"])
 
 
 def test_backward_flow_warp_moves_mask_right():

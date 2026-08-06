@@ -65,6 +65,39 @@ def load_video_names(image_root: Path, video_list_file: Path | None) -> list[str
     return sorted(path.name for path in image_root.iterdir() if path.is_dir())
 
 
+def validate_initial_object_masks(
+    image_root: Path, input_mask_root: Path, video_names: list[str]
+) -> None:
+    failures = []
+    for video_name in video_names:
+        frames = sorted(
+            (
+                path
+                for path in (image_root / video_name).iterdir()
+                if path.suffix.lower() in {".jpg", ".jpeg"}
+            ),
+            key=lambda path: int(path.stem),
+        )
+        object_root = input_mask_root / video_name
+        if not object_root.is_dir():
+            failures.append(f"{video_name}: missing object-mask directory")
+            continue
+        objects = sorted(path for path in object_root.iterdir() if path.is_dir())
+        if not frames or not objects:
+            failures.append(f"{video_name}: frames={len(frames)} objects={len(objects)}")
+            continue
+        missing = [path.name for path in objects if not (path / f"{frames[0].stem}.png").is_file()]
+        if missing:
+            failures.append(
+                f"{video_name}: first frame {frames[0].stem} missing objects {missing[:10]}"
+            )
+    if failures:
+        raise RuntimeError(
+            "Standard multi-object VOS requires every object to have a first-frame "
+            "prompt mask; examples: " + "; ".join(failures[:10])
+        )
+
+
 def main() -> None:
     args = parse_args()
     for path in (args.edgetam_root, args.checkpoint, args.image_root, args.input_mask_root):
@@ -87,6 +120,14 @@ def main() -> None:
     if world_size > 1 and args.device == "cuda":
         device = f"cuda:{local_rank}"
         torch.cuda.set_device(local_rank)
+    all_video_names = load_video_names(args.image_root, args.video_list_file)
+    if not all_video_names:
+        raise RuntimeError(f"No videos selected under {args.image_root}")
+    video_names = all_video_names[rank::world_size]
+    if args.per_obj_png_file and not args.track_object_appearing_later_in_video:
+        validate_initial_object_masks(
+            args.image_root, args.input_mask_root, video_names
+        )
     predictor = build_sam2_video_predictor(
         config_file=args.sam2_cfg,
         ckpt_path=str(args.checkpoint),
@@ -115,11 +156,6 @@ def main() -> None:
             yield output
 
     predictor.propagate_in_video = timed_propagate
-    all_video_names = load_video_names(args.image_root, args.video_list_file)
-    if not all_video_names:
-        raise RuntimeError(f"No videos selected under {args.image_root}")
-    video_names = all_video_names[rank::world_size]
-
     args.out_dir.mkdir(parents=True, exist_ok=True)
     inference_fn = (
         vos_module.vos_separate_inference_per_object
