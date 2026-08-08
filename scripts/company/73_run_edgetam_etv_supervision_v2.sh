@@ -37,11 +37,32 @@ validate_selection() {
 
 runtime_preflight() {
   python - <<'PY'
-try:
-    import hydra
-    import omegaconf
-except ModuleNotFoundError as error:
-    raise SystemExit(f"missing Python module: {error.name}") from error
+import importlib
+
+modules = (
+    "hydra",
+    "omegaconf",
+    "iopath",
+    "fvcore",
+    "tensordict",
+    "tensorboard",
+    "pandas",
+    "pyarrow",
+    "skimage",
+    "timm",
+    "wandb",
+)
+missing = []
+for module in modules:
+    try:
+        importlib.import_module(module)
+    except ModuleNotFoundError as error:
+        missing.append(error.name)
+if missing:
+    raise SystemExit("missing Python modules: " + ", ".join(sorted(set(missing))))
+
+import hydra
+import omegaconf
 
 print(
     "Python runtime: PASS "
@@ -51,8 +72,8 @@ print(
 PY
   local status="$?"
   if [[ "${status}" -ne 0 ]]; then
-    echo "[ERROR] Install the missing config runtime in this container:" >&2
-    echo "  python -m pip install --user 'hydra-core==1.3.2'" >&2
+    echo "[ERROR] Install the EdgeTAM runtime in this container:" >&2
+    echo "  python -m pip install --user -r requirements-edgetam.txt" >&2
   fi
   return "${status}"
 }

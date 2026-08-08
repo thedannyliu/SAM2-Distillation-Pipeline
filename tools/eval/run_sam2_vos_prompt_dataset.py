@@ -232,6 +232,9 @@ def build_edgetam_trainer_predictor(
     from hydra.utils import instantiate
     from omegaconf import OmegaConf
     from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
+    from sam2_distill.edgetam.config_utils import (
+        strip_teacher_only_model_config,
+    )
 
     patch_edgetam_perceiver_view()
     cfg = OmegaConf.load(args.sam2_cfg)
@@ -263,16 +266,10 @@ def build_edgetam_trainer_predictor(
         "num_init_cond_frames_for_eval",
         "forward_backbone_per_frame_for_eval",
         "expose_obj_ptr_for_distillation",
-        "freeze_teacher",
-        "synthetic_teacher",
-        "synthetic_teacher_offset",
-        "teacher_checkpoint",
-        "teacher_feature_cache_path",
-        "teacher_model",
-        "teacher_model_config",
     ):
         if key in model_cfg:
             del model_cfg[key]
+    strip_teacher_only_model_config(model_cfg)
     predictor = instantiate(model_cfg, _recursive_=True)
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state_dict = extract_state_dict(checkpoint)

@@ -124,22 +124,15 @@ def load_edgetam_predictor(args: argparse.Namespace, device: torch.device):
     from omegaconf import OmegaConf
     from sam2.sam2_image_predictor import SAM2ImagePredictor
     from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
+    from sam2_distill.edgetam.config_utils import (
+        strip_teacher_only_model_config,
+    )
 
     patch_edgetam_perceiver_view()
     cfg = OmegaConf.load(args.config)
     model_cfg = cfg.model if "model" in cfg else cfg.trainer.model
     model_cfg._target_ = "sam2_distill.edgetam.train_model.EdgeTAMTrain"
-    for key in (
-        "freeze_teacher",
-        "synthetic_teacher",
-        "synthetic_teacher_offset",
-        "teacher_checkpoint",
-        "teacher_feature_cache_path",
-        "teacher_model",
-        "teacher_model_config",
-    ):
-        if key in model_cfg:
-            del model_cfg[key]
+    strip_teacher_only_model_config(model_cfg)
     model = instantiate(model_cfg, _recursive_=True)
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)

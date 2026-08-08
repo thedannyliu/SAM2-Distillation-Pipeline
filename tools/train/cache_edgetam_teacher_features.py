@@ -91,6 +91,10 @@ def configure_sa1b_image_mode(cfg: Any, args: argparse.Namespace) -> None:
 
 
 def configure_teacher_cfg(cfg: Any, args: argparse.Namespace) -> Any:
+    from sam2_distill.edgetam.config_utils import (
+        strip_teacher_only_model_config,
+    )
+
     cfg.scratch.num_epochs = 1
     cfg.scratch.phases_per_epoch = args.max_batches
     cfg.scratch.num_train_workers = args.num_workers
@@ -103,9 +107,7 @@ def configure_teacher_cfg(cfg: Any, args: argparse.Namespace) -> Any:
     cfg.trainer.data.train.pin_memory = True
     cfg.trainer.data.train.drop_last = False
     cfg.trainer.model._target_ = "sam2_distill.edgetam.train_model.EdgeTAMTrain"
-    for key in ("teacher_model", "teacher_feature_cache_path", "synthetic_teacher", "synthetic_teacher_offset"):
-        if key in cfg.trainer.model:
-            del cfg.trainer.model[key]
+    strip_teacher_only_model_config(cfg.trainer.model)
     cfg.trainer.model.num_init_cond_frames_for_train = 1
     cfg.trainer.model.rand_init_cond_frames_for_train = False
     cfg.trainer.model.num_frames_to_correct_for_train = 1

@@ -101,11 +101,23 @@ each affected container and rerun the same variant command; resumable paths
 and W&B IDs remain unchanged. The driver now checks this dependency before
 launching `torchrun`.
 
+The first ETD2 mini-validation attempt exposed a separate config-conversion
+bug after its 500-step checkpoint completed: the evaluator changed the model
+target from `EdgeTAMTrainWithTeacher` to its inference class but retained the
+training-only `pair_teacher_student_prompts` argument. Inference config
+sanitization now removes all teacher-wrapper arguments. ETD2 training remains
+valid and only its mini-validation must be resumed. A later ETD3 smoke found
+that its fresh container also lacked `iopath`; the preflight now checks the
+complete EdgeTAM runtime dependency set and directs affected containers to
+`requirements-edgetam.txt` before launching DDP.
+
 RandomAffine warnings are expected when a sampled affine would erase a
 first-frame target. Upstream returns the unmodified datapoint for that affine
 attempt and continues the remaining transforms. Keep this policy identical
 for all four rows and compute the warning count from each terminal log after
 500 steps rather than changing augmentation mid-screen.
+ETD0 recorded 115 warnings over 12,000 formal samples (approximately 0.958%),
+which is too small to warrant changing the augmentation for this screen.
 
 | Variant | Updates | Prompt match | Grad mean/max | Clip fraction | Mini-val J&F | Status |
 |---|---:|---:|---:|---:|---:|---|
