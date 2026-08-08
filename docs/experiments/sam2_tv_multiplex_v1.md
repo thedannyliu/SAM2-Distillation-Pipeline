@@ -230,35 +230,40 @@ No final promotion decision is recorded until full val/test completes.
 Stage-level validation is retained as diagnostic evidence, but training loss
 or a small screen alone is not sufficient for promotion.
 
-## Interim result: 2026-08-06
+## Final curriculum result: 2026-08-07/08 company artifact audit
 
 The actual company run uses the isolated root
 `/group-volume/danny-dataset/sam2_distill/runs/sam2_tv_multiplex_sam31_v2`.
-SMX1 completed training and full validation, SMX2 is actively training at
-epoch five of eight, and SMX3 has not started because it depends on SMX2.
+All three training stages and their full validation passes completed. SMX3
+also completed the planned full test. The isolated N=1/2/4/8 latency benchmark
+is the only planned terminal measurement that remains pending.
 
-| Stage | State | Epoch/update | Val mIoU | Val AP | Val J&F | J | F |
-|---|---|---:|---:|---:|---:|---:|---:|
-| SMX1 | full val complete | 2 / 25,170 | 0.8381 | 0.7104 | 39.6 | 37.0 | 42.2 |
-| SMX2 | active training | 5 / 62,925 | - | - | - | - | - |
-| SMX3 | not started | - | - | - | - | - | - |
+| Stage | State | Epoch/update | Val mIoU | Val AP | Val J&F | J | F | J&F retention |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| SMX1 | train + full val | 2 / 25,170 | 0.8381 | 0.7104 | 39.6 | 37.0 | 42.2 | 54.7% |
+| SMX2 | train + full val | 8 / 100,680 | 0.8378 | 0.7093 | 38.7 | 36.5 | 41.0 | 53.5% |
+| SMX3 | train + full val | 2 / 25,170 | 0.8380 | 0.7093 | 39.6 | 37.4 | 41.8 | 54.7% |
 
-SMX1 retains approximately 99.7% of the 0.8403 image-mIoU reference and 99.1%
-of the 0.7166 AP reference, but only 54.7% of the 72.4 val J&F reference. This
-again localizes the failure to recurrent temporal state rather than the image
-encoder or prompted single-frame decoder. The stage is 29.18 J&F points below
-the 68.78 threshold required for 95% retention.
+The validation reference is the selected TV21 checkpoint at 0.8371 mIoU,
+0.7127 AP, and 72.4 J&F. SMX3 therefore preserves the single-frame image path
+but loses 32.8 J&F points. It is 29.2 points below the 68.8 J&F promotion
+threshold. This localizes the failure to recurrent temporal state rather than
+the image encoder or prompted single-frame decoder.
 
-This is a serious bootstrap failure but not yet the final curriculum result.
-SMX1 deliberately trains only two T4 epochs, while SMX2 supplies the main eight
-T8 epochs. The earlier EdgeTAM curriculum showed that joint T8 adaptation can
-recover substantial J&F after a poor bootstrap, so the active SMX2 run remains
-informative and should complete. SMX2 full validation is the decisive checkpoint:
-if it does not recover a large fraction of the 29-point deficit, SMX3's two T16
-refinement epochs are unlikely to make the model promotable.
+The main eight-epoch T8 stage decreases J&F by 0.9 instead of repairing the
+bootstrap. T16 recovers that 0.9 but finishes exactly at the original SMX1
+J&F. More training at the same objective and representation is therefore not
+supported as a recovery strategy.
 
-No SMX test or isolated N=1/2/4/8 latency result exists yet. Test remains
-correctly held out until SMX3 completes.
+| Final split | mIoU | AP | J&F | J | F | Reference J&F | Retention |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `sav_test` | 0.8371 | 0.7165 | 43.4 | 41.0 | 45.7 | 74.7 | 58.1% |
+
+The quality hypothesis is rejected. The pending isolated latency run may still
+quantify the systems value of one temporal read/decoder call per bucket, but
+it cannot promote this checkpoint. Any follow-up must change how private
+object state survives the shared spatial memory/read; another epoch sweep of
+this same multiplex representation is not justified.
 
 ## Company command
 

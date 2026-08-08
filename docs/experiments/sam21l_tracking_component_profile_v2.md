@@ -49,13 +49,30 @@ echo "SAM2.1-L profile status: ${PIPESTATUS[0]}"
 
 | Component | Mean ms | Tracking share | Additive? |
 |---|---:|---:|---|
-| image encoder | pending | pending | yes |
-| prompt encoder | pending | pending | yes |
-| memory attention | pending | pending | yes |
-| mask decoder | pending | pending | yes |
-| memory encoder | pending | pending | yes |
-| object-pointer projections | pending | pending | yes |
-| framework/uninstrumented residual | pending | pending | yes |
+| image encoder | 25.941 | 50.57% | yes |
+| prompt encoder | 0.105 | 0.20% | yes |
+| memory attention | 20.487 | 39.94% | yes |
+| mask decoder | 1.867 | 3.64% | yes |
+| memory encoder | 0.772 | 1.50% | yes |
+| object-pointer projections | 0.030 | 0.06% | yes |
+| framework/uninstrumented residual | 2.091 | 4.08% | yes |
+
+The official SAM2.1-L measurement completed on one H100 using video
+`sav_000262`, one object, 16 warm-up frames, and 384 measured frames. Mean
+tracking latency is 51.293 ms, median is 51.223 ms, and P90 is 51.793 ms.
+
+The image encoder and memory attention together account for 90.51% of the
+single-object model tracking step. Within the image encoder, the trunk is
+25.523 ms (98.39% of encoder time) and the neck is 0.385 ms. Within the mask
+decoder, the transformer is 1.535 ms (82.22% of decoder time). Within the
+memory encoder, the mask downsampler and fuser are 0.326 and 0.378 ms.
+
+This establishes two primary bottlenecks for event-triggered work: expensive
+current-frame observation and temporal retrieval. Optimizing only the mask
+decoder or memory write targets 5.14% of latency, whereas an action that skips
+both the image encoder and memory attention targets 90.51%. These percentages
+are for one object and model-only propagation; multi-object scaling and Thor
+end-to-end latency require separate measurements.
 
 Machine-readable output:
 

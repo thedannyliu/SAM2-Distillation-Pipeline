@@ -294,6 +294,36 @@ It reuses the same W&B ID and directories on resume. The image gate may fall
 back to the original selected TV21 checkpoint; T4/T8/T16 gates stop downstream
 training when they fail.
 
+### Formal outcome: 2026-08-07 artifact audit
+
+The dependency gates stopped the formal run after T4, as designed.
+
+| Stage | State | Epoch / updates | Val mIoU | Val AP | Val J&F | J | F | Gate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| ETV1 image re-anchor | train + full val | 1 / 393 | 0.8403 | 0.7166 | 21.2 | 20.8 | 21.6 | pass, image-only non-blocking gate |
+| ETV2 T4 bootstrap | train + full val | 2 / 4,194 | 0.8403 | 0.7172 | 47.3 | 44.5 | 50.1 | **fail**, J&F below 55 |
+| ETV3 T8 joint | not started | - | - | - | - | - | - | blocked by T4 gate |
+| ETV4 T16 refine | not started | - | - | - | - | - | - | blocked by dependencies |
+
+The reference checkpoint is 0.8371 mIoU, 0.7127 AP, and 72.4 J&F. ETV1
+improves the two single-frame metrics but loses 51.2 J&F points, confirming
+that image re-anchoring does not repair the replaced temporal interface. ETV2
+then recovers 26.1 J&F points without damaging image quality, which proves
+that task, memory-output, and propagated-logit supervision can partially adapt the
+EdgeTAM temporal path. Its final 47.3 J&F nevertheless remains 25.1 points
+below the reference and 7.7 points below the continuation gate.
+
+Only the absolute-J&F check failed at T4; the image mIoU/AP guardrails passed.
+This is a temporal compatibility failure, not an encoder or single-frame mask
+failure. No formal test result exists because test access correctly depended
+on ETV4 passing validation. The bounded smoke checkpoints for ETV3/ETV4 prove
+only that those graphs execute; they are not trained formal candidates.
+
+The first TV21 EdgeTAM recipe is therefore stopped. Running T8/T16 by
+overriding the gate would invalidate the pre-registered decision rule. A
+follow-up needs a different temporal recovery mechanism or initialization,
+not merely the unfinished downstream schedule.
+
 ## Phase 1: online SA-V image re-anchoring
 
 ### Hypothesis

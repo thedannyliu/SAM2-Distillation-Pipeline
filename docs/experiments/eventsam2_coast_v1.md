@@ -139,8 +139,19 @@ learned and clip-calibrated policy.
 
 | Split | Full J&F | Full model ms | COAST ms | H8 safe | H16 safe | p10 safe | Best fixed drop/speed | Decision |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
-| selection-32 | pending | pending | pending | pending | pending | pending | pending | pending |
-| full `sav_val` | pending | pending | pending | pending | pending | pending | pending | pending |
+| selection-32 (29 valid) | 91.7 | 45.595 | 27.727 | 2.94% | 1.86% | 0% | 1.37 points / 1.24x at interval 2 | reject action |
+| full `sav_val` | not run | - | - | - | - | - | - | correctly stopped after screen |
+
+The COAST implementation consumes 60.81% of full SAM2.1-L propagation, far
+above the 20% gate. Safe-anchor coverage is 5.57%, 2.94%, and 1.86% at H4,
+H8, and H16; every horizon has zero 10th-percentile video coverage. Fixed
+intervals trade 1.37/5.19/10.21/16.89 J&F points for only
+1.24x/1.41x/1.52x/1.58x estimated speedup at intervals 2/4/8/16.
+
+This rejects the DIS-flow plus recurrent-mask-warp action and makes a full
+`sav_val` run unnecessary. It does not reject the broader learned COAST idea;
+the next action must be both much cheaper and qualitatively different before
+another gate experiment is warranted.
 
 Primary machine-readable outputs are `summary.json`,
 `fixed_policy_object_metrics.parquet`, `fixed_policy_system_metrics.parquet`,
