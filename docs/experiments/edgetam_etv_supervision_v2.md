@@ -121,7 +121,21 @@ which is too small to warrant changing the augmentation for this screen.
 
 | Variant | Updates | Prompt match | Grad mean/max | Clip fraction | Mini-val J&F | Status |
 |---|---:|---:|---:|---:|---:|---|
-| ETD0 | pending | n/a | pending | pending | pending | not run |
-| ETD1 | pending | pending | pending | pending | pending | not run |
-| ETD2 | pending | pending | pending | pending | pending | not run |
-| ETD3 | pending | pending | pending | pending | pending | not run |
+| ETD0 | 500 | n/a | 3.7854 / 19.1961 | 100% | 23.0 | gate fail |
+| ETD1 | 500 | exact assertion passed | 4.4202 / 19.3866 | 100% | 23.9 | gate fail |
+| ETD2 | 500 | exact assertion passed | 4.4025 / 68.4295 | 100% | 24.1 | gate fail |
+| ETD3 | pending | pending | pending | pending | pending | runtime dependencies repaired; rerun pending |
+
+The fixed M0 reference on the same 32-video gate is 71.6 J&F, 0.8528
+image mIoU, and 0.7567 image AP. ETD0--2 retain image quality (0.8514--0.8515
+mIoU and 0.7555--0.7558 AP) but reach only 23.0--24.1 video J&F. This
+isolates the failure to the temporal path rather than image checkpoint
+loading. Propagated logit KD gives only +0.9 J&F with Hiera-L and +1.1 with
+the same-interface M0 teacher; the +0.2 difference between those teachers is
+too small to support cross-backbone supervision as the primary cause.
+
+All 500 updates in every completed row exceed the configured 0.1 gradient
+clip threshold. Mean pre-clip norms are 3.79--4.42 and ETD2 peaks at 68.43.
+This establishes persistent clipping as the highest-priority optimization
+diagnostic, but does not yet prove causality. Complete ETD3 before changing
+the clip threshold or loss scale so the memory-KD comparison remains valid.
