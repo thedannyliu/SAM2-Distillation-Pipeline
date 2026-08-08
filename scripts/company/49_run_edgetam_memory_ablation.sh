@@ -84,6 +84,10 @@ VARIANTS=(
   ETV2_t4_bootstrap_2ep
   ETV3_t8_joint_3ep
   ETV4_t16_refine_1ep
+  ETD0_task_only_500
+  ETD1_hiera_l_logits_500
+  ETD2_m0_logits_500
+  ETD3_m0_memlogits_500
   SMX1_slot8_t4_bootstrap_2ep
   SMX2_slot8_t8_fullsav_8ep
   SMX3_slot8_t16_refine_2ep
@@ -132,6 +136,7 @@ SOURCE_STAGE1_CHECKPOINT="${SOURCE_STAGE1_CHECKPOINT:-${SAM2D_ROOT}/runs/sav_sta
 BEST_TV21_RUN="${BEST_TV21_RUN:-${SAM2D_ROOT}/runs/tinyvit_max_jf_v1/tv21/main}"
 BEST_TV21_CHECKPOINT="${BEST_TV21_CHECKPOINT:-${BEST_TV21_RUN}/checkpoints/best.pt}"
 BEST_TV21_CONFIG="${BEST_TV21_CONFIG:-${BEST_TV21_RUN}/resolved_config.yaml}"
+ETV1_FORMAL_CHECKPOINT="${ETV1_FORMAL_CHECKPOINT:-${SAM2D_ROOT}/runs/edgetam_tv21_sam21l_v1/formal/ETV1_image_reanchor_1ep/main/checkpoints/last.pt}"
 BEST_TV11_RUN="${BEST_TV11_RUN:-${SAM2D_ROOT}/runs/tinyvit_max_jf_v1/tv11/main}"
 BEST_TV11_CHECKPOINT="${BEST_TV11_CHECKPOINT:-${BEST_TV11_RUN}/checkpoints/best.pt}"
 TV11_TINYVIT_CHECKPOINT="${TV11_TINYVIT_CHECKPOINT:-${SAM2D_ROOT}/checkpoints/tinyvit/tiny_vit_11m_224.dist_in22k_ft_in1k.safetensors}"
@@ -148,7 +153,10 @@ BEHAVIOR_ROOT="${EDGETAM_BEHAVIOR_ROOT:-${SAM2D_ROOT}/runs/edgetam_tinyvit21_beh
 E1_CHECKPOINT="${E1_CHECKPOINT:-${BEHAVIOR_ROOT}/E1_a02_official_nonimage/main/checkpoints/last.pt}"
 OFFICIAL_EDGETAM_CONFIG="${OFFICIAL_EDGETAM_CONFIG:-${EDGETAM_ROOT}/sam2/configs/edgetam.yaml}"
 HARDNESS_ROOT="${MASK_HARDNESS_ROOT:-${SAM2D_ROOT}/runs/sam2_mask_finetune_ablation_v2/hardness_base_t4_box}"
-if [[ "${VARIANT}" == ETV* ]]; then
+if [[ "${VARIANT}" == ETD* ]]; then
+  DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/edgetam_etv_supervision_v2"
+  DEFAULT_WANDB_PROJECT="sam2-edgetam-etv-supervision-v2"
+elif [[ "${VARIANT}" == ETV* ]]; then
   DEFAULT_ABLATION_ROOT="${SAM2D_ROOT}/runs/edgetam_tv21_sam21l_v1/formal"
   DEFAULT_WANDB_PROJECT="sam2-edgetam-tv21-sam21l-v1"
 elif [[ "${VARIANT}" == SMX* ]]; then
@@ -317,7 +325,9 @@ configure_full_data_variant() {
 
 configure_variant() {
   local local_source=""
-  if [[ "$1" == ETV* ]]; then
+  if [[ "$1" == ETD* ]]; then
+    export TASK_EXPERIMENT_SUITE=edgetam_etv_supervision_v2
+  elif [[ "$1" == ETV* ]]; then
     export TASK_EXPERIMENT_SUITE=edgetam_tv21_sam21l_v1
   elif [[ "$1" == SMX* ]]; then
     export TASK_EXPERIMENT_SUITE=sam2_tv_multiplex_v1
@@ -391,6 +401,10 @@ configure_variant() {
   export TASK_LAMBDA_TASK=1
   export TASK_LAMBDA_MASK_LOGITS=0
   export TASK_LAMBDA_OBJ_PTR=0
+  export TASK_NORMALIZE_TASK_BY_NUM_FRAMES=0
+  export TASK_TEMPORAL_KD_PROPAGATED_ONLY=0
+  export TASK_PAIR_TEACHER_STUDENT_PROMPTS=0
+  export TASK_GRADIENT_DIAGNOSTICS=0
   export TASK_VIDEO_IDS_FILE=""
   export TASK_LOSS_OUTLIER_THRESHOLD=20
   export TASK_NUM_GLOBAL_LATENTS=0
@@ -413,6 +427,40 @@ configure_variant() {
   export TASK_EDGETAM_VIDEO_AUGMENTATION=0
 
   case "$1" in
+    ETD*)
+      export BASE_CHECKPOINT="${ETV1_FORMAL_CHECKPOINT}"
+      export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
+      export TASK_TRAINABLE_MODE=memory_perceiver_full
+      export TASK_MAX_VIDEOS=12000
+      export TASK_NUM_FRAMES=4
+      export TASK_EPOCHS=1
+      export TASK_TRAIN_BATCH_SIZE=6
+      export TASK_MAX_NUM_OBJECTS=3
+      export TASK_MEMORY_TOPOLOGY=edgetam_hybrid2
+      export TASK_MEMORY_LAYERS=2
+      export TASK_MEMORY_INITIALIZER=official_temporal
+      export TASK_MEMORY_LAYOUT=official
+      export TASK_NUM_GLOBAL_LATENTS=256
+      export TASK_NUM_2D_LATENTS=256
+      export TASK_MEMORY_LR=2.8125e-5
+      export TASK_MEMORY_LR_END=2.8125e-6
+      export TASK_MEMORY_AUX_LR=2.8125e-5
+      export TASK_MEMORY_AUX_LR_END=2.8125e-6
+      export TASK_PERCEIVER_LR=2.8125e-5
+      export TASK_PERCEIVER_LR_END=2.8125e-6
+      export TASK_LR_WARMUP_FRACTION=0.1
+      export TASK_PROB_USE_POINT=1.0
+      export TASK_PROB_USE_BOX=1.0
+      export TASK_PROB_SAMPLE_GT=0.0
+      export TASK_NUM_FRAMES_TO_CORRECT=1
+      export TASK_RANDOM_CORRECTION_FRAMES=false
+      export TASK_NUM_CORRECTION_POINTS=0
+      export TASK_LAMBDA_TASK=1
+      export TASK_NORMALIZE_TASK_BY_NUM_FRAMES=1
+      export TASK_GRADIENT_DIAGNOSTICS=1
+      export TASK_WEIGHT_DECAY=0.1
+      export TASK_EDGETAM_VIDEO_AUGMENTATION=1
+      ;;
     ETV*)
       export BASE_CHECKPOINT="${BEST_TV21_CHECKPOINT}"
       export PREVIOUS_TASK_CHECKPOINT="${BASE_CHECKPOINT}"
@@ -559,6 +607,30 @@ configure_variant() {
   esac
 
   case "$1" in
+    ETD0_task_only_500)
+      ;;
+    ETD1_hiera_l_logits_500)
+      export TASK_TEACHER_MODEL_CONFIG="${SAM2_MODEL_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${SAM2_CHECKPOINT}"
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_TEMPORAL_KD_PROPAGATED_ONLY=1
+      export TASK_PAIR_TEACHER_STUDENT_PROMPTS=1
+      ;;
+    ETD2_m0_logits_500)
+      export TASK_TEACHER_MODEL_CONFIG="${M0_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${M0_CHECKPOINT}"
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_TEMPORAL_KD_PROPAGATED_ONLY=1
+      export TASK_PAIR_TEACHER_STUDENT_PROMPTS=1
+      ;;
+    ETD3_m0_memlogits_500)
+      export TASK_TEACHER_MODEL_CONFIG="${M0_CONFIG}"
+      export TASK_TEACHER_CHECKPOINT="${M0_CHECKPOINT}"
+      export TASK_LAMBDA_MEM=1
+      export TASK_LAMBDA_MASK_LOGITS=1
+      export TASK_TEMPORAL_KD_PROPAGATED_ONLY=1
+      export TASK_PAIR_TEACHER_STUDENT_PROMPTS=1
+      ;;
     ETV1_image_reanchor_1ep)
       export TASK_TRAINABLE_MODE=image_encoder_mask_decoder
       export TASK_NUM_FRAMES=1
@@ -1793,6 +1865,7 @@ case "${ACTION}" in
       echo "Initializer/layout: ${TASK_MEMORY_INITIALIZER}/${TASK_MEMORY_LAYOUT}"
       echo "Trainable mode: ${TASK_TRAINABLE_MODE}"
       echo "Epochs/max objects: ${TASK_EPOCHS}/${TASK_MAX_NUM_OBJECTS}"
+      echo "Max videos/planned updates: ${TASK_MAX_VIDEOS}/$((TASK_MAX_VIDEOS / (TASK_TRAIN_BATCH_SIZE * NPROC)))"
       echo "T/global batch: ${TASK_NUM_FRAMES}/$((TASK_TRAIN_BATCH_SIZE * NPROC))"
       echo "LR encoder/decoder: ${TASK_ENCODER_LR}/${TASK_MASK_DECODER_LR}"
       echo "LR memory/aux/perceiver: ${TASK_MEMORY_LR}/${TASK_MEMORY_AUX_LR}/${TASK_PERCEIVER_LR}"
@@ -1800,6 +1873,8 @@ case "${ACTION}" in
       echo "Prompt point/box/GT: ${TASK_PROB_USE_POINT}/${TASK_PROB_USE_BOX}/${TASK_PROB_SAMPLE_GT}"
       echo "Correction frames/points: ${TASK_NUM_FRAMES_TO_CORRECT}/${TASK_NUM_CORRECTION_POINTS}"
       echo "Loss task/image/memory/logits/obj: ${TASK_LAMBDA_TASK}/${TASK_LAMBDA_IMG}/${TASK_LAMBDA_MEM}/${TASK_LAMBDA_MASK_LOGITS}/${TASK_LAMBDA_OBJ_PTR}"
+      echo "Task normalization/propagated KD: ${TASK_NORMALIZE_TASK_BY_NUM_FRAMES}/${TASK_TEMPORAL_KD_PROPAGATED_ONLY}"
+      echo "Paired prompts/gradient diagnostics: ${TASK_PAIR_TEACHER_STUDENT_PROMPTS}/${TASK_GRADIENT_DIAGNOSTICS}"
       echo "Object residual spatial/pointer rank: ${TASK_OBJECT_RESIDUAL_RANK}/${TASK_OBJECT_POINTER_RESIDUAL_RANK}"
       echo "Object residual temporal pool/decay: ${TASK_OBJECT_RESIDUAL_TEMPORAL_POOL}/${TASK_OBJECT_RESIDUAL_TEMPORAL_DECAY}"
       echo "Object slot mode/count/min: ${TASK_OBJECT_SLOT_MODE}/${TASK_OBJECT_SLOT_COUNT}/${TASK_OBJECT_SLOT_MIN_OBJECTS}"

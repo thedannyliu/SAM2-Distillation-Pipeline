@@ -99,6 +99,8 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
         lambda_mem: float = 1.0,
         lambda_mask_logits: float = 0.0,
         lambda_obj_ptr: float = 0.0,
+        normalize_task_by_num_frames: bool = False,
+        temporal_kd_on_propagated_frames_only: bool = False,
         core_loss_key: str = "core_loss",
     ) -> None:
         super().__init__()
@@ -111,6 +113,10 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
             lambda_obj_ptr=lambda_obj_ptr,
             core_loss_key=core_loss_key,
         )
+        self.normalize_task_by_num_frames = normalize_task_by_num_frames
+        self.temporal_kd_on_propagated_frames_only = (
+            temporal_kd_on_propagated_frames_only
+        )
 
     def forward(
         self,
@@ -118,7 +124,16 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
         targets_batch: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         losses = self.task_loss(outs_batch, targets_batch)
-        total = self.weights.lambda_task * losses[self.weights.core_loss_key]
+        task_core = losses[self.weights.core_loss_key]
+        if self.normalize_task_by_num_frames:
+            if not outs_batch:
+                raise ValueError(
+                    "cannot normalize task loss for an empty output batch"
+                )
+            losses["loss_task_raw"] = task_core.detach()
+            task_core = task_core / len(outs_batch)
+            losses["loss_task_normalized"] = task_core
+        total = self.weights.lambda_task * task_core
 
         if self.weights.lambda_img:
             img_terms = self._collect_terms(
@@ -140,6 +155,7 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
                 outs_batch,
                 "distill_F_M",
                 "teacher_distill_F_M",
+                propagated_only=self.temporal_kd_on_propagated_frames_only,
             )
             if not mem_terms:
                 raise KeyError(
@@ -156,6 +172,7 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
                 "pred_masks",
                 "teacher_pred_masks",
                 loss_fn=mask_logit_distillation_loss,
+                propagated_only=self.temporal_kd_on_propagated_frames_only,
             )
             if not logit_terms:
                 raise KeyError(
@@ -172,6 +189,7 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
                 "obj_ptr",
                 "teacher_obj_ptr",
                 loss_fn=cosine_feature_loss,
+                propagated_only=self.temporal_kd_on_propagated_frames_only,
             )
             if not obj_ptr_terms:
                 raise KeyError(
@@ -183,6 +201,13 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
             total = total + self.weights.lambda_obj_ptr * loss_obj_ptr
 
         losses[self.weights.core_loss_key] = total
+        prompt_matches = [
+            float(out["teacher_prompt_match"])
+            for out in outs_batch
+            if "teacher_prompt_match" in out
+        ]
+        if prompt_matches:
+            losses["prompt_match_rate"] = total.new_tensor(prompt_matches).mean()
         return losses
 
     @staticmethod
@@ -191,9 +216,18 @@ class EdgeTAMMultiStepDistillationLoss(nn.Module):
         student_key: str,
         teacher_key: str,
         loss_fn=mse_feature_loss,
+        propagated_only: bool = False,
     ) -> list[torch.Tensor]:
         terms = []
         for out in outs_batch:
+            if propagated_only:
+                if "distill_is_init_cond_frame" not in out:
+                    raise KeyError(
+                        "propagated-only KD requires "
+                        "distill_is_init_cond_frame in every output"
+                    )
+                if out["distill_is_init_cond_frame"]:
+                    continue
             if student_key not in out or teacher_key not in out:
                 continue
             terms.append(loss_fn(out[student_key], out[teacher_key].detach()))

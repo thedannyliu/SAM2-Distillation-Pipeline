@@ -126,3 +126,88 @@ def test_obj_ptr_distillation_backpropagates_through_student_pointer():
     assert losses["loss_obj_ptr_distill"].item() == pytest.approx(1.0)
     assert student_ptr.grad is not None
     assert torch.count_nonzero(student_ptr.grad).item() > 0
+
+
+def test_task_loss_normalization_is_invariant_to_repeated_frames():
+    class SummedTaskLoss(nn.Module):
+        def forward(self, outputs, targets):
+            del targets
+            return {
+                "core_loss": torch.stack(
+                    [output["task"] for output in outputs]
+                ).sum()
+            }
+
+    loss = EdgeTAMMultiStepDistillationLoss(
+        task_loss=SummedTaskLoss(),
+        lambda_img=0,
+        lambda_mem=0,
+        normalize_task_by_num_frames=True,
+    )
+
+    t4 = loss(
+        [{"task": torch.tensor(2.0)} for _ in range(4)],
+        targets_batch=torch.empty(0),
+    )
+    t8 = loss(
+        [{"task": torch.tensor(2.0)} for _ in range(8)],
+        targets_batch=torch.empty(0),
+    )
+
+    assert t4["core_loss"].item() == pytest.approx(2.0)
+    assert t8["core_loss"].item() == pytest.approx(2.0)
+    assert t4["loss_task_raw"].item() == pytest.approx(8.0)
+    assert t8["loss_task_raw"].item() == pytest.approx(16.0)
+
+
+def test_temporal_kd_excludes_initial_conditioning_frames():
+    class ZeroTaskLoss(nn.Module):
+        def forward(self, outputs, targets):
+            del targets
+            return {"core_loss": outputs[0]["distill_F_M"].sum() * 0}
+
+    loss = EdgeTAMMultiStepDistillationLoss(
+        task_loss=ZeroTaskLoss(),
+        lambda_img=0,
+        lambda_mem=1,
+        temporal_kd_on_propagated_frames_only=True,
+    )
+    outputs = [
+        {
+            "distill_is_init_cond_frame": True,
+            "distill_F_M": torch.tensor([100.0]),
+            "teacher_distill_F_M": torch.tensor([0.0]),
+        },
+        {
+            "distill_is_init_cond_frame": False,
+            "distill_F_M": torch.tensor([2.0]),
+            "teacher_distill_F_M": torch.tensor([0.0]),
+        },
+    ]
+
+    losses = loss(outputs, targets_batch=torch.empty(0))
+
+    assert losses["loss_mem_distill"].item() == pytest.approx(4.0)
+    assert losses["core_loss"].item() == pytest.approx(4.0)
+
+
+def test_paired_prompt_match_rate_is_reported():
+    class ZeroTaskLoss(nn.Module):
+        def forward(self, outputs, targets):
+            del targets
+            return {"core_loss": outputs[0]["task"].sum() * 0}
+
+    loss = EdgeTAMMultiStepDistillationLoss(
+        task_loss=ZeroTaskLoss(),
+        lambda_img=0,
+        lambda_mem=0,
+    )
+    losses = loss(
+        [
+            {"task": torch.ones(1), "teacher_prompt_match": True},
+            {"task": torch.ones(1), "teacher_prompt_match": True},
+        ],
+        targets_batch=torch.empty(0),
+    )
+
+    assert losses["prompt_match_rate"].item() == pytest.approx(1.0)

@@ -347,6 +347,7 @@ class EdgeTAMTrain(ObjectSlotModelMixin, SAM2Train):
             current_vision_feats[-1], feat_sizes[-1]
         )
         current_out["distill_F_M"] = pix_feat
+        current_out["distill_is_init_cond_frame"] = bool(is_init_cond_frame)
         current_out["multistep_pred_masks"] = low_res_masks
         current_out["multistep_pred_masks_high_res"] = high_res_masks
         current_out["multistep_pred_multimasks"] = [low_res_multimasks]
@@ -464,6 +465,7 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         synthetic_teacher: bool = False,
         synthetic_teacher_offset: float = 0.01,
         freeze_teacher: bool = True,
+        pair_teacher_student_prompts: bool = False,
         **kwargs,
     ):
         teacher_prompt_kwargs = {
@@ -509,6 +511,13 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         )
         self.synthetic_teacher = synthetic_teacher
         self.synthetic_teacher_offset = synthetic_teacher_offset
+        self.pair_teacher_student_prompts = pair_teacher_student_prompts
+        if pair_teacher_student_prompts and self.num_correction_pt_per_frame != 0:
+            raise ValueError(
+                "paired prompt diagnostics require "
+                "num_correction_pt_per_frame=0; model-dependent correction "
+                "clicks need an explicit external correction plan"
+            )
 
         if self._teacher_model is not None and freeze_teacher:
             self._teacher_model.eval()
@@ -561,6 +570,9 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
         return self._teacher_model
 
     def forward(self, input):
+        if self.pair_teacher_student_prompts:
+            return self._forward_with_paired_prompts(input)
+
         student_outputs = super().forward(input)
 
         if self._teacher_model is not None:
@@ -581,3 +593,132 @@ class EdgeTAMTrainWithTeacher(EdgeTAMTrain):
             )
 
         return student_outputs
+
+    def _forward_with_paired_prompts(self, input):
+        if self._teacher_model is None:
+            raise ValueError("paired prompts require an online teacher model")
+        if not self.training:
+            raise RuntimeError("paired prompt diagnostics are training-only")
+
+        input_device = input.flat_img_batch.device
+        teacher_parameter = next(self._teacher_model.parameters())
+        if teacher_parameter.device != input_device:
+            self._teacher_model.to(input_device)
+        self._teacher_model.eval()
+        # SAM2Train.prepare_prompt_inputs switches policy using the root
+        # module's training flag. Keep all teacher children in eval mode while
+        # selecting the same training-time control path as the student.
+        self._teacher_model.training = True
+
+        try:
+            student_backbone = self.forward_image(input.flat_img_batch)
+            student_backbone = self.prepare_prompt_inputs(student_backbone, input)
+            student_outputs = self.forward_tracking(student_backbone, input)
+
+            with torch.no_grad():
+                teacher_backbone = self._teacher_model.forward_image(
+                    input.flat_img_batch
+                )
+                self._copy_prompt_plan(student_backbone, teacher_backbone)
+                teacher_outputs = self._teacher_model.forward_tracking(
+                    teacher_backbone,
+                    input,
+                )
+        finally:
+            self._teacher_model.training = False
+
+        self._assert_paired_prompt_outputs(student_outputs, teacher_outputs)
+        attach_teacher_features(student_outputs, teacher_outputs)
+        for output in student_outputs:
+            output["teacher_prompt_match"] = True
+        return student_outputs
+
+    @classmethod
+    def _copy_prompt_plan(cls, source: dict, destination: dict) -> None:
+        for key in (
+            "gt_masks_per_frame",
+            "num_frames",
+            "use_pt_input",
+            "init_cond_frames",
+            "frames_not_in_init_cond",
+            "mask_inputs_per_frame",
+            "point_inputs_per_frame",
+            "frames_to_add_correction_pt",
+        ):
+            if key not in source:
+                raise KeyError(f"student prompt plan is missing {key!r}")
+            destination[key] = cls._clone_prompt_value(source[key])
+
+    @classmethod
+    def _clone_prompt_value(cls, value):
+        if torch.is_tensor(value):
+            return value.detach().clone()
+        if isinstance(value, dict):
+            return {
+                key: cls._clone_prompt_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [cls._clone_prompt_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(cls._clone_prompt_value(item) for item in value)
+        return value
+
+    @classmethod
+    def _prompt_values_equal(cls, left, right) -> bool:
+        if torch.is_tensor(left) or torch.is_tensor(right):
+            return (
+                torch.is_tensor(left)
+                and torch.is_tensor(right)
+                and torch.equal(left, right)
+            )
+        if isinstance(left, dict) or isinstance(right, dict):
+            return (
+                isinstance(left, dict)
+                and isinstance(right, dict)
+                and left.keys() == right.keys()
+                and all(
+                    cls._prompt_values_equal(left[key], right[key])
+                    for key in left
+                )
+            )
+        if isinstance(left, (list, tuple)) or isinstance(
+            right, (list, tuple)
+        ):
+            return (
+                isinstance(left, (list, tuple))
+                and isinstance(right, (list, tuple))
+                and len(left) == len(right)
+                and all(
+                    cls._prompt_values_equal(left_item, right_item)
+                    for left_item, right_item in zip(left, right)
+                )
+            )
+        return left == right
+
+    @classmethod
+    def _assert_paired_prompt_outputs(
+        cls,
+        student_outputs: list[dict],
+        teacher_outputs: list[dict],
+    ) -> None:
+        if len(student_outputs) != len(teacher_outputs):
+            raise RuntimeError(
+                "paired prompt frame-count mismatch: "
+                f"student={len(student_outputs)} teacher={len(teacher_outputs)}"
+            )
+        for frame_idx, (student, teacher) in enumerate(
+            zip(student_outputs, teacher_outputs)
+        ):
+            for key in (
+                "distill_is_init_cond_frame",
+                "multistep_point_inputs",
+            ):
+                if key not in student or key not in teacher:
+                    raise KeyError(
+                        f"paired prompt output frame {frame_idx} is missing {key!r}"
+                    )
+                if not cls._prompt_values_equal(student[key], teacher[key]):
+                    raise RuntimeError(
+                        f"teacher/student prompt mismatch at frame {frame_idx}: {key}"
+                    )

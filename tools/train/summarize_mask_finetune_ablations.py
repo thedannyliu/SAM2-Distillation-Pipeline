@@ -396,6 +396,10 @@ FIELDNAMES = [
     "lambda_task",
     "lambda_mask_logits",
     "lambda_obj_ptr",
+    "normalize_task_by_num_frames",
+    "temporal_kd_propagated_only",
+    "paired_prompts",
+    "gradient_diagnostics",
     "teacher_checkpoint",
     "memory_topology",
     "memory_layers",
@@ -406,6 +410,10 @@ FIELDNAMES = [
     "planned_updates_per_epoch",
     "optimizer_updates",
     "train_elapsed_seconds",
+    "grad_norm_mean",
+    "grad_norm_max",
+    "grad_clip_fraction",
+    "grad_nonfinite_steps",
     "wandb_run_id",
     "wandb_url",
     "val_mIoU",
@@ -545,6 +553,18 @@ def metadata_from_env(variant_dir: Path, stage_dir: Path) -> dict[str, Any]:
             "TASK_LAMBDA_MASK_LOGITS", "0"
         ),
         "lambda_obj_ptr": os.environ.get("TASK_LAMBDA_OBJ_PTR", "0"),
+        "normalize_task_by_num_frames": os.environ.get(
+            "TASK_NORMALIZE_TASK_BY_NUM_FRAMES", "0"
+        ),
+        "temporal_kd_propagated_only": os.environ.get(
+            "TASK_TEMPORAL_KD_PROPAGATED_ONLY", "0"
+        ),
+        "paired_prompts": os.environ.get(
+            "TASK_PAIR_TEACHER_STUDENT_PROMPTS", "0"
+        ),
+        "gradient_diagnostics": os.environ.get(
+            "TASK_GRADIENT_DIAGNOSTICS", "0"
+        ),
         "teacher_checkpoint": os.environ.get("TASK_TEACHER_CHECKPOINT", ""),
         "memory_topology": os.environ.get("TASK_MEMORY_TOPOLOGY", ""),
         "memory_layers": os.environ.get("TASK_MEMORY_LAYERS", ""),
@@ -624,6 +644,11 @@ def build_row(metadata: dict[str, Any]) -> dict[str, Any]:
     )
     row["optimizer_updates"] = checkpoint_updates(stage_dir)
     row["train_elapsed_seconds"] = status.get("elapsed_seconds", "")
+    gradients = read_json(stage_dir / "gradient_diagnostics.json")
+    row["grad_norm_mean"] = gradients.get("pre_clip_norm_mean", "")
+    row["grad_norm_max"] = gradients.get("pre_clip_norm_max", "")
+    row["grad_clip_fraction"] = gradients.get("clip_fraction", "")
+    row["grad_nonfinite_steps"] = gradients.get("nonfinite_steps", "")
     row["wandb_run_id"] = wandb.get("run_id", "")
     row["wandb_url"] = wandb.get("url", "")
     gate = read_json(stage_dir / "gate_status.json")

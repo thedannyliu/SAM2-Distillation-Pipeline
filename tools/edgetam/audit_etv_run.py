@@ -80,6 +80,17 @@ def nested_get(payload: dict[str, Any], dotted_key: str) -> Any:
     return value
 
 
+def first_train_sampler_value(payload: dict[str, Any], key: str) -> Any:
+    datasets = nested_get(payload, "trainer.data.train.datasets")
+    if not isinstance(datasets, list) or not datasets:
+        return None
+    first = datasets[0]
+    if not isinstance(first, dict):
+        return None
+    sampler = first.get("sampler")
+    return sampler.get(key) if isinstance(sampler, dict) else None
+
+
 def flatten_numbers(value: Any) -> list[float]:
     if isinstance(value, (int, float)):
         return [float(value)]
@@ -169,6 +180,10 @@ def main() -> None:
         if resolved_path.is_file()
         else {}
     )
+    reverse_time_prob = first_train_sampler_value(
+        resolved,
+        "reverse_time_prob",
+    )
 
     checks = {
         "initializer_passed": bool(
@@ -206,6 +221,7 @@ def main() -> None:
             resolved, "trainer.model.memory_attention.num_layers"
         )
         == 2,
+        "reverse_time_sampling_enabled": reverse_time_prob == 0.5,
         "expected_checkpoint_hash": (
             not args.expected_sha256
             or checkpoint_hash == args.expected_sha256.lower()
@@ -241,6 +257,7 @@ def main() -> None:
             "memory_latents_2d": nested_get(
                 resolved, "trainer.model.spatial_perceiver.num_latents_2d"
             ),
+            "reverse_time_prob": reverse_time_prob,
             "loss_mask_weight": nested_get(
                 resolved, "trainer.loss.all.task_loss.weight_dict.loss_mask"
             ),

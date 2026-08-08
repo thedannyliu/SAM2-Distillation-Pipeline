@@ -103,6 +103,18 @@ def init_wandb(args: argparse.Namespace):
             "lambda_obj_ptr": float(
                 os.environ.get("TASK_LAMBDA_OBJ_PTR", "0")
             ),
+            "normalize_task_by_num_frames": os.environ.get(
+                "TASK_NORMALIZE_TASK_BY_NUM_FRAMES", "0"
+            )
+            == "1",
+            "temporal_kd_on_propagated_frames_only": os.environ.get(
+                "TASK_TEMPORAL_KD_PROPAGATED_ONLY", "0"
+            )
+            == "1",
+            "pair_teacher_student_prompts": os.environ.get(
+                "TASK_PAIR_TEACHER_STUDENT_PROMPTS", "0"
+            )
+            == "1",
             "edgetam_video_augmentation": os.environ.get(
                 "TASK_EDGETAM_VIDEO_AUGMENTATION", "0"
             )
@@ -212,6 +224,11 @@ def _wandb_loss_name(name: str) -> str:
         "Losses/train_all_loss_obj_ptr_distill": (
             "train/loss_obj_ptr_distill"
         ),
+        "Losses/train_all_loss_task_raw": "train/loss_task_raw",
+        "Losses/train_all_loss_task_normalized": (
+            "train/loss_task_normalized"
+        ),
+        "Losses/train_all_prompt_match_rate": "train/prompt_match_rate",
     }
     return aliases.get(name, f"train/{name.replace('/', '_')}")
 
@@ -274,6 +291,39 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         "peak_allocated_bytes": 0,
         "peak_reserved_bytes": 0,
     }
+    gradient_diagnostics_enabled = (
+        os.environ.get("TASK_GRADIENT_DIAGNOSTICS", "0") == "1"
+    )
+    gradient_state = {
+        "enabled": gradient_diagnostics_enabled,
+        "steps": 0,
+        "finite_steps": 0,
+        "clipped_steps": 0,
+        "nonfinite_steps": 0,
+        "pre_clip_norm_sum": 0.0,
+        "pre_clip_norm_max": 0.0,
+        "pending_step": None,
+        "pending_metrics": None,
+    }
+    capacity_state["gradient_diagnostics"] = gradient_state
+
+    def mean_across_ranks(metrics: dict[str, float], device) -> dict[str, float]:
+        if not gradient_diagnostics_enabled:
+            return metrics
+        if not torch.distributed.is_initialized():
+            return metrics
+        keys = sorted(metrics)
+        values = torch.tensor(
+            [metrics[key] for key in keys],
+            device=device,
+            dtype=torch.float32,
+        )
+        torch.distributed.all_reduce(values)
+        values /= torch.distributed.get_world_size()
+        return {
+            key: float(value)
+            for key, value in zip(keys, values.detach().cpu().tolist())
+        }
 
     def run_step_with_wandb(
         self,
@@ -313,17 +363,19 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         completed_step = int(self.steps[phase])
         log_frequency = int(self.logging_conf.log_scalar_frequency)
         should_log = (completed_step - 1) % log_frequency == 0
-        if wandb_run is not None and self.distributed_rank == 0:
-            current_losses = {
+        local_losses = {
+            _wandb_loss_name(name): _scalar(meter.val)
+            for name, meter in loss_mts.items()
+        }
+        local_losses.update(
+            {
                 _wandb_loss_name(name): _scalar(meter.val)
-                for name, meter in loss_mts.items()
+                for name, meter in extra_loss_mts.items()
             }
-            current_losses.update(
-                {
-                    _wandb_loss_name(name): _scalar(meter.val)
-                    for name, meter in extra_loss_mts.items()
-                }
-            )
+        )
+        current_losses = mean_across_ranks(local_losses, self.device)
+        gradient_state["pending_step"] = completed_step
+        if wandb_run is not None and self.distributed_rank == 0:
             num_frames = int(getattr(batch, "num_frames", 0) or 0)
             masks = getattr(batch, "masks", None)
             present_object_frames = 0
@@ -332,17 +384,25 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
                     masks.detach().flatten(-2).any(-1).sum().item()
                 )
             total_loss = current_losses.get("train/loss_total")
+            local_total_loss = local_losses.get("train/loss_total")
             if total_loss is not None and num_frames > 0:
                 current_losses["train/loss_total_per_frame"] = (
                     total_loss / num_frames
                 )
+            if local_total_loss is not None and num_frames > 0:
+                local_losses["train/loss_total_per_frame"] = (
+                    local_total_loss / num_frames
+                )
             current_losses["train/present_object_frames"] = float(
+                present_object_frames
+            )
+            local_losses["train/present_object_frames"] = float(
                 present_object_frames
             )
             if (
                 outlier_threshold > 0
-                and total_loss is not None
-                and total_loss >= outlier_threshold
+                and local_total_loss is not None
+                and local_total_loss >= outlier_threshold
             ):
                 identifiers = getattr(
                     getattr(batch, "metadata", None),
@@ -354,7 +414,7 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
                     "epoch": int(self.epoch),
                     "num_frames": num_frames,
                     "present_object_frames": present_object_frames,
-                    "losses": current_losses,
+                    "losses": local_losses,
                     "object_identifiers": identifiers.detach().cpu().tolist()
                     if identifiers is not None
                     else [],
@@ -381,7 +441,79 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
             )
             for index, group in enumerate(self.optim.optimizer.param_groups):
                 metrics[f"train/lr_group_{index}"] = float(group["lr"])
-            wandb_run.log(metrics, step=completed_step)
+            if gradient_diagnostics_enabled:
+                gradient_state["pending_metrics"] = metrics
+            else:
+                wandb_run.log(metrics, step=completed_step)
+        return result
+
+    original_gradient_clipper_call = optimizer_module.GradientClipper.__call__
+
+    def gradient_clipper_with_diagnostics(self, model):
+        if not gradient_diagnostics_enabled:
+            return original_gradient_clipper_call(self, model)
+        if self.max_norm is None:
+            return original_gradient_clipper_call(self, model)
+
+        parameters = [
+            parameter
+            for parameter in model.parameters()
+            if parameter.grad is not None
+        ]
+        parameter_norms = [
+            torch.linalg.vector_norm(
+                parameter.grad.detach(),
+                ord=self.norm_type,
+            )
+            for parameter in parameters
+        ]
+        if parameter_norms:
+            total_norm = torch.linalg.vector_norm(
+                torch.stack(parameter_norms),
+                ord=self.norm_type,
+            )
+        else:
+            total_norm = torch.tensor(0.0, device=next(model.parameters()).device)
+        pre_clip_norm = float(total_norm.detach().float().cpu())
+        finite = torch.isfinite(total_norm).item()
+        clipped = bool(finite and pre_clip_norm > self.max_norm)
+
+        result = original_gradient_clipper_call(self, model)
+
+        gradient_state["steps"] += 1
+        if finite:
+            gradient_state["finite_steps"] += 1
+            gradient_state["pre_clip_norm_sum"] += pre_clip_norm
+            gradient_state["pre_clip_norm_max"] = max(
+                gradient_state["pre_clip_norm_max"],
+                pre_clip_norm,
+            )
+        else:
+            gradient_state["nonfinite_steps"] += 1
+        if clipped:
+            gradient_state["clipped_steps"] += 1
+
+        metrics = gradient_state.get("pending_metrics")
+        gradient_state["pending_metrics"] = None
+        step = gradient_state.get("pending_step")
+        if wandb_run is not None and metrics is not None and step is not None:
+            steps = gradient_state["steps"]
+            metrics.update(
+                {
+                    "train/grad_norm_pre_clip": pre_clip_norm,
+                    "train/grad_norm_post_clip": (
+                        min(pre_clip_norm, self.max_norm)
+                        if finite
+                        else float("nan")
+                    ),
+                    "train/grad_clipped": float(clipped),
+                    "train/grad_clip_fraction": (
+                        gradient_state["clipped_steps"] / steps
+                    ),
+                    "train/grad_nonfinite": float(not finite),
+                }
+            )
+            wandb_run.log(metrics, step=step)
         return result
 
     def save_checkpoint_with_wandb(self, checkpoint, checkpoint_path):
@@ -394,6 +526,9 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
     trainer_module.Trainer._call_model_initializer = compact_model_initializer
     trainer_module.Trainer._run_step = run_step_with_wandb
     trainer_module.Trainer._save_checkpoint = save_checkpoint_with_wandb
+    optimizer_module.GradientClipper.__call__ = (
+        gradient_clipper_with_diagnostics
+    )
     optimizer_module.unix_param_pattern_to_parameter_names = quiet_param_pattern_match
     vos_dataset_module.print = lambda *args, **kwargs: None
 
@@ -467,6 +602,39 @@ def write_capacity_probe_summary(capacity_state: dict) -> None:
     out = Path(os.environ["TASK_RUN_DIR"]) / f"capacity_rank{rank}.json"
     out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"CAPACITY_PROBE {json.dumps(payload, sort_keys=True)}", flush=True)
+
+
+def write_gradient_diagnostics_summary(runtime_state: dict) -> None:
+    state = runtime_state.get("gradient_diagnostics", {})
+    if not state.get("enabled") or int(os.environ.get("RANK", "0")) != 0:
+        return
+    steps = int(state["steps"])
+    finite_steps = int(state["finite_steps"])
+    payload = {
+        "status": "pass" if state["nonfinite_steps"] == 0 else "fail",
+        "steps": steps,
+        "finite_steps": finite_steps,
+        "clipped_steps": int(state["clipped_steps"]),
+        "nonfinite_steps": int(state["nonfinite_steps"]),
+        "clip_fraction": state["clipped_steps"] / steps if steps else None,
+        "pre_clip_norm_mean": (
+            state["pre_clip_norm_sum"] / finite_steps
+            if finite_steps
+            else None
+        ),
+        "pre_clip_norm_max": (
+            state["pre_clip_norm_max"] if finite_steps else None
+        ),
+    }
+    output = Path(os.environ["TASK_RUN_DIR"]) / "gradient_diagnostics.json"
+    output.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"GRADIENT_DIAGNOSTICS {json.dumps(payload, sort_keys=True)}",
+        flush=True,
+    )
 
 
 def apply_mask_ablation_overrides(config) -> None:
@@ -592,33 +760,48 @@ def apply_mask_ablation_overrides(config) -> None:
         os.environ.get("TASK_LAMBDA_MASK_LOGITS", "0")
     )
     lambda_obj_ptr = float(os.environ.get("TASK_LAMBDA_OBJ_PTR", "0"))
+    normalize_task_by_num_frames = (
+        os.environ.get("TASK_NORMALIZE_TASK_BY_NUM_FRAMES", "0") == "1"
+    )
+    temporal_kd_on_propagated_frames_only = (
+        os.environ.get("TASK_TEMPORAL_KD_PROPAGATED_ONLY", "0") == "1"
+    )
+    pair_teacher_student_prompts = (
+        os.environ.get("TASK_PAIR_TEACHER_STUDENT_PROMPTS", "0") == "1"
+    )
     model.expose_obj_ptr_for_distillation = bool(lambda_obj_ptr)
-    if (
-        lambda_task != 1
-        or lambda_img
-        or lambda_mem
-        or lambda_mask_logits
-        or lambda_obj_ptr
-    ):
-        if not any(
-            (lambda_img, lambda_mem, lambda_mask_logits, lambda_obj_ptr)
-        ):
-            raise ValueError("TASK_LAMBDA_TASK requires a KD term")
-        teacher_config = os.environ.get("TASK_TEACHER_MODEL_CONFIG", "").strip()
-        teacher_checkpoint = os.environ.get("TASK_TEACHER_CHECKPOINT", "").strip()
-        if any(
-            (lambda_img, lambda_mem, lambda_mask_logits, lambda_obj_ptr)
-        ) and (
-            not teacher_config or not teacher_checkpoint
-        ):
-            raise ValueError(
-                "KD requires TASK_TEACHER_MODEL_CONFIG and TASK_TEACHER_CHECKPOINT"
+    kd_enabled = any(
+        (lambda_img, lambda_mem, lambda_mask_logits, lambda_obj_ptr)
+    )
+    if lambda_task != 1 and not kd_enabled:
+        raise ValueError("TASK_LAMBDA_TASK requires a KD term")
+    if pair_teacher_student_prompts and not kd_enabled:
+        raise ValueError("paired teacher/student prompts require a KD term")
+    if kd_enabled or normalize_task_by_num_frames:
+        if kd_enabled:
+            teacher_config = os.environ.get(
+                "TASK_TEACHER_MODEL_CONFIG", ""
+            ).strip()
+            teacher_checkpoint = os.environ.get(
+                "TASK_TEACHER_CHECKPOINT", ""
+            ).strip()
+            if not teacher_config or not teacher_checkpoint:
+                raise ValueError(
+                    "KD requires TASK_TEACHER_MODEL_CONFIG and "
+                    "TASK_TEACHER_CHECKPOINT"
+                )
+            model._target_ = (
+                "sam2_distill.edgetam.train_model.EdgeTAMTrainWithTeacher"
             )
-        model._target_ = (
-            "sam2_distill.edgetam.train_model.EdgeTAMTrainWithTeacher"
-        )
-        model.teacher_model_config = teacher_config
-        model.teacher_checkpoint = teacher_checkpoint
+            model.teacher_model_config = teacher_config
+            model.teacher_checkpoint = teacher_checkpoint
+            model.pair_teacher_student_prompts = (
+                pair_teacher_student_prompts
+            )
+        elif temporal_kd_on_propagated_frames_only:
+            raise ValueError(
+                "propagated-only KD requires a temporal KD term"
+            )
         task_loss = config.trainer.loss.all
         config.trainer.loss.all = OmegaConf.create(
             {
@@ -632,6 +815,12 @@ def apply_mask_ablation_overrides(config) -> None:
                 "lambda_mem": lambda_mem,
                 "lambda_mask_logits": lambda_mask_logits,
                 "lambda_obj_ptr": lambda_obj_ptr,
+                "normalize_task_by_num_frames": (
+                    normalize_task_by_num_frames
+                ),
+                "temporal_kd_on_propagated_frames_only": (
+                    temporal_kd_on_propagated_frames_only
+                ),
             }
         )
 
@@ -977,6 +1166,7 @@ def main() -> None:
         succeeded = True
     finally:
         write_capacity_probe_summary(capacity_state)
+        write_gradient_diagnostics_summary(capacity_state)
         if int(os.environ.get("RANK", "0")) == 0:
             status_path.write_text(
                 json.dumps(

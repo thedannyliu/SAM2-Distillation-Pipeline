@@ -26,7 +26,7 @@ The audit separates four possible causes:
 | Raw W&B curve is a global loss | Direct W&B logging records rank-0 current meters, not a four-rank average. | False; monitoring limitation |
 | Hiera-L `F_M` is interface-compatible with frozen TV21 decoder | Shapes match, but representation compatibility is not established. The loss also includes conditioning frames where memory attention is bypassed. | High-risk hypothesis |
 | Teacher and student receive identical prompts | Their complete forwards independently sample PyTorch point/box coordinates and correction clicks. NumPy route choices start synchronized, but exact coordinates are not shared. | Confirmed code risk |
-| Published reverse-time augmentation is enabled | The sampler does not set `reverse_time_prob`; upstream default is `0.0`. | Confirmed recipe mismatch |
+| Reverse-time augmentation is enabled | The source and resolved sampler set `reverse_time_prob: 0.5`. The artifact audit now checks this value explicitly. | Pass; no correction required |
 
 ## W&B loss audit
 
@@ -138,7 +138,7 @@ retain EdgeTAM behavior. ETV2 instead tests a cross-interface hybrid.
 | KD scaling across frames | Feature/logit terms are averaged across frames | Their weight relative to task loss should remain stable with T | Task loss sums frames while KD averages frames; effective KD strength decreases as T grows |
 | Conditioning-frame memory KD | Both expose `F_M` | Target should train the compressed read path | Initial conditioning frames bypass memory attention; their `F_M` loss mainly trains `no_mem_embed` |
 | BatchNorm | All BN modules are repeatedly forced to eval/frozen | Running statistics must not drift | Pass |
-| Reverse-time sampling | Sampler supports `reverse_time_prob` | Recipe calls for bidirectional clip sampling | Missing; effective probability is 0.0 |
+| Reverse-time sampling | Sampler supports `reverse_time_prob` | Recipe calls for bidirectional clip sampling | Enabled at `0.5`; the earlier missing-value diagnosis was incorrect |
 
 ## Highest-value fast audits
 

@@ -50,6 +50,11 @@ def test_etv_audit_matches_official_temporal_provenance(
     )
     resolved = {
         "trainer": {
+            "data": {
+                "train": {
+                    "datasets": [{"sampler": {"reverse_time_prob": 0.5}}]
+                }
+            },
             "model": {
                 "freeze_batchnorm": True,
                 "memory_attention": {"num_layers": 2},
@@ -111,6 +116,7 @@ def test_etv_audit_matches_official_temporal_provenance(
     assert summary["edgetam_checkpoint"]["official_temporal_tensors"] == 5
     assert summary["edgetam_checkpoint"]["official_temporal_parameters"] == 20
     assert summary["resolved_contract"]["gradient_clip_max_norm"] == 0.1
+    assert summary["resolved_contract"]["reverse_time_prob"] == 0.5
     assert summary["loss_outliers"]["count"] == 1
     assert summary["loss_outliers"]["positive_mask_area"]["min"] == 4
     assert summary["loss_outliers"]["positive_mask_area"]["max"] == 16
