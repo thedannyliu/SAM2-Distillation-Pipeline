@@ -35,6 +35,28 @@ validate_selection() {
   done
 }
 
+runtime_preflight() {
+  python - <<'PY'
+try:
+    import hydra
+    import omegaconf
+except ModuleNotFoundError as error:
+    raise SystemExit(f"missing Python module: {error.name}") from error
+
+print(
+    "Python runtime: PASS "
+    f"hydra-core={hydra.__version__} "
+    f"omegaconf={omegaconf.__version__}"
+)
+PY
+  local status="$?"
+  if [[ "${status}" -ne 0 ]]; then
+    echo "[ERROR] Install the missing config runtime in this container:" >&2
+    echo "  python -m pip install --user 'hydra-core==1.3.2'" >&2
+  fi
+  return "${status}"
+}
+
 run_variant() {
   local variant="$1"
   echo "===== ${variant}: 500 updates + ${GATE_VIDEOS}-video gate ====="
@@ -95,6 +117,7 @@ describe() {
 audit() {
   local path status=0
   validate_selection || return $?
+  runtime_preflight || status="$?"
   for path in \
     "${MANIFEST}" \
     "${SAV_ROOT}/sav_val/sav_val.txt" \

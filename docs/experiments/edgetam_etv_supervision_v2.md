@@ -88,6 +88,20 @@ to the selected 72.4 reference.
 
 ## Results
 
+The first ETD3 smoke attempt on 2026-08-08 stopped before model
+instantiation and before optimizer step 0 because that company container did
+not have `hydra-core`. This is an environment failure, not an experimental
+result, and produced no training checkpoint. Install `hydra-core==1.3.2` in
+each affected container and rerun the same variant command; resumable paths
+and W&B IDs remain unchanged. The driver now checks this dependency before
+launching `torchrun`.
+
+RandomAffine warnings are expected when a sampled affine would erase a
+first-frame target. Upstream returns the unmodified datapoint for that affine
+attempt and continues the remaining transforms. Keep this policy identical
+for all four rows and compute the warning count from each terminal log after
+500 steps rather than changing augmentation mid-screen.
+
 | Variant | Updates | Prompt match | Grad mean/max | Clip fraction | Mini-val J&F | Status |
 |---|---:|---:|---:|---:|---:|---|
 | ETD0 | pending | n/a | pending | pending | pending | not run |
