@@ -86,6 +86,11 @@ to the selected 72.4 reference.
 - Terminal logs: `/user-volume/log/edgetam_etv_supervision_v2`
 - Driver: `scripts/company/73_run_edgetam_etv_supervision_v2.sh`
 
+Use `scripts/company/73_run_edgetam_etv_supervision_v2.sh compact` after the
+four rows finish. It prints only the comparison-critical checkpoint,
+gradient, mini-validation, gate, and affine-skip fields; `status` retains the
+verbose artifact view for debugging.
+
 ## Results
 
 The first ETD3 smoke attempt on 2026-08-08 stopped before model

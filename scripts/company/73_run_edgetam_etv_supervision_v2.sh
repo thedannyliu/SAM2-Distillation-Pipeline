@@ -210,6 +210,133 @@ PY
   fi
 }
 
+compact_results() {
+  validate_selection || return $?
+  python - "${RUN_ROOT}" "/user-volume/log/edgetam_etv_supervision_v2" \
+    "${GATE_VIDEOS}" "${SELECTED_VARIANTS[@]}" <<'PY'
+import csv
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+run_root = Path(sys.argv[1])
+log_root = Path(sys.argv[2])
+gate_videos = int(sys.argv[3])
+variants = sys.argv[4:]
+
+
+def read_json(path):
+    if not path.is_file():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def checkpoint_steps(path):
+    if not path.is_file():
+        return None
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    steps = checkpoint.get("steps", {})
+    if isinstance(steps, dict):
+        steps = steps.get("train", steps)
+    return int(steps)
+
+
+def gate_metrics(path):
+    if not path.is_file():
+        return {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    result = {}
+    for row in rows:
+        if row.get("mode") == "image":
+            result["miou"] = row.get("mIoU")
+            result["ap"] = row.get("AP")
+        elif row.get("mode") == "video_tracking":
+            result["jf"] = row.get("J&F")
+    return result
+
+
+rows = []
+for variant in variants:
+    stage = run_root / variant / "main"
+    checkpoint = stage / "checkpoints" / "last.pt"
+    gradients = read_json(stage / "gradient_diagnostics.json")
+    gate = read_json(stage / "gate_status.json")
+    metrics = gate_metrics(
+        stage / f"sav_val_gate{gate_videos}_box_benchmark" / "metrics.csv"
+    )
+    log_path = log_root / variant / "run.log"
+    affine_skips = None
+    if log_path.is_file():
+        affine_skips = log_path.read_text(
+            encoding="utf-8", errors="replace"
+        ).count("Skip RandomAffine for zero-area mask")
+    missing = []
+    if not checkpoint.is_file():
+        missing.append("ckpt")
+    if not gradients:
+        missing.append("grad")
+    if not metrics.get("jf"):
+        missing.append("val")
+    rows.append(
+        {
+            "variant": variant.split("_", 1)[0],
+            "steps": checkpoint_steps(checkpoint),
+            "grad_mean": gradients.get("pre_clip_norm_mean"),
+            "grad_max": gradients.get("pre_clip_norm_max"),
+            "clip_fraction": gradients.get("clip_fraction"),
+            "nonfinite": gradients.get("nonfinite_steps"),
+            "miou": metrics.get("miou"),
+            "ap": metrics.get("ap"),
+            "jf": metrics.get("jf"),
+            "gate": gate.get("status", "pending"),
+            "affine_skips": affine_skips,
+            "missing": ",".join(missing) or "-",
+        }
+    )
+
+baseline = next(
+    (float(row["jf"]) for row in rows if row["variant"] == "ETD0" and row["jf"]),
+    None,
+)
+
+
+def number(value, digits=3):
+    return "-" if value is None or value == "" else f"{float(value):.{digits}f}"
+
+
+header = (
+    f"{'variant':<7} {'steps':>5} {'grad_mean':>10} {'grad_max':>9} "
+    f"{'clip%':>7} {'nan':>3} {'mIoU':>7} {'AP':>7} {'J&F':>6} "
+    f"{'dJ&F':>6} {'gate':>7} {'affine':>7} {'skip%':>7} {'missing'}"
+)
+print(header)
+for row in rows:
+    jf = float(row["jf"]) if row["jf"] not in (None, "") else None
+    delta = jf - baseline if jf is not None and baseline is not None else None
+    skips = row["affine_skips"]
+    skip_rate = 100 * skips / 12000 if skips is not None else None
+    print(
+        f"{row['variant']:<7} "
+        f"{str(row['steps'] if row['steps'] is not None else '-'):>5} "
+        f"{number(row['grad_mean'], 4):>10} "
+        f"{number(row['grad_max'], 4):>9} "
+        f"{number(100 * row['clip_fraction'] if row['clip_fraction'] is not None else None, 2):>7} "
+        f"{str(row['nonfinite'] if row['nonfinite'] is not None else '-'):>3} "
+        f"{number(row['miou'], 4):>7} {number(row['ap'], 4):>7} "
+        f"{number(jf, 1):>6} {number(delta, 1):>6} "
+        f"{row['gate']:>7} "
+        f"{str(skips if skips is not None else '-'):>7} "
+        f"{number(skip_rate, 2):>7} {row['missing']}"
+    )
+
+print(f"mini_val_videos={gate_videos} affine_skip_denominator=12000")
+print(f"run_root={run_root}")
+PY
+}
+
 STATUS=0
 case "${ACTION}" in
   describe)
@@ -221,11 +348,14 @@ case "${ACTION}" in
   run)
     run_all || STATUS="$?"
     ;;
-  status|summarize)
+  status)
     status || STATUS="$?"
     ;;
+  compact|summarize)
+    compact_results || STATUS="$?"
+    ;;
   *)
-    echo "Usage: $0 {describe|audit|run|status|summarize} [VARIANT]" >&2
+    echo "Usage: $0 {describe|audit|run|status|compact|summarize} [VARIANT]" >&2
     STATUS=2
     ;;
 esac
