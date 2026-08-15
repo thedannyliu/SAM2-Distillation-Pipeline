@@ -20,9 +20,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--edgetam-root", required=True, type=Path)
+    parser.add_argument(
+        "--edgetam-root", "--sam2-root", dest="edgetam_root", required=True, type=Path
+    )
+    parser.add_argument(
+        "--model-kind", choices=("official", "two-clock"), default="official"
+    )
     parser.add_argument("--sam2-cfg", default="configs/edgetam.yaml")
     parser.add_argument("--checkpoint", required=True, type=Path)
+    parser.add_argument("--resolved-config", type=Path)
+    parser.add_argument("--experiment")
+    parser.add_argument("--refresh-interval", type=int, default=1)
     parser.add_argument("--image-root", required=True, type=Path)
     parser.add_argument("--input-mask-root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
@@ -105,7 +113,6 @@ def main() -> None:
             raise FileNotFoundError(path)
 
     add_import_roots(args.edgetam_root)
-    from sam2.build_sam import build_sam2_video_predictor
     from sam2_distill.edgetam.compat import patch_edgetam_perceiver_view
 
     patch_edgetam_perceiver_view()
@@ -128,13 +135,32 @@ def main() -> None:
         validate_initial_object_masks(
             args.image_root, args.input_mask_root, video_names
         )
-    predictor = build_sam2_video_predictor(
-        config_file=args.sam2_cfg,
-        ckpt_path=str(args.checkpoint),
-        device=device,
-        apply_postprocessing=False,
-        hydra_overrides_extra=hydra_overrides_extra,
-    )
+    build_summary = {"model_kind": args.model_kind}
+    if args.model_kind == "two-clock":
+        if args.resolved_config is None or args.experiment is None:
+            raise ValueError(
+                "two-clock evaluation requires --resolved-config and --experiment"
+            )
+        from sam2_distill.two_clock.predictor import build_two_clock_video_predictor
+
+        predictor, build_summary = build_two_clock_video_predictor(
+            resolved_config=args.resolved_config,
+            checkpoint_path=args.checkpoint,
+            experiment=args.experiment,
+            refresh_interval=args.refresh_interval,
+            device=device,
+        )
+        predictor.non_overlap_masks = not args.per_obj_png_file
+    else:
+        from sam2.build_sam import build_sam2_video_predictor
+
+        predictor = build_sam2_video_predictor(
+            config_file=args.sam2_cfg,
+            ckpt_path=str(args.checkpoint),
+            device=device,
+            apply_postprocessing=False,
+            hydra_overrides_extra=hydra_overrides_extra,
+        )
     original_propagate = predictor.propagate_in_video
     model_frame_latencies_ms = []
 
@@ -163,6 +189,8 @@ def main() -> None:
         else vos_module.vos_inference
     )
     started = time.perf_counter()
+    two_clock_encoder_calls = 0
+    two_clock_frame_requests = 0
     for video_name in video_names:
         inference_fn(
             predictor=predictor,
@@ -173,6 +201,10 @@ def main() -> None:
             use_all_masks=args.use_all_masks,
             per_obj_png_file=args.per_obj_png_file,
         )
+        if args.model_kind == "two-clock":
+            state = predictor._two_clock_last_state
+            two_clock_encoder_calls += int(state["two_clock_encoder_calls"])
+            two_clock_frame_requests += int(state["two_clock_frame_requests"])
 
     elapsed = time.perf_counter() - started
     processed_frames = sum(
@@ -208,6 +240,11 @@ def main() -> None:
         "num_prediction_pngs": sum(
             count_pngs(args.out_dir / video_name) for video_name in video_names
         ),
+        "build": build_summary,
+        "two_clock_encoder_calls": two_clock_encoder_calls,
+        "two_clock_frame_requests": two_clock_frame_requests,
+        "two_clock_refresh_rate": two_clock_encoder_calls
+        / max(processed_frames, 1),
     }
     summary_name = "summary.json" if world_size == 1 else f"summary.rank{rank:03d}.json"
     (args.out_dir / summary_name).write_text(
