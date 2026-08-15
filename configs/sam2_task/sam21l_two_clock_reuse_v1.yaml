@@ -1,0 +1,135 @@
+# SAM2.1-L two-clock reuse training. The runner replaces the model placeholder
+# with the exact official SAM2.1 Hiera-L graph before Hydra instantiation.
+
+scratch:
+  resolution: 1024
+  train_batch_size: 1
+  num_train_workers: ${oc.decode:${oc.env:TASK_NUM_WORKERS,8}}
+  num_frames: 8
+  max_num_objects: 3
+  num_epochs: ${oc.decode:${oc.env:TASK_EPOCHS,5}}
+
+vos:
+  train_transforms:
+    - _target_: training.dataset.transforms.ComposeAPI
+      transforms:
+        - _target_: training.dataset.transforms.RandomHorizontalFlip
+          consistent_transform: true
+        - _target_: training.dataset.transforms.RandomAffine
+          degrees: 25
+          shear: 20
+          image_interpolation: bilinear
+          consistent_transform: true
+        - _target_: training.dataset.transforms.RandomResizeAPI
+          sizes: ${scratch.resolution}
+          square: true
+          consistent_transform: true
+        - _target_: training.dataset.transforms.ColorJitter
+          consistent_transform: true
+          brightness: 0.1
+          contrast: 0.03
+          saturation: 0.03
+          hue: null
+        - _target_: training.dataset.transforms.RandomGrayscale
+          p: 0.05
+          consistent_transform: true
+        - _target_: training.dataset.transforms.ColorJitter
+          consistent_transform: false
+          brightness: 0.1
+          contrast: 0.05
+          saturation: 0.05
+          hue: null
+        - _target_: training.dataset.transforms.ToTensorAPI
+        - _target_: training.dataset.transforms.NormalizeAPI
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+
+trainer:
+  _target_: training.trainer.Trainer
+  mode: train_only
+  max_epochs: ${scratch.num_epochs}
+  accelerator: cuda
+  seed_value: ${oc.decode:${oc.env:TASK_SEED,250107256}}
+
+  # Filled by apply_two_clock_overrides from the official SAM2.1-L config.
+  model: {}
+
+  data:
+    train:
+      _target_: training.dataset.sam2_datasets.TorchTrainMixedDataset
+      phases_per_epoch: 1
+      batch_sizes:
+        - ${scratch.train_batch_size}
+      datasets:
+        - _target_: sam2_distill.two_clock.data.SparseSAVVOSDataset
+          transforms: ${vos.train_transforms}
+          training: true
+          video_dataset:
+            _target_: sam2_distill.two_clock.data.SAV24FPSRawDataset
+            manifest: ${oc.env:TASK_MANIFEST}
+            sav_root: ${oc.env:SAV_ROOT}
+            split: train
+            verify_paths: false
+            max_videos: ${oc.decode:${oc.env:TASK_MAX_VIDEOS,0}}
+            video_ids_file: ${oc.env:TASK_VIDEO_IDS_FILE,''}
+          sampler:
+            _target_: sam2_distill.two_clock.data.ContiguousSAV24FPSSampler
+            num_frames: ${scratch.num_frames}
+            max_num_objects: ${scratch.max_num_objects}
+            seed: ${trainer.seed_value}
+            force_full_refresh: false
+            fixed_refresh_interval: 0
+          multiplier: 1
+      shuffle: true
+      num_workers: ${scratch.num_train_workers}
+      pin_memory: true
+      drop_last: true
+      collate_fn:
+        _target_: sam2_distill.two_clock.data.collate_two_clock_fn
+        _partial_: true
+        dict_key: all
+
+  loss:
+    all:
+      _target_: sam2_distill.two_clock.training_loss.TwoClockSAM2Loss
+      pseudo_weight: 0.25
+      focal_weight: 20.0
+      dice_weight: 1.0
+      iou_weight: 1.0
+      object_weight: 1.0
+      state_weight: 0.0
+      pointer_weight: 0.0
+      score_weight: 0.0
+
+  optim:
+    amp:
+      enabled: true
+      amp_dtype: bfloat16
+    optimizer:
+      _target_: torch.optim.AdamW
+    gradient_clip:
+      _target_: training.optimizer.GradientClipper
+      max_norm: 1.0
+      norm_type: 2
+    options: {}
+
+  distributed:
+    backend: nccl
+    find_unused_parameters: true
+    timeout_mins: 60
+
+  logging:
+    tensorboard_writer:
+      _target_: training.utils.logger.make_tensorboard_logger
+      log_dir: ${oc.env:TASK_RUN_DIR}/tensorboard
+      flush_secs: 120
+      should_log: true
+    log_dir: ${oc.env:TASK_RUN_DIR}/logs
+    log_freq: ${oc.decode:${oc.env:TASK_PRINT_EVERY,300}}
+    log_scalar_frequency: ${oc.decode:${oc.env:TASK_LOG_EVERY,30}}
+    log_visual_frequency: 10000
+
+  checkpoint:
+    save_dir: ${oc.env:TASK_RUN_DIR}/checkpoints
+    save_freq: 1
+    model_weight_initializer: null

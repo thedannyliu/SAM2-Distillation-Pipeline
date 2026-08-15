@@ -184,6 +184,15 @@ def init_wandb(args: argparse.Namespace):
             "weight_decay": float(
                 os.environ.get("TASK_WEIGHT_DECAY", "0.05")
             ),
+            "two_clock_experiment": os.environ.get(
+                "TASK_TWO_CLOCK_EXPERIMENT", ""
+            ),
+            "two_clock_max_age": int(
+                os.environ.get("TASK_TWO_CLOCK_MAX_AGE", "5")
+            ),
+            "two_clock_encoder_freeze_steps": int(
+                os.environ.get("TASK_ENCODER_FREEZE_STEPS", "0")
+            ),
         },
     )
     run_file.write_text(
@@ -291,6 +300,10 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         "peak_allocated_bytes": 0,
         "peak_reserved_bytes": 0,
     }
+    encoder_freeze_steps = int(
+        os.environ.get("TASK_ENCODER_FREEZE_STEPS", "0")
+    )
+    encoder_frozen = None
     gradient_diagnostics_enabled = (
         os.environ.get("TASK_GRADIENT_DIAGNOSTICS", "0") == "1"
     )
@@ -333,6 +346,25 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         extra_loss_mts,
         raise_on_error=True,
     ):
+        nonlocal encoder_frozen
+        if encoder_freeze_steps > 0:
+            completed_before_step = int(self.steps[phase])
+            should_freeze = completed_before_step < encoder_freeze_steps
+            if should_freeze != encoder_frozen:
+                wrapped_model = self.model
+                train_model = (
+                    wrapped_model.module
+                    if hasattr(wrapped_model, "module")
+                    else wrapped_model
+                )
+                for parameter in train_model.image_encoder.parameters():
+                    parameter.requires_grad = not should_freeze
+                encoder_frozen = should_freeze
+                logging.info(
+                    "Image encoder %s at completed step %d",
+                    "frozen" if should_freeze else "unfrozen",
+                    completed_before_step,
+                )
         if capacity_probe and torch.cuda.is_available():
             torch.cuda.synchronize()
             if capacity_state["completed_steps"] == capacity_warmup_steps:
@@ -1089,6 +1121,159 @@ def apply_object_slot_overrides(config) -> None:
     )
 
 
+def apply_two_clock_overrides(config) -> None:
+    """Build one controlled SAM2.1-L two-clock training variant."""
+    if os.environ.get("TASK_TWO_CLOCK_V1", "0") != "1":
+        return
+
+    from omegaconf import OmegaConf
+
+    from sam2_distill.two_clock.experiments import get_experiment
+
+    experiment_name = os.environ["TASK_TWO_CLOCK_EXPERIMENT"]
+    experiment = get_experiment(experiment_name)
+    if not experiment.train:
+        raise ValueError(f"{experiment_name} is evaluation-only")
+    if int(os.environ.get("TASK_TRAIN_BATCH_SIZE", "1")) != 1:
+        raise ValueError("two-clock v1 requires TASK_TRAIN_BATCH_SIZE=1")
+    if int(os.environ.get("TASK_NUM_FRAMES", "8")) != 8:
+        raise ValueError("two-clock Wave 1 is pre-registered at T8")
+
+    teacher_config = Path(os.environ["TASK_TEACHER_MODEL_CONFIG"])
+    teacher_checkpoint = Path(os.environ["TASK_TEACHER_CHECKPOINT"])
+    if not teacher_config.is_file():
+        raise FileNotFoundError(f"missing teacher config: {teacher_config}")
+    if not teacher_checkpoint.is_file():
+        raise FileNotFoundError(f"missing teacher checkpoint: {teacher_checkpoint}")
+
+    official = OmegaConf.load(teacher_config)
+    model = official.model if "model" in official else official.trainer.model
+    model._target_ = "sam2_distill.two_clock.model.TwoClockSAM2Train"
+    model.experiment = experiment_name
+    model.max_feature_age = int(
+        os.environ.get("TASK_TWO_CLOCK_MAX_AGE", "5")
+    )
+    model.box_jitter_fraction = 0.05
+    model.image_encoder.trunk.drop_path_rate = 0.1
+    model.image_encoder_forward_batch_size = int(
+        os.environ.get("TASK_ENCODER_FORWARD_BATCH_SIZE", "1")
+    )
+    model.image_encoder_activation_checkpoint = True
+    model.teacher_model_config = str(teacher_config)
+    model.teacher_checkpoint = str(teacher_checkpoint)
+    model.pair_teacher_student_prompts = False
+    model.prob_to_use_pt_input_for_train = 0.5
+    model.prob_to_use_box_input_for_train = 0.5
+    model.prob_to_sample_from_gt_for_train = 0.0
+    model.num_frames_to_correct_for_train = 1
+    model.rand_frames_to_correct_for_train = False
+    model.add_all_frames_to_correct_as_cond = False
+    model.num_init_cond_frames_for_train = 1
+    model.rand_init_cond_frames_for_train = False
+    model.num_correction_pt_per_frame = 0
+    model.use_act_ckpt_iterative_pt_sampling = False
+    model.prob_to_use_pt_input_for_eval = 0.0
+    model.prob_to_use_box_input_for_eval = 0.0
+    model.num_frames_to_correct_for_eval = 1
+    model.num_init_cond_frames_for_eval = 1
+    model.forward_backbone_per_frame_for_eval = True
+    config.trainer.model = model
+
+    config.scratch.train_batch_size = 1
+    config.scratch.num_frames = 8
+    config.scratch.max_num_objects = int(
+        os.environ.get("TASK_MAX_NUM_OBJECTS", "3")
+    )
+    train_data = config.trainer.data.train
+    train_data.batch_sizes[0] = 1
+    sampler = train_data.datasets[0].sampler
+    sampler.num_frames = 8
+    sampler.max_num_objects = config.scratch.max_num_objects
+    sampler.force_full_refresh = experiment_name == "O2"
+    sampler.fixed_refresh_interval = 0
+
+    loss = config.trainer.loss.all
+    use_state_distillation = experiment.privileged_state_distillation
+    loss.state_weight = 0.25 if use_state_distillation else 0.0
+    loss.pointer_weight = 0.1 if use_state_distillation else 0.0
+    loss.score_weight = 0.1 if use_state_distillation else 0.0
+
+    def cosine(start: float, end: float, names=None):
+        value = {
+            "scheduler": {
+                "_target_": "fvcore.common.param_scheduler.CosineParamScheduler",
+                "start_value": start,
+                "end_value": end,
+            }
+        }
+        if names:
+            value["param_names"] = names
+        return value
+
+    lr_options = [
+        cosine(
+            float(os.environ.get("TASK_HEAD_LR", "5e-6")),
+            float(os.environ.get("TASK_HEAD_LR_END", "5e-7")),
+        ),
+        cosine(
+            float(os.environ.get("TASK_ENCODER_LR", "1e-6")),
+            float(os.environ.get("TASK_ENCODER_LR_END", "1e-7")),
+            ["image_encoder.*"],
+        ),
+    ]
+    temporal_names = []
+    if experiment.age_conditioning:
+        temporal_names.append("age_conditioner.*")
+    if experiment.recency_conditioning:
+        temporal_names.append("memory_time_conditioner.*")
+    if temporal_names:
+        lr_options.append(
+            cosine(
+                float(os.environ.get("TASK_TEMPORAL_LR", "5e-5")),
+                float(os.environ.get("TASK_TEMPORAL_LR_END", "5e-6")),
+                temporal_names,
+            )
+        )
+    config.trainer.optim.options = OmegaConf.create(
+        {
+            "lr": lr_options,
+            "weight_decay": [
+                {
+                    "scheduler": {
+                        "_target_": (
+                            "fvcore.common.param_scheduler."
+                            "ConstantParamScheduler"
+                        ),
+                        "value": float(
+                            os.environ.get("TASK_WEIGHT_DECAY", "0.1")
+                        ),
+                    }
+                },
+                {
+                    "scheduler": {
+                        "_target_": (
+                            "fvcore.common.param_scheduler."
+                            "ConstantParamScheduler"
+                        ),
+                        "value": 0.0,
+                    },
+                    "param_names": ["*bias*"],
+                    "module_cls_names": ["torch.nn.LayerNorm"],
+                },
+            ],
+        }
+    )
+    config.trainer.checkpoint.model_weight_initializer = OmegaConf.create(
+        {
+            "_target_": (
+                "sam2_distill.two_clock.model.initialize_two_clock_sam21l"
+            ),
+            "_partial_": True,
+            "checkpoint_path": str(teacher_checkpoint),
+        }
+    )
+
+
 def main() -> None:
     args = parse_args()
     sam2_root = Path(os.environ["SAM2_TRAINING_ROOT"])
@@ -1110,6 +1295,7 @@ def main() -> None:
     apply_mask_ablation_overrides(config)
     apply_edgetam_memory_overrides(config)
     apply_object_slot_overrides(config)
+    apply_two_clock_overrides(config)
     resolved_config = Path(os.environ["TASK_RUN_DIR"]) / "resolved_config.yaml"
     if int(os.environ.get("RANK", "0")) == 0:
         resolved_config.parent.mkdir(parents=True, exist_ok=True)

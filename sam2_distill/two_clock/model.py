@@ -264,6 +264,7 @@ class TwoClockSAM2Train(EdgeTAMTrainWithTeacher):
                 mask_inputs=backbone_out["mask_inputs_per_frame"].get(stage),
                 output_dict=output_dict,
                 num_frames=num_frames,
+                run_mem_encoder=True,
             )
             current_out.update(
                 {
@@ -313,6 +314,7 @@ class TwoClockSAM2Train(EdgeTAMTrainWithTeacher):
         mask_inputs,
         output_dict,
         num_frames,
+        run_mem_encoder=True,
     ) -> dict:
         current_out = {"point_inputs": point_inputs, "mask_inputs": mask_inputs}
         high_res_features = [
@@ -377,7 +379,9 @@ class TwoClockSAM2Train(EdgeTAMTrainWithTeacher):
         refresh = self._two_clock_context["age"].eq(0)
         if not torch.all(refresh == refresh[0]):
             raise ValueError("safe memory requires one shared per-video refresh action")
-        write_spatial = not self.experiment.suppress_stale_spatial_writes or bool(refresh[0])
+        write_spatial = run_mem_encoder and (
+            not self.experiment.suppress_stale_spatial_writes or bool(refresh[0])
+        )
         self._encode_memory_in_output(
             raw_vision_feats,
             feat_sizes,
