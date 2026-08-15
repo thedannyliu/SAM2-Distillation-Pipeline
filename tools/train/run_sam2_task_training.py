@@ -276,6 +276,28 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
             matches.append(matched)
         return set().union(*matches)
 
+    def quiet_module_cls_pattern_match(
+        filter_module_cls_names,
+        module_cls_to_param_names,
+    ):
+        if filter_module_cls_names is None:
+            return set()
+        matches = []
+        for module_cls_name in filter_module_cls_names:
+            module_cls = optimizer_module.hydra.utils.get_class(module_cls_name)
+            if module_cls not in module_cls_to_param_names:
+                raise AssertionError(
+                    f"module_cls_name {module_cls_name} does not match any "
+                    "classes in the model"
+                )
+            matched = module_cls_to_param_names[module_cls]
+            assert matched, (
+                f"module_cls_name {module_cls_name} does not contain any "
+                "parameters in the model"
+            )
+            matches.append(matched)
+        return set().union(*matches)
+
     def compact_model_initializer(self):
         initializer = trainer_module.instantiate(
             self.checkpoint_conf.model_weight_initializer
@@ -562,6 +584,9 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         gradient_clipper_with_diagnostics
     )
     optimizer_module.unix_param_pattern_to_parameter_names = quiet_param_pattern_match
+    optimizer_module.unix_module_cls_pattern_to_parameter_names = (
+        quiet_module_cls_pattern_match
+    )
     vos_dataset_module.print = lambda *args, **kwargs: None
 
     warmup_fraction = float(os.environ.get("TASK_LR_WARMUP_FRACTION", "0"))
