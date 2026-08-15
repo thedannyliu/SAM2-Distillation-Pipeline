@@ -91,6 +91,8 @@ class SAVSparseSegmentLoader:
             )
         self.ann_every = frames_fps // annotation_fps
         self.num_objects = max(len(frame or []) for frame in self.frame_annots)
+        frame_count = payload.get("video_frame_count")
+        self.raw_frame_count = int(frame_count) if frame_count is not None else None
 
     def is_annotated(self, raw_frame_idx: int, object_id: int) -> bool:
         if raw_frame_idx < 0 or raw_frame_idx % self.ann_every:
@@ -236,13 +238,16 @@ class SAV24FPSRawDataset:
 
     def get_video(self, index: int) -> tuple[SAVRawVideo, SAVSparseSegmentLoader]:
         video_id, video_path, annotation_path, raw_frame_count = self.records[index]
+        loader = SAVSparseSegmentLoader(annotation_path)
+        if loader.raw_frame_count is not None:
+            raw_frame_count = loader.raw_frame_count
         frames = [
             SAVRawFrame(frame_idx=frame_idx, image_path=str(video_path))
             for frame_idx in range(raw_frame_count)
         ]
         return (
             SAVRawVideo(video_id, _video_number(video_id), frames),
-            SAVSparseSegmentLoader(annotation_path),
+            loader,
         )
 
     def __len__(self) -> int:

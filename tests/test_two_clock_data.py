@@ -19,6 +19,7 @@ from sam2_distill.two_clock.data import (
 def _annotation(path: Path) -> None:
     payload = {
         "fps": 6,
+        "video_frame_count": 11,
         "masklet": [
             [{"size": [4, 4], "counts": "fake"}, None],
             [None, {"size": [4, 4], "counts": "fake"}],
@@ -33,6 +34,7 @@ def test_sparse_loader_preserves_manual_validity(tmp_path: Path) -> None:
     _annotation(annotation)
     loader = SAVSparseSegmentLoader(annotation)
     assert loader.ann_every == 4
+    assert loader.raw_frame_count == 11
     assert loader.is_annotated(0, 0)
     assert not loader.is_annotated(0, 1)
     assert not loader.is_annotated(1, 0)
