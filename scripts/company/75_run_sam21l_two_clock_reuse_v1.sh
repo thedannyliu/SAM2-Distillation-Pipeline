@@ -124,6 +124,7 @@ main() {
     echo "Run directory: ${run_dir}"
     CUDA_VISIBLE_DEVICES="${gpus}" \
     PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
+    SAM2_TRAINING_ROOT="${sam2_root}" \
     TASK_TWO_CLOCK_V1=1 \
     TASK_TWO_CLOCK_EXPERIMENT="${experiment}" \
     TASK_TWO_CLOCK_MAX_AGE=5 \
