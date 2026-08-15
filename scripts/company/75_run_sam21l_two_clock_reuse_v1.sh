@@ -173,6 +173,42 @@ main() {
     return "${status}"
   }
 
+  verify_smoke() {
+    local experiment="$1" smoke_dir="${run_root}/smoke/$1"
+    python - "${smoke_dir}" "${gpu_count}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run = Path(sys.argv[1])
+world = int(sys.argv[2])
+required = [
+    run / "checkpoints" / "checkpoint.pt",
+    run / "checkpoints" / "last.pt",
+    run / "resolved_config.yaml",
+    run / "training_status.json",
+    run / "gradient_diagnostics.json",
+]
+required.extend(run / f"capacity_rank{rank}.json" for rank in range(world))
+missing = [str(path) for path in required if not path.is_file()]
+if missing:
+    raise SystemExit(f"smoke artifacts missing: {missing}")
+training = json.loads((run / "training_status.json").read_text(encoding="utf-8"))
+gradients = json.loads((run / "gradient_diagnostics.json").read_text(encoding="utf-8"))
+if training.get("status") != "complete":
+    raise SystemExit(f"smoke training did not complete: {training}")
+if gradients.get("status") != "pass" or gradients.get("nonfinite_steps") != 0:
+    raise SystemExit(f"smoke gradients failed: {gradients}")
+capacities = [
+    json.loads((run / f"capacity_rank{rank}.json").read_text(encoding="utf-8"))
+    for rank in range(world)
+]
+if any(row.get("per_gpu_batch") != 1 for row in capacities):
+    raise SystemExit(f"smoke batch contract failed: {capacities}")
+print(json.dumps({"status": "pass", "training": training, "gradients": gradients, "capacity": capacities}, indent=2))
+PY
+  }
+
   evaluate_checkpoint() {
     local experiment="$1" checkpoint_path="$2" resolved_config="$3"
     local interval="$4" output="$5" status log_file
@@ -317,7 +353,7 @@ PY
   case "${action}" in
     describe) describe ;;
     audit) audit ;;
-    smoke) audit && train_target "${target}" smoke ;;
+    smoke) audit && train_target "${target}" smoke && verify_smoke "${target}" ;;
     train) train_target "${target}" formal ;;
     select) select_checkpoint "${target}" ;;
     curves) curves "${target}" ;;
