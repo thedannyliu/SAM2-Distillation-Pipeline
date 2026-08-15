@@ -2,8 +2,9 @@
 
 ## Status and documentation contract
 
-**Status:** revision 1 complete after design review; awaiting user approval
-before implementation or GPU submission.
+**Status:** Wave-1 implementation complete on the research branch; local CPU
+contracts pass. Company input audit and 4xH100 E smoke are the remaining hard
+gates before the six formal jobs.
 
 This file is the authoritative design, execution plan, and result ledger for
 the experiment. Update it after every smoke, training run, validation, and
@@ -13,7 +14,8 @@ project/run ID, command, result, and decision. Machine-readable metrics remain
 under the company run root; this document records only the concise evidence
 needed to answer each research question.
 
-No training code or company job should start until this design is approved.
+The design was approved on 2026-08-14. Formal GPU training remains gated by
+the repo-owned `audit` and `smoke` actions below.
 
 ### Design-review resolution (2026-08-14)
 
@@ -653,9 +655,10 @@ no more than 1.0 J&F loss from the same frozen parent at R1.
    MemEnc raw-feature ownership, temporal metadata, refresh-only spatial
    writes, fixed memory/pointer capacity, actual encoder-call count,
    checkpoint resume, and W&B/TensorBoard directory reuse.
-7. Capacity-probe per-GPU batch 1 then 2. Lock the largest batch that passes
-   on all O2/A--E variants below 72 GiB reserved HBM; all six formal runs use
-   that common batch.
+7. Lock per-GPU video batch to 1 (global batch 4). D/E have ragged spatial
+   banks because reuse frames omit writes; v1 deliberately avoids an
+   unvalidated per-sample memory-padding mask. Record the smoke HBM and step
+   time, but do not promote batch 2 in Wave 1.
 
 ### Wave 1: launch together on six 4xH100 nodes
 
@@ -686,7 +689,8 @@ All Wave-1 runs use:
 - Gradient clipping at norm 1.0, with pre-clip norm and clip fraction logged.
   Do not reuse the previously saturated 0.1 threshold silently.
 - Weight decay zero for bias and normalization parameters.
-- `last.pt` after every epoch; `best.pt` for every O2/A--E run is selected by
+- `checkpoint_N.pt` after every epoch plus resumable `checkpoint.pt` and a
+  convenience `last.pt`; `best.pt` for every O2/A--E run is selected by
   the same full SA-V val **R4 J&F** metric. R4 starts at the prompted anchor,
   uses only real GT for scoring, and uses the common naive cache/gather path.
   R1 and age-stratified metrics are diagnostics and never select Wave-1
@@ -840,19 +844,21 @@ does not reject stale-aware reuse.
 
 ## Implementation boundaries and verification
 
-Implementation should add repo-owned modules rather than edit the official
-SAM2 checkout:
+Implementation adds repo-owned modules rather than editing the official SAM2
+checkout. Wave-1 delivered components are:
 
 - a 24 FPS SA-V dataset/sampler and GT-validity-aware collation path;
 - a stale-aware SAM2.1-L training subclass with real refresh-only encoding,
   two-clock metadata, and safe-bank selection;
-- temporal conditioning, E+ predictor, group-normalized loss, and frozen
-  online-teacher extensions;
+- temporal conditioning, group-normalized loss, and frozen online-teacher
+  extensions (E+ remains conditional on E passing its registered gate);
 - a matching video-predictor subclass for fixed/gated inference;
-- one company runner with `audit`, `probe`, `smoke`, `train`, `val`, `gate`,
-  `test`, and `status` actions;
-- aggregation for age curves, policy Pareto tables, failure strata, and
-  latency.
+- a matching fixed-policy video-predictor subclass for R1--R6 inference;
+- a company runner with `audit`, `smoke`, `train`, `select`, `curves`,
+  `controls`, `run`, and `status` actions;
+- full-val rank merging, official SA-V evaluation, actual encoder-call
+  telemetry, and GT-only realized-age tables. Forced-age, failure-strata,
+  E+/gate, Pareto, and deployment profiling remain post-Wave-1 work.
 
 Minimum verification before formal launch:
 
@@ -884,10 +890,13 @@ Minimum verification before formal launch:
 14. Single-GPU forward/backward, four-GPU DDP, checkpoint resume, full-val
     inference, and evaluator identity smokes pass.
 
-The design now lives on `research/sam21l-two-clock-reuse-v1`, created from the
-current paired-supervision branch. Implementation remains blocked until this
-revision is approved. Keep code and generated results in separate narrow
-commits, and merge only after the smokes and first result-table update pass.
+The design and implementation live on
+`research/sam21l-two-clock-reuse-v1`. Local verification currently includes
+17 deterministic core/data/loss tests, official SAM2 import, Hiera-L student
+and predictor Hydra construction, and optimizer parameter-group coverage.
+Company Torch 2.4 forward/backward, four-rank DDP, and resume behavior must be
+recorded by the smoke before formal launch. Keep generated results out of code
+commits and merge only after the smoke and first result-table update pass.
 
 ## Result ledger
 
