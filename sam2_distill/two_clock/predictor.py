@@ -298,7 +298,9 @@ def build_two_clock_video_predictor(
     ):
         model.pop(key, None)
     predictor = instantiate(model, _recursive_=True)
-    checkpoint = torch.load(Path(checkpoint_path), map_location="cpu", weights_only=False)
+    checkpoint = torch.load(
+        Path(checkpoint_path), map_location="cpu", weights_only=True, mmap=True
+    )
     state = checkpoint.get("model", checkpoint)
     if any(key.startswith("module.") for key in state):
         state = {key.removeprefix("module."): value for key, value in state.items()}

@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--sample-videos", type=int, default=32)
     parser.add_argument("--decode-videos", type=int, default=2)
+    parser.add_argument("--expected-usable-videos", type=int, default=50337)
     parser.add_argument("--out-json", type=Path)
     return parser.parse_args()
 
@@ -62,6 +63,10 @@ def main() -> None:
         }
     )
     failures = []
+    if len(dataset) != args.expected_usable_videos:
+        failures.append(
+            f"usable video count is {len(dataset)}, expected {args.expected_usable_videos}"
+        )
     decoded = []
     usable = 0
     for sample_index, index in enumerate(indices):

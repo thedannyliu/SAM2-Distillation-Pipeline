@@ -68,6 +68,18 @@ main() {
     done
     mkdir -p "${run_root}/audit"
     if [[ "${status}" -eq 0 ]]; then
+      exec 9>"${run_root}/audit/.full_data_preparation.lock" || return 1
+      flock 9 || return 1
+      if [[ ! -f "${run_root}/audit/.full_data_preparation_passed" ]]; then
+        SAV_ROOT="${sav_root}" SAM2D_ROOT="${sam2d_root}" \
+          scripts/company/65_prepare_full_sav_memory_data.sh audit || status="$?"
+        if [[ "${status}" -eq 0 ]]; then
+          touch "${run_root}/audit/.full_data_preparation_passed"
+        fi
+      fi
+      flock -u 9
+    fi
+    if [[ "${status}" -eq 0 ]]; then
       PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
         python tools/train/audit_two_clock_inputs.py \
           --manifest "${manifest}" \
@@ -144,6 +156,8 @@ main() {
     TASK_LOG_EVERY="${TASK_LOG_EVERY:-30}" \
     TASK_PRINT_EVERY="${TASK_PRINT_EVERY:-300}" \
     TASK_CAPACITY_PROBE="$([[ "${scope}" == "smoke" ]] && echo 1 || echo 0)" \
+    TASK_CAPACITY_WARMUP_STEPS=0 \
+    TASK_GRADIENT_DIAGNOSTICS="${TASK_GRADIENT_DIAGNOSTICS:-1}" \
     WANDB_MODE="${mode}" \
       torchrun --standalone --nproc_per_node="${gpu_count}" \
         tools/train/run_sam2_task_training.py \
@@ -163,8 +177,15 @@ main() {
     local experiment="$1" checkpoint_path="$2" resolved_config="$3"
     local interval="$4" output="$5" status log_file
     if [[ -f "${output}/sav_eval.json" && "${SKIP_DONE:-1}" == "1" ]]; then
-      echo "Skip completed evaluation: ${output}"
-      return 0
+      if python - "${output}/sav_eval.json" <<'PY'
+import json
+import sys
+raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("status") == "pass" else 1)
+PY
+      then
+        echo "Skip completed evaluation: ${output}"
+        return 0
+      fi
     fi
     mkdir -p "${output}/pred" "${log_root}/eval"
     log_file="${log_root}/eval/${experiment}_$(basename "${output}").log"
