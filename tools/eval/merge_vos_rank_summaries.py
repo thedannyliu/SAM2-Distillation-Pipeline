@@ -27,6 +27,7 @@ def main() -> None:
     timed_frames = sum(int(row["model_timed_frames"]) for row in ranks)
     model_latency_sum_ms = sum(float(row["model_frame_latency_sum_ms"]) for row in ranks)
     encoder_calls = sum(int(row.get("two_clock_encoder_calls", 0)) for row in ranks)
+    tracking_frames = sum(int(row.get("two_clock_tracking_frames", 0)) for row in ranks)
     summary = {
         "status": "pass",
         "world_size": expected,
@@ -41,7 +42,8 @@ def main() -> None:
         "rank_model_median_ms": [row["model_frame_median_ms"] for row in ranks],
         "rank_summaries": [str(path) for path in paths],
         "two_clock_encoder_calls": encoder_calls,
-        "two_clock_refresh_rate": encoder_calls / max(frames, 1),
+        "two_clock_tracking_frames": tracking_frames,
+        "two_clock_refresh_rate": encoder_calls / max(tracking_frames, 1),
     }
     out = args.out or args.run_dir / "summary.json"
     out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

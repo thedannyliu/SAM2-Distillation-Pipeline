@@ -191,6 +191,9 @@ def main() -> None:
     started = time.perf_counter()
     two_clock_encoder_calls = 0
     two_clock_frame_requests = 0
+    two_clock_tracking_frames = 0
+    if args.model_kind == "two-clock":
+        predictor.reset_two_clock_telemetry()
     for video_name in video_names:
         inference_fn(
             predictor=predictor,
@@ -201,10 +204,11 @@ def main() -> None:
             use_all_masks=args.use_all_masks,
             per_obj_png_file=args.per_obj_png_file,
         )
-        if args.model_kind == "two-clock":
-            state = predictor._two_clock_last_state
-            two_clock_encoder_calls += int(state["two_clock_encoder_calls"])
-            two_clock_frame_requests += int(state["two_clock_frame_requests"])
+    if args.model_kind == "two-clock":
+        telemetry = predictor.two_clock_telemetry()
+        two_clock_encoder_calls = int(telemetry["encoder_calls"])
+        two_clock_frame_requests = int(telemetry["frame_requests"])
+        two_clock_tracking_frames = int(telemetry["tracking_frames"])
 
     elapsed = time.perf_counter() - started
     processed_frames = sum(
@@ -243,8 +247,9 @@ def main() -> None:
         "build": build_summary,
         "two_clock_encoder_calls": two_clock_encoder_calls,
         "two_clock_frame_requests": two_clock_frame_requests,
+        "two_clock_tracking_frames": two_clock_tracking_frames,
         "two_clock_refresh_rate": two_clock_encoder_calls
-        / max(processed_frames, 1),
+        / max(two_clock_tracking_frames, 1),
     }
     summary_name = "summary.json" if world_size == 1 else f"summary.rank{rank:03d}.json"
     (args.out_dir / summary_name).write_text(

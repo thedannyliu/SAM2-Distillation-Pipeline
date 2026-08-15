@@ -58,6 +58,7 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
 
     @torch.inference_mode()
     def init_state(self, *args, **kwargs):
+        self._record_current_stream()
         state = super().init_state(*args, **kwargs)
         state["two_clock_encoder_calls"] = 1
         state["two_clock_frame_requests"] = 0
@@ -65,6 +66,58 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         state["two_clock_anchor_frame"] = 0
         self._two_clock_last_state = state
         return state
+
+    def reset_two_clock_telemetry(self) -> None:
+        self._two_clock_stream_records = []
+        self._two_clock_last_state = None
+
+    def _record_current_stream(self) -> None:
+        state = getattr(self, "_two_clock_last_state", None)
+        if state is None or not state.get("two_clock_prompt_registered", False):
+            return
+        if not hasattr(self, "_two_clock_stream_records"):
+            self._two_clock_stream_records = []
+        self._two_clock_stream_records.append(
+            {
+                "encoder_calls": int(state["two_clock_encoder_calls"]),
+                "frame_requests": int(state["two_clock_frame_requests"]),
+                "tracking_frames": int(state["num_frames"])
+                - int(state["two_clock_anchor_frame"]),
+            }
+        )
+        state["two_clock_prompt_registered"] = False
+
+    def two_clock_telemetry(self) -> dict[str, int | float]:
+        records = list(getattr(self, "_two_clock_stream_records", []))
+        state = getattr(self, "_two_clock_last_state", None)
+        if state is not None and state.get("two_clock_prompt_registered", False):
+            records.append(
+                {
+                    "encoder_calls": int(state["two_clock_encoder_calls"]),
+                    "frame_requests": int(state["two_clock_frame_requests"]),
+                    "tracking_frames": int(state["num_frames"])
+                    - int(state["two_clock_anchor_frame"]),
+                }
+            )
+        encoder_calls = sum(record["encoder_calls"] for record in records)
+        tracking_frames = sum(record["tracking_frames"] for record in records)
+        return {
+            "streams": len(records),
+            "encoder_calls": encoder_calls,
+            "frame_requests": sum(record["frame_requests"] for record in records),
+            "tracking_frames": tracking_frames,
+            "refresh_rate": encoder_calls / max(tracking_frames, 1),
+        }
+
+    @torch.inference_mode()
+    def reset_state(self, inference_state):
+        self._record_current_stream()
+        super().reset_state(inference_state)
+        inference_state["cached_features"].clear()
+        inference_state["two_clock_encoder_calls"] = 0
+        inference_state["two_clock_frame_requests"] = 0
+        inference_state["two_clock_anchor_frame"] = 0
+        inference_state["two_clock_prompt_registered"] = False
 
     def _register_prompt_anchor(self, inference_state, frame_idx: int) -> None:
         existing = inference_state.get("two_clock_prompt_registered", False)
