@@ -4,6 +4,12 @@ This runbook launches the approved O2/A/B/C/D/E screen. It does not access
 SA-V test, DAVIS, E+, or the learned gate. Commands run in the foreground and
 the runner mirrors live output to `/user-volume/log/sam21l_two_clock_reuse_v1`.
 
+The verification and legacy-run migration procedure is defined in
+`docs/experiments/sam21l_two_clock_verification.md`. Wave-1 jobs already
+started at `d8a5e7c` must finish or resume from that unchanged checkout before
+the company repo is updated. They receive a retroactive audit, not a
+prospective verification stamp.
+
 ## Immutable runtime contract
 
 - Code: `/user-volume/repo/SAM2-Distillation-Pipeline`
@@ -30,7 +36,7 @@ handoff does not itself publish or merge the branch.
 
 ## One-node hard gate
 
-Run these first on one 4xH100 node:
+For a new commit, run these first on one 4xH100 node:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
@@ -40,16 +46,22 @@ GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh audit
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh smoke E
 ```
 
-The audit must report 50,337 usable videos, successful sampled MP4 T8 decode,
+The smoke first reruns the CPU logic gate and stores a fresh smoke under a
+commit-namespaced verification directory. The audit must report 50,337 usable
+videos, successful sampled MP4 T8 decode,
 the official Hiera-L checkpoint tensor prefixes, and the actual imported
 Torch/SAM2 paths. The smoke must complete four-rank DDP forward/backward and
 write all of the following:
 
-- `smoke/E/checkpoints/checkpoint.pt` and `last.pt`;
-- `smoke/E/resolved_config.yaml`;
-- `smoke/E/capacity_rank*.json`;
-- `smoke/E/gradient_diagnostics.json`;
-- `smoke/E/training_status.json` with `status: complete`.
+- `verification/local_stamp.json` and `remote_stamp.json`;
+- `verification/smoke/<git-sha>/E/checkpoints/checkpoint.pt` and `last.pt`;
+- `verification/smoke/<git-sha>/E/resolved_config.yaml`;
+- `verification/smoke/<git-sha>/E/capacity_rank*.json`;
+- `verification/smoke/<git-sha>/E/gradient_diagnostics.json`;
+- `verification/smoke/<git-sha>/E/mechanism_gradients_rank*.json`;
+- `verification/smoke/<git-sha>/E/flight_recorder_rank*.jsonl`;
+- `verification/smoke/<git-sha>/E/training_status.json` with
+  `status: complete`.
 
 Do not start formal jobs if the smoke fails, any rank reports non-finite
 gradients, the resolved per-GPU batch differs from one, or the input audit

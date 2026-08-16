@@ -2,9 +2,11 @@
 
 ## Status and documentation contract
 
-**Status:** Wave-1 implementation complete on the research branch; local CPU
-contracts pass. Company input audit and 4xH100 E smoke are the remaining hard
-gates before the six formal jobs.
+**Status:** Wave-1 company jobs began from `d8a5e7c` before the prospective
+verification-stamp system was added. Preserve the active checkout until those
+runner processes reach a safe boundary. Existing jobs require the retroactive
+and post-run procedure in `sam21l_two_clock_verification.md`; future jobs must
+pass the local and remote promotion gates before launch.
 
 This file is the authoritative design, execution plan, and result ledger for
 the experiment. Update it after every smoke, training run, validation, and
