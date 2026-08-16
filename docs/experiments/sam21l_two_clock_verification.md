@@ -75,6 +75,10 @@ checkout identity. Missing launch-time SHA or preflight stamps remain
 Legacy results remain `provisional` or become `quarantined` if a recorded
 failure is found.
 
+The prospective gate refuses to attach a new launch manifest to a non-empty
+legacy run directory. A future verified run must use a new `RUN_ROOT`; this
+prevents an old `d8a5e7c` checkpoint from being resumed under a new identity.
+
 A new verified E smoke may be run after the active jobs stop using the shared
 checkout. It provides real-stack evidence for the new commit, but does not
 retroactively convert the old jobs into prospectively verified runs.
@@ -106,6 +110,7 @@ Run the registered smoke only on E:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
+RUN_ROOT=/group-volume/danny-dataset/sam2_distill/runs/sam21l_two_clock_reuse_v1_verified \
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh smoke E
 ```
 
@@ -141,6 +146,7 @@ After `smoke E` succeeds, `train` and `run` record and validate a per-target
 formal launch manifest before `torchrun` starts:
 
 ```bash
+RUN_ROOT=/group-volume/danny-dataset/sam2_distill/runs/sam21l_two_clock_reuse_v1_verified \
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh run E
 ```
 
@@ -151,6 +157,7 @@ match exactly, including seed and W&B mode.
 After training, checkpoint selection, and R1--R6 validation finish, run:
 
 ```bash
+RUN_ROOT=/group-volume/danny-dataset/sam2_distill/runs/sam21l_two_clock_reuse_v1_verified \
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh postrun E
 ```
 

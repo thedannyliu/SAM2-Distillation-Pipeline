@@ -296,6 +296,16 @@ def launch_manifest_path(run_dir: Path) -> Path:
     return run_dir / "verification/launch_manifest.json"
 
 
+def legacy_artifacts(run_dir: Path) -> list[Path]:
+    markers = (
+        run_dir / "resolved_config.yaml",
+        run_dir / "training_status.json",
+        run_dir / "checkpoints/checkpoint.pt",
+        run_dir / "checkpoints/last.pt",
+    )
+    return [path for path in markers if path.exists()]
+
+
 def parse_settings(rows: list[str]) -> dict[str, str]:
     settings = {}
     for row in rows:
@@ -319,6 +329,14 @@ def record_launch(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     if args.scope == "formal" and settings != contract["formal_settings"]:
         raise RuntimeError(
             f"formal runtime settings differ from the contract: {settings}"
+        )
+    path = launch_manifest_path(args.run_dir)
+    existing_legacy_artifacts = legacy_artifacts(args.run_dir)
+    if args.scope == "formal" and not path.is_file() and existing_legacy_artifacts:
+        raise RuntimeError(
+            "pre-existing formal run has no prospective launch manifest; "
+            "use audit-existing and a new RUN_ROOT instead: "
+            f"{[str(path) for path in existing_legacy_artifacts]}"
         )
     identity = full_identity(args, contract)
     require_clean(identity)
@@ -347,7 +365,6 @@ def record_launch(args: argparse.Namespace, contract: dict[str, Any]) -> None:
             remote["issued_at_unix"] if remote is not None else None
         ),
     }
-    path = launch_manifest_path(args.run_dir)
     if path.is_file():
         existing = load_json(path)
         comparable = dict(existing)

@@ -11,6 +11,7 @@ from sam2_distill.two_clock.verification import (
     validate_optimizer_audit,
 )
 from tools.train.verify_two_clock_experiment import (
+    legacy_artifacts,
     parse_settings,
     same_identity,
     validate_smoke_artifacts,
@@ -119,6 +120,13 @@ def test_runtime_settings_reject_duplicate_keys() -> None:
     }
     with pytest.raises(ValueError, match="duplicate"):
         parse_settings(["epochs=5", "epochs=1"])
+
+
+def test_legacy_run_detection_finds_unstamped_checkpoint(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoints/checkpoint.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("legacy\n", encoding="utf-8")
+    assert legacy_artifacts(tmp_path) == [checkpoint]
 
 
 def _write_json(path: Path, payload: dict) -> None:
