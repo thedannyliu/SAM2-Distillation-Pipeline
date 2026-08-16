@@ -340,6 +340,34 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         "pending_step": None,
         "pending_metrics": None,
     }
+    experiment_name = os.environ.get("TASK_TWO_CLOCK_EXPERIMENT", "")
+    mechanism_prefixes = {}
+    if experiment_name in {"B", "C", "C-r", "D", "E"}:
+        mechanism_prefixes["age_conditioner"] = "age_conditioner."
+    if experiment_name in {"C", "C-r", "D", "E"}:
+        mechanism_prefixes["memory_time_conditioner"] = (
+            "memory_time_conditioner."
+        )
+    mechanism_state = (
+        {
+            "steps": 0,
+            "nonfinite_steps": 0,
+            "teacher_grad_steps": 0,
+            "groups": {
+                name: {
+                    "parameter_tensors": 0,
+                    "steps_with_gradient": 0,
+                    "steps_with_nonzero_gradient": 0,
+                    "max_gradient_norm": 0.0,
+                }
+                for name in mechanism_prefixes
+            },
+        }
+        if os.environ.get("TASK_TWO_CLOCK_V1", "0") == "1"
+        and gradient_diagnostics_enabled
+        else None
+    )
+    capacity_state["mechanism_gradients"] = mechanism_state
     capacity_state["gradient_diagnostics"] = gradient_state
 
     def mean_across_ranks(metrics: dict[str, float], device) -> dict[str, float]:
@@ -532,6 +560,53 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         finite = torch.isfinite(total_norm).item()
         clipped = bool(finite and pre_clip_norm > self.max_norm)
 
+        teacher_grad_detected = False
+        if mechanism_state is not None:
+            mechanism_state["steps"] += 1
+            named_parameters = {
+                name.removeprefix("module."): parameter
+                for name, parameter in model.named_parameters()
+            }
+            for group_name, prefix in mechanism_prefixes.items():
+                group_parameters = [
+                    parameter
+                    for name, parameter in named_parameters.items()
+                    if name.startswith(prefix)
+                ]
+                group = mechanism_state["groups"][group_name]
+                group["parameter_tensors"] = len(group_parameters)
+                gradients = [
+                    parameter.grad.detach()
+                    for parameter in group_parameters
+                    if parameter.grad is not None
+                ]
+                if gradients:
+                    group["steps_with_gradient"] += 1
+                    group_norm = torch.linalg.vector_norm(
+                        torch.stack(
+                            [
+                                torch.linalg.vector_norm(gradient.float())
+                                for gradient in gradients
+                            ]
+                        )
+                    )
+                    if not bool(torch.isfinite(group_norm)):
+                        mechanism_state["nonfinite_steps"] += 1
+                    else:
+                        norm = float(group_norm.cpu())
+                        group["max_gradient_norm"] = max(
+                            group["max_gradient_norm"], norm
+                        )
+                        if norm > 0:
+                            group["steps_with_nonzero_gradient"] += 1
+            root_model = model.module if hasattr(model, "module") else model
+            teacher = getattr(root_model, "teacher_model", None)
+            if teacher is not None and any(
+                parameter.grad is not None for parameter in teacher.parameters()
+            ):
+                mechanism_state["teacher_grad_steps"] += 1
+                teacher_grad_detected = True
+
         result = original_gradient_clipper_call(self, model)
 
         gradient_state["steps"] += 1
@@ -568,6 +643,12 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
                 }
             )
             wandb_run.log(metrics, step=step)
+        if not finite:
+            raise FloatingPointError(
+                f"non-finite gradient norm before optimizer step: {pre_clip_norm}"
+            )
+        if teacher_grad_detected:
+            raise RuntimeError("the frozen online teacher received a gradient")
         return result
 
     def save_checkpoint_with_wandb(self, checkpoint, checkpoint_path):
@@ -692,6 +773,100 @@ def write_gradient_diagnostics_summary(runtime_state: dict) -> None:
         f"GRADIENT_DIAGNOSTICS {json.dumps(payload, sort_keys=True)}",
         flush=True,
     )
+
+
+def write_mechanism_gradient_summary(runtime_state: dict) -> None:
+    state = runtime_state.get("mechanism_gradients")
+    if state is None:
+        return
+    payload = {
+        "status": "pass"
+        if state["nonfinite_steps"] == 0 and state["teacher_grad_steps"] == 0
+        else "fail",
+        "steps": state["steps"],
+        "nonfinite_steps": state["nonfinite_steps"],
+        "teacher_grad_steps": state["teacher_grad_steps"],
+        "groups": state["groups"],
+    }
+    rank = int(os.environ.get("RANK", "0"))
+    output = Path(os.environ["TASK_RUN_DIR"]) / f"mechanism_gradients_rank{rank}.json"
+    output.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"MECHANISM_GRADIENTS {json.dumps(payload, sort_keys=True)}",
+        flush=True,
+    )
+
+
+def write_optimizer_audit(trainer, model) -> None:
+    """Fail before training if optimizer membership violates the model contract."""
+    named_parameters = dict(model.named_parameters())
+    trainable = {
+        id(parameter): name
+        for name, parameter in named_parameters.items()
+        if parameter.requires_grad
+    }
+    optimizer_parameters = {
+        id(parameter)
+        for group in trainer.optim.optimizer.param_groups
+        for parameter in group["params"]
+    }
+    missing = sorted(
+        name
+        for identifier, name in trainable.items()
+        if identifier not in optimizer_parameters
+    )
+    known_parameter_ids = {id(parameter) for parameter in named_parameters.values()}
+    unexpected_count = len(optimizer_parameters - set(trainable))
+
+    teacher = getattr(model, "teacher_model", None)
+    teacher_parameters = list(teacher.parameters()) if teacher is not None else []
+    teacher_ids = {id(parameter) for parameter in teacher_parameters}
+    teacher_audit = {
+        "parameters": len(teacher_parameters),
+        "frozen": all(not parameter.requires_grad for parameter in teacher_parameters),
+        "registered_with_student": bool(teacher_ids & known_parameter_ids),
+        "optimizer_parameters": len(teacher_ids & optimizer_parameters),
+    }
+    passed = (
+        not missing
+        and unexpected_count == 0
+        and bool(teacher_parameters)
+        and teacher_audit["frozen"]
+        and not teacher_audit["registered_with_student"]
+        and teacher_audit["optimizer_parameters"] == 0
+    )
+    groups = {}
+    for prefix in ("image_encoder.", "age_conditioner.", "memory_time_conditioner."):
+        names = sorted(
+            name
+            for name, parameter in named_parameters.items()
+            if name.startswith(prefix) and parameter.requires_grad
+        )
+        groups[prefix.removesuffix(".")] = {
+            "trainable_tensors": len(names),
+            "optimizer_tensors": sum(
+                id(named_parameters[name]) in optimizer_parameters for name in names
+            ),
+        }
+    payload = {
+        "status": "pass" if passed else "fail",
+        "trainable_parameters": len(trainable),
+        "optimizer_parameters": len(optimizer_parameters),
+        "missing_trainable_parameters": missing,
+        "unexpected_optimizer_parameters": unexpected_count,
+        "unknown_optimizer_parameters": len(optimizer_parameters - known_parameter_ids),
+        "groups": groups,
+        "teacher": teacher_audit,
+    }
+    if int(os.environ.get("RANK", "0")) == 0:
+        output = Path(os.environ["TASK_RUN_DIR"]) / "optimizer_audit.json"
+        output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        print(f"OPTIMIZER_AUDIT {json.dumps(payload, sort_keys=True)}", flush=True)
+    if payload["status"] != "pass":
+        raise RuntimeError(f"optimizer audit failed: {payload}")
 
 
 def apply_mask_ablation_overrides(config) -> None:
@@ -1373,11 +1548,13 @@ def main() -> None:
                         ),
                     }
                 )
+        write_optimizer_audit(trainer, model)
         trainer.run()
         succeeded = True
     finally:
         write_capacity_probe_summary(capacity_state)
         write_gradient_diagnostics_summary(capacity_state)
+        write_mechanism_gradient_summary(capacity_state)
         if int(os.environ.get("RANK", "0")) == 0:
             status_path.write_text(
                 json.dumps(

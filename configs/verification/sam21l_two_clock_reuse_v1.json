@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "experiment": "sam21l_two_clock_reuse_v1",
+  "design_path": "docs/experiments/sam21l_two_clock_reuse_v1.md",
+  "training_config_path": "configs/sam2_task/sam21l_two_clock_reuse_v1.yaml",
+  "local_tests": [
+    "tests/test_two_clock_core.py",
+    "tests/test_two_clock_data.py",
+    "tests/test_two_clock_training_loss.py",
+    "tests/test_two_clock_company_runner.py",
+    "tests/test_two_clock_verification.py"
+  ],
+  "formal_targets": ["O2", "A", "B", "C", "C-r", "D", "E"],
+  "formal_settings": {
+    "epochs": "5",
+    "max_videos": "0",
+    "num_frames": "8",
+    "per_gpu_batch": "1",
+    "max_objects": "3",
+    "video_ids_file": "",
+    "encoder_freeze_steps": "1000",
+    "encoder_forward_batch_size": "1",
+    "lr_warmup_fraction": "0.05",
+    "encoder_lr": "1e-6",
+    "encoder_lr_end": "1e-7",
+    "head_lr": "5e-6",
+    "head_lr_end": "5e-7",
+    "temporal_lr": "5e-5",
+    "temporal_lr_end": "5e-6"
+  },
+  "remote_smoke_target": "E",
+  "world_size": 4,
+  "requirements": [
+    {
+      "id": "TC-ENC-001",
+      "statement": "Only refresh images enter the student image encoder.",
+      "code": "sam2_distill/two_clock/model.py::_forward_refresh_images",
+      "test": "tests/test_two_clock_core.py::test_fixed_refresh_trajectory_r4",
+      "runtime_evidence": "flight_recorder_rank*.jsonl::encoder_calls"
+    },
+    {
+      "id": "TC-AGE-001",
+      "statement": "Feature age equals current raw frame minus source raw frame.",
+      "code": "sam2_distill/two_clock/model.py::_schedule_from_input",
+      "test": "tests/test_two_clock_verification.py::test_validate_clip_trace_accepts_registered_schedule",
+      "runtime_evidence": "flight_recorder_rank*.jsonl::frames[].age"
+    },
+    {
+      "id": "TC-AGE-002",
+      "statement": "Age-zero feature conditioning is an exact numerical identity.",
+      "code": "sam2_distill/two_clock/temporal.py::FeatureAgeConditioner",
+      "test": "tests/test_two_clock_core.py::test_age_zero_is_exact_identity",
+      "runtime_evidence": "local_stamp.json::tests"
+    },
+    {
+      "id": "TC-ROUTE-001",
+      "statement": "Conditioned read features and raw memory-write features remain separate.",
+      "code": "sam2_distill/two_clock/model.py::_two_clock_track_step",
+      "test": "tests/test_two_clock_company_runner.py::test_raw_cache_and_conditioned_read_wiring_remain_separate",
+      "runtime_evidence": "flight_recorder_rank*.jsonl::frames[].memory_write_feature"
+    },
+    {
+      "id": "TC-GRAD-001",
+      "statement": "Every temporal mechanism enabled by the variant receives a finite nonzero gradient.",
+      "code": "tools/train/run_sam2_task_training.py::gradient_clipper_with_diagnostics",
+      "test": "tests/test_two_clock_core.py::test_two_clock_residual_is_identity_initialized_but_trainable",
+      "runtime_evidence": "mechanism_gradients_rank*.json::groups"
+    },
+    {
+      "id": "TC-MEM-001",
+      "statement": "D and E write spatial memory only on refresh frames.",
+      "code": "sam2_distill/two_clock/model.py::_two_clock_track_step",
+      "test": "tests/test_two_clock_verification.py::test_validate_clip_trace_rejects_stale_spatial_write",
+      "runtime_evidence": "flight_recorder_rank*.jsonl::frames[].spatial_write"
+    },
+    {
+      "id": "TC-PTR-001",
+      "statement": "Every tracked frame produces a model-visible object pointer.",
+      "code": "sam2_distill/two_clock/model.py::_two_clock_track_step",
+      "test": "tests/test_two_clock_verification.py::test_validate_clip_trace_rejects_missing_pointer",
+      "runtime_evidence": "flight_recorder_rank*.jsonl::frames[].pointer_write"
+    },
+    {
+      "id": "TC-TEACH-001",
+      "statement": "The online teacher is frozen and excluded from the student optimizer and checkpoint graph.",
+      "code": "sam2_distill/edgetam/train_model.py::EdgeTAMTrainWithTeacher",
+      "test": "tests/test_two_clock_verification.py::test_validate_clip_trace_rejects_registered_teacher",
+      "runtime_evidence": "optimizer_audit.json::teacher"
+    },
+    {
+      "id": "TC-OPT-001",
+      "statement": "The optimizer contains every and only trainable student parameter.",
+      "code": "tools/train/run_sam2_task_training.py::write_optimizer_audit",
+      "test": "tests/test_two_clock_verification.py::test_validate_optimizer_audit_rejects_missing_parameters",
+      "runtime_evidence": "optimizer_audit.json::status"
+    },
+    {
+      "id": "TC-EVAL-001",
+      "statement": "Reported logical encoder calls equal the realized refresh-frame count.",
+      "code": "sam2_distill/two_clock/predictor.py::two_clock_telemetry",
+      "test": "tests/test_two_clock_verification.py::test_validate_clip_trace_rejects_encoder_mismatch",
+      "runtime_evidence": "flight_recorder_rank*.jsonl::encoder_calls"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ This module is imported only in the company SAM2 container, where the official
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import torch
@@ -18,6 +19,7 @@ from sam2_distill.two_clock.temporal import (
     FeatureAgeConditioner,
     TwoClockMemoryConditioner,
 )
+from sam2_distill.two_clock.verification import append_clip_trace, build_clip_trace
 
 
 METADATA_WIDTH = 7
@@ -152,7 +154,30 @@ class TwoClockSAM2Train(EdgeTAMTrainWithTeacher):
             self._copy_prompt_plan(student_backbone, teacher_backbone)
             teacher_outputs = teacher.forward_tracking(teacher_backbone, input)
         self._attach_teacher_targets(student_outputs, teacher_outputs)
+        self._record_verification_trace(student_outputs)
         return student_outputs
+
+    def _record_verification_trace(self, outputs: list[dict]) -> None:
+        if os.environ.get("TASK_TWO_CLOCK_FLIGHT_RECORDER", "0") != "1":
+            return
+        teacher = self.teacher_model
+        teacher_parameters = list(teacher.parameters())
+        student_parameter_ids = {id(parameter) for parameter in self.parameters()}
+        trace = build_clip_trace(
+            outputs,
+            experiment=self.experiment.name,
+            encoder_calls=self.encoder_calls_last_forward,
+            teacher_frozen=all(
+                not parameter.requires_grad for parameter in teacher_parameters
+            ),
+            teacher_registered=any(
+                id(parameter) in student_parameter_ids
+                for parameter in teacher_parameters
+            ),
+        )
+        run_dir = Path(os.environ["TASK_RUN_DIR"])
+        rank = int(os.environ.get("RANK", "0"))
+        append_clip_trace(run_dir / f"flight_recorder_rank{rank}.jsonl", trace)
 
     def _schedule_from_input(self, input) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         identifiers = input.metadata.unique_objects_identifier
@@ -391,6 +416,7 @@ class TwoClockSAM2Train(EdgeTAMTrainWithTeacher):
             object_score_logits,
             current_out,
         )
+        current_out["two_clock_memory_write_feature"] = "raw"
         current_out["two_clock_spatial_write"] = write_spatial
         return current_out
 

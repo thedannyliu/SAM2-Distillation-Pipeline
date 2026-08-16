@@ -14,7 +14,10 @@ main() {
   local checkpoint="${SAM2_CHECKPOINT:-${sam2d_root}/checkpoints/sam2.1/sam2.1_hiera_large.pt}"
   local model_config="${SAM2_MODEL_CONFIG:-${sam2_root}/sam2/configs/sam2.1/sam2.1_hiera_l.yaml}"
   local train_config="${repo_root}/configs/sam2_task/sam21l_two_clock_reuse_v1.yaml"
+  local verification_contract="${repo_root}/configs/verification/sam21l_two_clock_reuse_v1.json"
+  local verification_tool="${repo_root}/tools/train/verify_two_clock_experiment.py"
   local run_root="${RUN_ROOT:-${sam2d_root}/runs/sam21l_two_clock_reuse_v1}"
+  local verification_dir="${run_root}/verification"
   local log_root="${LOG_ROOT:-/user-volume/log/sam21l_two_clock_reuse_v1}"
   local wandb_project="${WANDB_PROJECT:-sam2-two-clock-reuse-v1}"
   local wandb_mode="${WANDB_MODE:-online}"
@@ -22,6 +25,8 @@ main() {
   local gpu_count
   IFS=, read -r -a gpu_array <<< "${gpus}"
   gpu_count="${#gpu_array[@]}"
+  local git_sha
+  git_sha="$(git rev-parse --short=12 HEAD)" || return 1
 
   is_train_target() {
     case "$1" in
@@ -35,6 +40,113 @@ main() {
       echo "[ERROR] Missing required path: $1" >&2
       return 1
     fi
+  }
+
+  smoke_run_dir() {
+    echo "${verification_dir}/smoke/${git_sha}/$1"
+  }
+
+  verify_local() {
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      local \
+      --evidence-dir "${verification_dir}"
+  }
+
+  record_launch() {
+    local experiment="$1" scope="$2" run_dir="$3" max_videos="$4"
+    local epochs="$5" freeze_steps="$6" warmup="$7"
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      record-launch \
+      --evidence-dir "${verification_dir}" \
+      --run-dir "${run_dir}" \
+      --scope "${scope}" \
+      --target "${experiment}" \
+      --gpus "${gpus}" \
+      --seed "${TASK_SEED:-250107256}" \
+      --wandb-project "${wandb_project}" \
+      --wandb-mode "$([[ "${scope}" == "smoke" ]] && echo disabled || echo "${wandb_mode}")" \
+      --setting "epochs=${epochs}" \
+      --setting "max_videos=${max_videos}" \
+      --setting "num_frames=8" \
+      --setting "per_gpu_batch=1" \
+      --setting "max_objects=3" \
+      --setting "video_ids_file=${TASK_VIDEO_IDS_FILE:-}" \
+      --setting "encoder_freeze_steps=${freeze_steps}" \
+      --setting "encoder_forward_batch_size=${TASK_ENCODER_FORWARD_BATCH_SIZE:-1}" \
+      --setting "lr_warmup_fraction=${warmup}" \
+      --setting "encoder_lr=${TASK_ENCODER_LR:-1e-6}" \
+      --setting "encoder_lr_end=${TASK_ENCODER_LR_END:-1e-7}" \
+      --setting "head_lr=${TASK_HEAD_LR:-5e-6}" \
+      --setting "head_lr_end=${TASK_HEAD_LR_END:-5e-7}" \
+      --setting "temporal_lr=${TASK_TEMPORAL_LR:-5e-5}" \
+      --setting "temporal_lr_end=${TASK_TEMPORAL_LR_END:-5e-6}" \
+      --manifest "${manifest}" \
+      --sam2-root "${sam2_root}" \
+      --sam2-config "${model_config}" \
+      --checkpoint "${checkpoint}"
+  }
+
+  check_launch() {
+    local experiment="$1" run_dir="$2"
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      check-launch \
+      --evidence-dir "${verification_dir}" \
+      --run-dir "${run_dir}" \
+      --target "${experiment}" \
+      --manifest "${manifest}" \
+      --sam2-root "${sam2_root}" \
+      --sam2-config "${model_config}" \
+      --checkpoint "${checkpoint}"
+  }
+
+  verify_remote() {
+    local smoke_dir
+    smoke_dir="$(smoke_run_dir E)" || return 1
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      remote \
+      --evidence-dir "${verification_dir}" \
+      --smoke-dir "${smoke_dir}" \
+      --input-audit "${run_root}/audit/input_audit.json" \
+      --manifest "${manifest}" \
+      --sam2-root "${sam2_root}" \
+      --sam2-config "${model_config}" \
+      --checkpoint "${checkpoint}"
+  }
+
+  audit_existing() {
+    local experiment="$1"
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      audit-existing \
+      --run-dir "${run_root}/${experiment}" \
+      --target "${experiment}" \
+      --manifest "${manifest}" \
+      --sam2-root "${sam2_root}" \
+      --sam2-config "${model_config}" \
+      --checkpoint "${checkpoint}"
+  }
+
+  postrun_audit() {
+    local experiment="$1"
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      postrun \
+      --run-dir "${run_root}/${experiment}" \
+      --target "${experiment}" \
+      --manifest "${manifest}" \
+      --sam2-root "${sam2_root}" \
+      --sam2-config "${model_config}" \
+      --checkpoint "${checkpoint}"
   }
 
   describe() {
@@ -104,7 +216,7 @@ main() {
       return 2
     fi
     if [[ "${scope}" == "smoke" ]]; then
-      run_dir="${run_root}/smoke/${experiment}"
+      run_dir="$(smoke_run_dir "${experiment}")" || return 1
       max_videos="${SMOKE_MAX_VIDEOS:-8}"
       epochs=1
       mode=disabled
@@ -118,6 +230,9 @@ main() {
       freeze_steps="${TASK_ENCODER_FREEZE_STEPS:-1000}"
       warmup="${TASK_LR_WARMUP_FRACTION:-0.05}"
     fi
+    record_launch \
+      "${experiment}" "${scope}" "${run_dir}" "${max_videos}" \
+      "${epochs}" "${freeze_steps}" "${warmup}" || return $?
     mkdir -p "${run_dir}" "${log_root}/${scope}"
     log_file="${log_root}/${scope}/${experiment}.log"
     echo "===== ${scope} training: ${experiment} ====="
@@ -159,6 +274,7 @@ main() {
     TASK_CAPACITY_PROBE="$([[ "${scope}" == "smoke" ]] && echo 1 || echo 0)" \
     TASK_CAPACITY_WARMUP_STEPS=0 \
     TASK_GRADIENT_DIAGNOSTICS="${TASK_GRADIENT_DIAGNOSTICS:-1}" \
+    TASK_TWO_CLOCK_FLIGHT_RECORDER="$([[ "${scope}" == "smoke" ]] && echo 1 || echo 0)" \
     WANDB_MODE="${mode}" \
       torchrun --standalone --nproc_per_node="${gpu_count}" \
         tools/train/run_sam2_task_training.py \
@@ -175,7 +291,8 @@ main() {
   }
 
   verify_smoke() {
-    local experiment="$1" smoke_dir="${run_root}/smoke/$1"
+    local experiment="$1" smoke_dir
+    smoke_dir="$(smoke_run_dir "$1")" || return 1
     python - "${smoke_dir}" "${gpu_count}" <<'PY'
 import json
 import sys
@@ -189,8 +306,11 @@ required = [
     run / "resolved_config.yaml",
     run / "training_status.json",
     run / "gradient_diagnostics.json",
+    run / "optimizer_audit.json",
 ]
 required.extend(run / f"capacity_rank{rank}.json" for rank in range(world))
+required.extend(run / f"mechanism_gradients_rank{rank}.json" for rank in range(world))
+required.extend(run / f"flight_recorder_rank{rank}.jsonl" for rank in range(world))
 missing = [str(path) for path in required if not path.is_file()]
 if missing:
     raise SystemExit(f"smoke artifacts missing: {missing}")
@@ -271,6 +391,7 @@ PY
   select_checkpoint() {
     local experiment="$1" run_dir checkpoint_path output epoch
     run_dir="${run_root}/${experiment}"
+    check_launch "${experiment}" "${run_dir}" || return $?
     require_path "${run_dir}/resolved_config.yaml" || return 1
     for epoch in 1 2 3 4 5; do
       checkpoint_path="${run_dir}/checkpoints/checkpoint_${epoch}.pt"
@@ -311,6 +432,7 @@ PY
   curves() {
     local experiment="$1" run_dir interval
     run_dir="${run_root}/${experiment}"
+    check_launch "${experiment}" "${run_dir}" || return $?
     require_path "${run_dir}/checkpoints/best.pt" || return 1
     for interval in 1 2 3 4 5 6; do
       evaluate_checkpoint \
@@ -354,17 +476,29 @@ PY
   case "${action}" in
     describe) describe ;;
     audit) audit ;;
-    smoke) audit && train_target "${target}" smoke && verify_smoke "${target}" ;;
+    verify-local) verify_local ;;
+    verify-remote) audit && verify_remote ;;
+    audit-existing) audit_existing "${target}" ;;
+    postrun) postrun_audit "${target}" ;;
+    smoke)
+      if [[ "${target}" != "E" ]]; then
+        echo "[ERROR] The registered remote verification smoke target is E" >&2
+        return 2
+      fi
+      verify_local && audit && train_target "${target}" smoke && \
+        verify_smoke "${target}" && verify_remote
+      ;;
     train) train_target "${target}" formal ;;
     select) select_checkpoint "${target}" ;;
     curves) curves "${target}" ;;
     controls) controls ;;
     run)
-      audit && train_target "${target}" formal && select_checkpoint "${target}" && curves "${target}"
+      audit && train_target "${target}" formal && select_checkpoint "${target}" && \
+        curves "${target}" && postrun_audit "${target}"
       ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|smoke|train|select|curves|controls|run|status} [O2|A|B|C|C-r|D|E]" >&2
+      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|controls|run|status} [O2|A|B|C|C-r|D|E]" >&2
       return 2
       ;;
   esac
