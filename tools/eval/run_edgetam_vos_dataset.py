@@ -245,6 +245,16 @@ def main() -> None:
         "model_frame_median_ms": statistics.median(model_frame_latencies_ms)
         if model_frame_latencies_ms
         else None,
+        "model_frame_p95_ms": (
+            sorted(model_frame_latencies_ms)[
+                min(
+                    len(model_frame_latencies_ms) - 1,
+                    int(0.95 * len(model_frame_latencies_ms)),
+                )
+            ]
+            if model_frame_latencies_ms
+            else None
+        ),
         "per_obj_png_file": args.per_obj_png_file,
         "track_object_appearing_later_in_video": args.track_object_appearing_later_in_video,
         "num_prediction_pngs": sum(

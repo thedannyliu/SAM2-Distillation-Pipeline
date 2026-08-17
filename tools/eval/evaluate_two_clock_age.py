@@ -14,6 +14,10 @@ import numpy as np
 from PIL import Image
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sam2-root", required=True, type=Path)

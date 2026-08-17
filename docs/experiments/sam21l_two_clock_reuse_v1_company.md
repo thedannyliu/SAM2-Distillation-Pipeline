@@ -199,6 +199,19 @@ O2/A/B/C/D/E may run this action concurrently on six four-GPU nodes. Run
 `controls` on the first released node. Do not access SA-V test until these
 validation results select and freeze one parent and one reporting policy.
 
+After all six validations and controls finish, build the paired J&F/latency
+report without GPUs:
+
+```bash
+scripts/company/75_run_sam21l_two_clock_reuse_v1.sh report
+```
+
+The report is written under
+`runs/sam21l_two_clock_reuse_v1/reports/balanced_phase_v1` as JSON, CSV, and
+Markdown. Every row includes J/F/J&F, measured encoder refresh rate,
+single-stream model mean and rank-P95 latency, wall latency, J&F deltas versus
+O0 R1 and the official matched-R baseline, plus model/wall speedups versus O0.
+
 ## Promotion boundary
 
 After all six runs and controls finish, update the result ledger in

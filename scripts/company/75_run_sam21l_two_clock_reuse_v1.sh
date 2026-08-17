@@ -346,7 +346,7 @@ PY
 
   evaluate_checkpoint() {
     local experiment="$1" checkpoint_path="$2" resolved_config="$3"
-    local interval="$4" output="$5" status log_file
+    local interval="$4" output="$5" status log_file inference_complete=0
     if [[ -f "${output}/sav_eval.json" && -f "${output}/age_metrics.json" && "${SKIP_DONE:-1}" == "1" ]]; then
       if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${interval}" <<'PY'
 import json
@@ -370,40 +370,72 @@ PY
     fi
     mkdir -p "${output}/pred" "${log_root}/eval"
     log_file="${log_root}/eval/${experiment}_$(basename "${output}").log"
-    echo "===== val ${experiment} R${interval}: ${checkpoint_path} ====="
-    CUDA_VISIBLE_DEVICES="${gpus}" \
-    PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
-      torchrun --standalone --nproc_per_node="${gpu_count}" \
-        tools/eval/run_edgetam_vos_dataset.py \
-        --model-kind two-clock \
-        --sam2-root "${sam2_root}" \
-        --sam2-cfg "${model_config}" \
-        --checkpoint "${checkpoint_path}" \
-        --resolved-config "${resolved_config}" \
-        --experiment "${experiment}" \
-        --refresh-interval "${interval}" \
-        --refresh-phase-mode balanced \
-        --refresh-phase-seed 250107256 \
-        --image-root "${sav_root}/sav_val/JPEGImages_24fps" \
-        --input-mask-root "${sav_root}/sav_val/Annotations_6fps" \
-        --video-list-file "${sav_root}/sav_val/sav_val.txt" \
-        --out-dir "${output}/pred" \
-        --per-obj-png-file \
-        --track-object-appearing-later-in-video \
-        --device cuda 2>&1 | tee -a "${log_file}"
-    status="${PIPESTATUS[0]}"
-    if [[ "${status}" -ne 0 ]]; then
-      return "${status}"
+    if [[ -f "${output}/sav_eval.json" && -f "${output}/pred/summary.json" && "${SKIP_DONE:-1}" == "1" ]]; then
+      if python - "${output}/sav_eval.json" "${output}/pred" "${checkpoint_path}" "${experiment}" "${interval}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+sav = json.load(open(sys.argv[1], encoding="utf-8"))
+pred = Path(sys.argv[2])
+checkpoint = str(Path(sys.argv[3]))
+experiment = sys.argv[4]
+interval = int(sys.argv[5])
+ranks = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(pred.glob("summary.rank*.json"))]
+valid = (
+    sav.get("status") == "pass"
+    and ranks
+    and len(ranks) == int(ranks[0].get("world_size", 0))
+    and all(row.get("status") == "pass" for row in ranks)
+    and all(row.get("two_clock_refresh_phase_mode") == "balanced" for row in ranks)
+    and all(row.get("two_clock_refresh_phase_seed") == 250107256 for row in ranks)
+    and all(row.get("build", {}).get("checkpoint") == checkpoint for row in ranks)
+    and all(row.get("build", {}).get("experiment") == experiment for row in ranks)
+    and all(row.get("build", {}).get("refresh_interval") == interval for row in ranks)
+)
+raise SystemExit(0 if valid else 1)
+PY
+      then
+        echo "Resume completed inference; compute only missing age metrics: ${output}"
+        inference_complete=1
+      fi
     fi
-    python tools/eval/merge_vos_rank_summaries.py \
-      --run-dir "${output}/pred" || return $?
-    python tools/eval/run_sav_evaluator.py \
-      --evaluator "${sam2_root}/sav_dataset/sav_evaluator.py" \
-      --gt-root "${sav_root}/sav_val/Annotations_6fps" \
-      --pred-root "${output}/pred" \
-      --out-json "${output}/sav_eval.json" \
-      --num-processes "${EVAL_PROCESSES:-16}" \
-      --strict || return $?
+    echo "===== val ${experiment} R${interval}: ${checkpoint_path} ====="
+    if [[ "${inference_complete}" -eq 0 ]]; then
+      CUDA_VISIBLE_DEVICES="${gpus}" \
+      PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
+        torchrun --standalone --nproc_per_node="${gpu_count}" \
+          tools/eval/run_edgetam_vos_dataset.py \
+          --model-kind two-clock \
+          --sam2-root "${sam2_root}" \
+          --sam2-cfg "${model_config}" \
+          --checkpoint "${checkpoint_path}" \
+          --resolved-config "${resolved_config}" \
+          --experiment "${experiment}" \
+          --refresh-interval "${interval}" \
+          --refresh-phase-mode balanced \
+          --refresh-phase-seed 250107256 \
+          --image-root "${sav_root}/sav_val/JPEGImages_24fps" \
+          --input-mask-root "${sav_root}/sav_val/Annotations_6fps" \
+          --video-list-file "${sav_root}/sav_val/sav_val.txt" \
+          --out-dir "${output}/pred" \
+          --per-obj-png-file \
+          --track-object-appearing-later-in-video \
+          --device cuda 2>&1 | tee -a "${log_file}"
+      status="${PIPESTATUS[0]}"
+      if [[ "${status}" -ne 0 ]]; then
+        return "${status}"
+      fi
+      python tools/eval/merge_vos_rank_summaries.py \
+        --run-dir "${output}/pred" || return $?
+      python tools/eval/run_sav_evaluator.py \
+        --evaluator "${sam2_root}/sav_dataset/sav_evaluator.py" \
+        --gt-root "${sav_root}/sav_val/Annotations_6fps" \
+        --pred-root "${output}/pred" \
+        --out-json "${output}/sav_eval.json" \
+        --num-processes "${EVAL_PROCESSES:-16}" \
+        --strict || return $?
+    fi
     python tools/eval/evaluate_two_clock_age.py \
       --sam2-root "${sam2_root}" \
       --gt-root "${sav_root}/sav_val/Annotations_6fps" \
@@ -483,6 +515,13 @@ PY
     done
   }
 
+  report() {
+    python tools/eval/summarize_two_clock_validation.py \
+      --run-root "${run_root}" \
+      --out-dir "${run_root}/reports/balanced_phase_v1" \
+      --require-complete
+  }
+
   status() {
     local experiment run_dir
     for experiment in O2 A B C D E; do
@@ -524,13 +563,14 @@ PY
         postrun_audit "${target}"
       ;;
     controls) controls ;;
+    report) report ;;
     run)
       audit && train_target "${target}" formal && select_checkpoint "${target}" && \
         curves "${target}" && postrun_audit "${target}"
       ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|run|status} [O2|A|B|C|C-r|D|E]" >&2
+      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|report|run|status} [O2|A|B|C|C-r|D|E]" >&2
       return 2
       ;;
   esac

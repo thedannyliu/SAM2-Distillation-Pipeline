@@ -84,3 +84,25 @@ def test_validation_uses_paired_balanced_refresh_phases() -> None:
     assert 'select_checkpoint "${target}"' in val_action
     assert 'curves "${target}"' in val_action
     assert 'train_target "${target}"' not in val_action
+    assert "Resume completed inference; compute only missing age metrics" in evaluate
+
+
+def test_age_evaluator_adds_repository_import_root() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    evaluator = (repo_root / "tools/eval/evaluate_two_clock_age.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'REPO_ROOT = Path(__file__).resolve().parents[2]' in evaluator
+    assert 'sys.path.insert(0, str(REPO_ROOT))' in evaluator
+
+
+def test_report_requires_complete_jf_and_latency_matrix() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    runner = (
+        repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
+    ).read_text(encoding="utf-8")
+    report = runner.split("  report()", maxsplit=1)[1].split(
+        "  status()", maxsplit=1
+    )[0]
+    assert "summarize_two_clock_validation.py" in report
+    assert "--require-complete" in report
