@@ -407,7 +407,55 @@ def check_evaluation_transition(
     contract: dict[str, Any],
 ) -> None:
     """Authorize clean descendant evaluation code for completed formal runs."""
-    launch = load_json(launch_manifest_path(args.run_dir))
+    manifest_path = launch_manifest_path(args.run_dir)
+    if not manifest_path.is_file():
+        audit_existing(args, contract)
+        current = full_identity(args, contract)
+        require_clean(current)
+        required = [
+            args.run_dir / "resolved_config.yaml",
+            args.run_dir / "training_status.json",
+            args.run_dir / "gradient_diagnostics.json",
+        ]
+        required.extend(
+            args.run_dir / f"checkpoints/checkpoint_{epoch}.pt"
+            for epoch in range(1, 6)
+        )
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            raise RuntimeError(
+                f"legacy completed run is missing evaluation inputs: {missing}"
+            )
+        training = load_json(args.run_dir / "training_status.json")
+        gradients = load_json(args.run_dir / "gradient_diagnostics.json")
+        if training.get("status") != "complete":
+            raise RuntimeError("legacy training did not complete")
+        if gradients.get("status") != "pass" or gradients.get("nonfinite_steps"):
+            raise RuntimeError("legacy training gradient diagnostics did not pass")
+        unavailable = ["launch_time_git_identity", "preflight_verification_stamp"]
+        optimizer_path = args.run_dir / "optimizer_audit.json"
+        if optimizer_path.is_file():
+            validate_optimizer_audit(load_json(optimizer_path))
+        else:
+            unavailable.append("optimizer_membership_audit")
+        payload = {
+            "schema_version": 1,
+            "status": "LEGACY_EVALUATION_PROVISIONAL",
+            "result_eligibility": "provisional",
+            "target": args.target,
+            "training_commit": None,
+            "evaluation_commit": current["repository"]["commit"],
+            "training_config": current["training_config"],
+            "inputs_observed_after_launch": current["inputs"],
+            "unavailable_evidence": unavailable,
+        }
+        write_json(
+            args.run_dir / "verification/evaluation_transition.json",
+            payload,
+        )
+        print(json.dumps(payload, indent=2), flush=True)
+        return
+    launch = load_json(manifest_path)
     if (
         launch.get("status") != "FORMAL_ELIGIBLE"
         or launch.get("scope") != "formal"
@@ -600,14 +648,11 @@ def audit_existing(args: argparse.Namespace, contract: dict[str, Any]) -> None:
 
 def postrun_audit(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     manifest_path = launch_manifest_path(args.run_dir)
-    if not manifest_path.is_file():
-        raise RuntimeError(
-            "run has no prospective launch manifest; use audit-existing instead"
-        )
+    legacy = not manifest_path.is_file()
     identity = full_identity(args, contract)
     require_clean(identity)
-    launch = load_json(manifest_path)
-    if launch["identity"] != identity:
+    launch = load_json(manifest_path) if not legacy else None
+    if legacy or launch["identity"] != identity:
         check_evaluation_transition(args, contract)
     failures = []
     required = [
@@ -627,7 +672,7 @@ def postrun_audit(args: argparse.Namespace, contract: dict[str, Any]) -> None:
         args.run_dir / f"val/selected/R{interval}/sav_eval.json"
         for interval in range(1, 7)
     )
-    if launch.get("wandb_mode") == "online":
+    if launch is not None and launch.get("wandb_mode") == "online":
         required.append(args.run_dir / "wandb/wandb_run.json")
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
@@ -652,7 +697,14 @@ def postrun_audit(args: argparse.Namespace, contract: dict[str, Any]) -> None:
                 failures.append(f"selected R{interval} evaluation did not pass")
     payload = {
         "schema_version": 1,
-        "status": "RESULT_ACCEPTED" if not failures else "RESULT_QUARANTINED",
+        "status": (
+            "PROVISIONAL_RESULT_ACCEPTED"
+            if legacy and not failures
+            else "RESULT_ACCEPTED"
+            if not failures
+            else "RESULT_QUARANTINED"
+        ),
+        "result_eligibility": "provisional" if legacy else "formal",
         "audited_at_unix": time.time(),
         "target": args.target,
         "run_dir": str(args.run_dir.resolve()),

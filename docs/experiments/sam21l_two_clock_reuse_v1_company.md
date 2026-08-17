@@ -184,6 +184,13 @@ SAM2 checkout, initializer, completed status, gradient/optimizer audits, and
 all five epoch checkpoints to remain unchanged. It records both Git commits
 under `verification/evaluation_transition.json`.
 
+Runs started before the prospective verification gate have no launch
+manifest. For those legacy runs, `val` automatically performs a retroactive
+audit and requires completed training, finite gradient diagnostics, the
+resolved config, and all five epoch checkpoints. Missing launch-time identity
+or optimizer-membership evidence is recorded explicitly; resulting validation
+is marked `provisional` rather than being presented as prospectively verified.
+
 ```bash
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh val E
 ```

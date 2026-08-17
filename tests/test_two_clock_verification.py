@@ -28,6 +28,8 @@ def test_evaluation_transition_keeps_training_inputs_immutable() -> None:
     assert '"merge-base"' in transition
     assert '"--is-ancestor"' in transition
     assert "validate_optimizer_audit(optimizer)" in transition
+    assert '"LEGACY_EVALUATION_PROVISIONAL"' in transition
+    assert '"optimizer_membership_audit"' in transition
 
 
 def _trace(experiment: str = "E") -> dict:
