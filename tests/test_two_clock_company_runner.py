@@ -58,12 +58,12 @@ def test_raw_cache_and_conditioned_read_wiring_remain_separate() -> None:
     assert "raw_vision_feats,\n            feat_sizes" in track_step
 
 
-def test_selection_and_curves_recheck_formal_launch_identity() -> None:
+def test_selection_and_curves_verify_completed_training_for_evaluation() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     runner = (
         repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
     ).read_text(encoding="utf-8")
-    assert runner.count('check_launch "${experiment}" "${run_dir}"') == 2
+    assert runner.count('check_eval "${experiment}" "${run_dir}"') == 2
     run_action = runner.split("    run)", maxsplit=1)[1].split("      ;;", maxsplit=1)[0]
     assert 'postrun_audit "${target}"' in run_action
 

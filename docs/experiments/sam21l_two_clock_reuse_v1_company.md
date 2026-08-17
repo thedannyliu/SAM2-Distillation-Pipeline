@@ -178,6 +178,11 @@ When all five training epochs already exist, run `val` rather than `run`.
 `val` never enters training. It evaluates `checkpoint_1.pt` through
 `checkpoint_5.pt` with phase-balanced R4, writes `best.pt`, evaluates that
 checkpoint at phase-balanced R1--R6, and runs the postrun artifact audit.
+The evaluation transition gate permits a clean descendant evaluator commit
+while requiring the original training config, dataset manifest, official
+SAM2 checkout, initializer, completed status, gradient/optimizer audits, and
+all five epoch checkpoints to remain unchanged. It records both Git commits
+under `verification/evaluation_transition.json`.
 
 ```bash
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh val E

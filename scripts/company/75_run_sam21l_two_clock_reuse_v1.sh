@@ -105,6 +105,20 @@ main() {
       --checkpoint "${checkpoint}"
   }
 
+  check_eval() {
+    local experiment="$1" run_dir="$2"
+    python "${verification_tool}" \
+      --repo-root "${repo_root}" \
+      --contract "${verification_contract}" \
+      check-eval \
+      --run-dir "${run_dir}" \
+      --target "${experiment}" \
+      --manifest "${manifest}" \
+      --sam2-root "${sam2_root}" \
+      --sam2-config "${model_config}" \
+      --checkpoint "${checkpoint}"
+  }
+
   verify_remote() {
     local smoke_dir
     smoke_dir="$(smoke_run_dir E)" || return 1
@@ -405,7 +419,7 @@ PY
   select_checkpoint() {
     local experiment="$1" run_dir checkpoint_path output epoch
     run_dir="${run_root}/${experiment}"
-    check_launch "${experiment}" "${run_dir}" || return $?
+    check_eval "${experiment}" "${run_dir}" || return $?
     require_path "${run_dir}/resolved_config.yaml" || return 1
     for epoch in 1 2 3 4 5; do
       checkpoint_path="${run_dir}/checkpoints/checkpoint_${epoch}.pt"
@@ -446,7 +460,7 @@ PY
   curves() {
     local experiment="$1" run_dir interval
     run_dir="${run_root}/${experiment}"
-    check_launch "${experiment}" "${run_dir}" || return $?
+    check_eval "${experiment}" "${run_dir}" || return $?
     require_path "${run_dir}/checkpoints/best.pt" || return 1
     for interval in 1 2 3 4 5 6; do
       evaluate_checkpoint \

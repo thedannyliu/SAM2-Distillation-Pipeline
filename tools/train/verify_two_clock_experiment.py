@@ -402,6 +402,81 @@ def check_launch(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     print(f"Formal launch identity matches: {args.run_dir}", flush=True)
 
 
+def check_evaluation_transition(
+    args: argparse.Namespace,
+    contract: dict[str, Any],
+) -> None:
+    """Authorize clean descendant evaluation code for completed formal runs."""
+    launch = load_json(launch_manifest_path(args.run_dir))
+    if (
+        launch.get("status") != "FORMAL_ELIGIBLE"
+        or launch.get("scope") != "formal"
+        or launch.get("target") != args.target
+    ):
+        raise RuntimeError("formal launch manifest has the wrong status or target")
+    launched = launch["identity"]
+    current = full_identity(args, contract)
+    require_clean(current)
+    for field in ("contract", "training_config", "inputs", "sam2_repository"):
+        if launched[field] != current[field]:
+            raise RuntimeError(
+                f"evaluation transition changed immutable {field} identity"
+            )
+    launched_repo = launched["repository"]
+    current_repo = current["repository"]
+    for field in ("path", "branch"):
+        if launched_repo[field] != current_repo[field]:
+            raise RuntimeError(
+                f"evaluation transition changed repository {field}"
+            )
+    ancestor = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(args.repo_root),
+            "merge-base",
+            "--is-ancestor",
+            launched_repo["commit"],
+            current_repo["commit"],
+        ],
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise RuntimeError("evaluation commit does not descend from training commit")
+    required = [
+        args.run_dir / "resolved_config.yaml",
+        args.run_dir / "training_status.json",
+        args.run_dir / "gradient_diagnostics.json",
+        args.run_dir / "optimizer_audit.json",
+    ]
+    required.extend(
+        args.run_dir / f"checkpoints/checkpoint_{epoch}.pt"
+        for epoch in range(1, 6)
+    )
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"completed run is missing evaluation inputs: {missing}")
+    training = load_json(args.run_dir / "training_status.json")
+    gradients = load_json(args.run_dir / "gradient_diagnostics.json")
+    optimizer = load_json(args.run_dir / "optimizer_audit.json")
+    if training.get("status") != "complete":
+        raise RuntimeError("training did not complete")
+    if gradients.get("status") != "pass" or gradients.get("nonfinite_steps"):
+        raise RuntimeError("training gradient diagnostics did not pass")
+    validate_optimizer_audit(optimizer)
+    payload = {
+        "schema_version": 1,
+        "status": "EVALUATION_TRANSITION_VERIFIED",
+        "target": args.target,
+        "training_commit": launched_repo["commit"],
+        "evaluation_commit": current_repo["commit"],
+        "training_config": current["training_config"],
+        "inputs": current["inputs"],
+    }
+    write_json(args.run_dir / "verification/evaluation_transition.json", payload)
+    print(json.dumps(payload, indent=2), flush=True)
+
+
 def issue_remote_stamp(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     identity = full_identity(args, contract)
     require_clean(identity)
@@ -532,7 +607,8 @@ def postrun_audit(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     identity = full_identity(args, contract)
     require_clean(identity)
     launch = load_json(manifest_path)
-    same_identity(launch["identity"], identity)
+    if launch["identity"] != identity:
+        check_evaluation_transition(args, contract)
     failures = []
     required = [
         args.run_dir / "resolved_config.yaml",
@@ -644,6 +720,10 @@ def parse_args() -> argparse.Namespace:
     postrun.add_argument("--run-dir", required=True, type=Path)
     postrun.add_argument("--target", required=True)
     add_identity_arguments(postrun)
+    evaluation = subparsers.add_parser("check-eval")
+    evaluation.add_argument("--run-dir", required=True, type=Path)
+    evaluation.add_argument("--target", required=True)
+    add_identity_arguments(evaluation)
     return parser.parse_args()
 
 
@@ -665,6 +745,8 @@ def main() -> None:
         audit_existing(args, contract)
     elif args.action == "postrun":
         postrun_audit(args, contract)
+    elif args.action == "check-eval":
+        check_evaluation_transition(args, contract)
     else:
         raise AssertionError(args.action)
 

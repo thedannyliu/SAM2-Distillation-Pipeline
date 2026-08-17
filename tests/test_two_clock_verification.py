@@ -18,6 +18,18 @@ from tools.train.verify_two_clock_experiment import (
 )
 
 
+def test_evaluation_transition_keeps_training_inputs_immutable() -> None:
+    source = Path("tools/train/verify_two_clock_experiment.py").read_text(
+        encoding="utf-8"
+    )
+    transition = source.split("def check_evaluation_transition(", maxsplit=1)[1]
+    transition = transition.split("def issue_remote_stamp(", maxsplit=1)[0]
+    assert '"contract", "training_config", "inputs", "sam2_repository"' in transition
+    assert '"merge-base"' in transition
+    assert '"--is-ancestor"' in transition
+    assert "validate_optimizer_audit(optimizer)" in transition
+
+
 def _trace(experiment: str = "E") -> dict:
     actions = [True, False, False, False, True, False, False, True]
     sources = [100, 100, 100, 100, 104, 104, 104, 107]
