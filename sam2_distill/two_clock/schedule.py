@@ -69,6 +69,44 @@ def fixed_refresh_trajectory(
     return _trajectory_from_refresh(refresh, max_age=max_age)
 
 
+def balanced_refresh_phase(
+    video_id: str | int,
+    interval: int,
+    *,
+    seed: int = 250107256,
+) -> int:
+    """Return a paired per-video phase that breaks annotation-cadence aliasing."""
+    if interval < 1:
+        raise ValueError("interval must be positive")
+    payload = f"two-clock-eval:{seed}:{video_id}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "little") % interval
+
+
+def fixed_refresh_source(
+    frame: int,
+    *,
+    anchor: int,
+    interval: int,
+    phase: int = 0,
+) -> int:
+    """Resolve the causal source frame for an anchor-preserving periodic policy."""
+    if interval < 1:
+        raise ValueError("interval must be positive")
+    if not 0 <= phase < interval:
+        raise ValueError("phase must be in [0, interval)")
+    if frame < anchor:
+        raise ValueError("frame cannot precede the prompt anchor")
+    relative = frame - anchor
+    if relative == 0:
+        return anchor
+    first_refresh = interval if phase == 0 else phase
+    if relative < first_refresh:
+        return anchor
+    return anchor + first_refresh + (
+        (relative - first_refresh) // interval
+    ) * interval
+
+
 def _stable_seed(seed: int, epoch: int, video_id: str | int) -> int:
     payload = f"{seed}:{epoch}:{video_id}".encode("utf-8")
     return int.from_bytes(hashlib.sha256(payload).digest()[:8], "little")

@@ -240,10 +240,14 @@ frame and replacing tensors afterward is invalid. Every run records
 refresh schedule.
 
 For fixed-policy evaluation, `R_K` means one encoder refresh every `K`
-consecutive raw 24 FPS frames starting from the prompted anchor. Thus R1 is
-full refresh, R4 has ages 0--3, and R6 has ages 0--5. O1, O2, and A--E use the
-exact same cache/gather inference implementation at each R2--R6 setting; only
-their learned weights and registered mechanisms differ.
+consecutive raw 24 FPS frames. The prompted anchor always refreshes. Each
+video then receives a deterministic phase in `0..K-1`, hashed from the frozen
+evaluation seed and video ID, before periodic refresh continues. This prevents
+R2/R4 from aliasing with SA-V's four-raw-frame GT cadence. Thus R1 is full
+refresh, phase-balanced R4 covers ages 0--3, and phase-balanced R6 covers ages
+0--5. O1, O2, and A--E use the exact same phase map and cache/gather inference
+implementation at each R2--R6 setting; only their learned weights and
+registered mechanisms differ.
 
 ### Raw cache versus conditioned read features
 

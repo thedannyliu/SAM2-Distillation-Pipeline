@@ -20,6 +20,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gt-root", required=True, type=Path)
     parser.add_argument("--pred-root", required=True, type=Path)
     parser.add_argument("--refresh-interval", required=True, type=int)
+    parser.add_argument(
+        "--refresh-phase-mode", choices=("anchor", "balanced"), default="anchor"
+    )
+    parser.add_argument("--refresh-phase-seed", type=int, default=250107256)
     parser.add_argument("--out-json", required=True, type=Path)
     parser.add_argument("--out-csv", required=True, type=Path)
     parser.add_argument("--video-list-file", type=Path)
@@ -54,6 +58,10 @@ def main() -> None:
             raise FileNotFoundError(path)
     sys.path.insert(0, str(args.sam2_root / "sav_dataset"))
     from utils.sav_benchmark import Evaluator
+    from sam2_distill.two_clock.schedule import (
+        balanced_refresh_phase,
+        fixed_refresh_source,
+    )
 
     if args.video_list_file:
         video_names = [
@@ -69,6 +77,13 @@ def main() -> None:
         lambda: defaultdict(list)
     )
     for video_name in video_names:
+        phase = 0
+        if args.refresh_phase_mode == "balanced":
+            phase = balanced_refresh_phase(
+                video_name,
+                args.refresh_interval,
+                seed=args.refresh_phase_seed,
+            )
         gt_video = args.gt_root / video_name
         pred_video = args.pred_root / video_name
         for object_dir in sorted(path for path in gt_video.iterdir() if path.is_dir()):
@@ -82,7 +97,13 @@ def main() -> None:
                 if not pred_path.is_file():
                     raise FileNotFoundError(pred_path)
                 raw_frame = int(gt_path.stem)
-                age = (raw_frame - anchor) % args.refresh_interval
+                source = fixed_refresh_source(
+                    raw_frame,
+                    anchor=anchor,
+                    interval=args.refresh_interval,
+                    phase=phase,
+                )
+                age = raw_frame - source
                 metrics = _single_frame_metrics(
                     Evaluator, _mask(pred_path), _mask(gt_path)
                 )
@@ -106,6 +127,12 @@ def main() -> None:
                 "J&F": (j + f) / 2,
             }
         )
+    missing_ages = [row["age"] for row in rows if row["count"] == 0]
+    if missing_ages:
+        raise RuntimeError(
+            "GT-only evaluation did not cover feature ages "
+            f"{missing_ages}; check refresh-phase balancing"
+        )
 
     video_rows = []
     for video_name, age_groups in sorted(per_video.items()):
@@ -125,7 +152,12 @@ def main() -> None:
 
     payload = {
         "status": "pass",
+        "protocol": "balanced_phase_v1"
+        if args.refresh_phase_mode == "balanced"
+        else "anchor_phase_v1",
         "refresh_interval": args.refresh_interval,
+        "refresh_phase_mode": args.refresh_phase_mode,
+        "refresh_phase_seed": args.refresh_phase_seed,
         "gt_only": True,
         "skip_first_and_last": not args.include_first_and_last,
         "videos": len(per_video),

@@ -119,12 +119,18 @@ For each target, `run` performs:
 
 1. the shared, locked full-data audit;
 2. five full SA-V epochs from the official SAM2.1-L initializer;
-3. full SA-V val R4 evaluation for `checkpoint_1.pt` through
+3. deterministic phase-balanced full SA-V val R4 evaluation for `checkpoint_1.pt` through
    `checkpoint_5.pt`;
-4. selection of `best.pt` by maximum R4 J&F only;
+4. selection of `best.pt` by maximum phase-balanced R4 J&F only;
 5. full SA-V val evaluation of the selected checkpoint at R1--R6;
 6. official aggregate J/F plus GT-only realized-age metrics and actual
    logical encoder-call counts.
+
+The per-video phase is a deterministic hash of the frozen evaluation seed and
+video ID. This breaks the 24 FPS R2/R4 cadence alias with 6 FPS GT while
+keeping every checkpoint and model on the exact same paired refresh policy.
+Every Rk age report must contain at least one real-GT sample for every age
+`0..k-1`, otherwise evaluation fails closed.
 
 The selected R4 pass is intentionally rerun under the selected-output folder
 so every R1--R6 artifact has the same checkpoint path and reporting layout.
@@ -165,6 +171,21 @@ GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh curves C
 Training reuses `checkpoints/checkpoint.pt`, the saved W&B run ID, the same
 TensorBoard directory, and the same checkpoint directory. Evaluation skips
 only an output whose `sav_eval.json` explicitly records `status: pass`.
+
+## Validation after completed training
+
+When all five training epochs already exist, run `val` rather than `run`.
+`val` never enters training. It evaluates `checkpoint_1.pt` through
+`checkpoint_5.pt` with phase-balanced R4, writes `best.pt`, evaluates that
+checkpoint at phase-balanced R1--R6, and runs the postrun artifact audit.
+
+```bash
+GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh val E
+```
+
+O2/A/B/C/D/E may run this action concurrently on six four-GPU nodes. Run
+`controls` on the first released node. Do not access SA-V test until these
+validation results select and freeze one parent and one reporting policy.
 
 ## Promotion boundary
 

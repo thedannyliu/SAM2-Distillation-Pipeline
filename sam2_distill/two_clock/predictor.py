@@ -10,6 +10,10 @@ from sam2.sam2_video_predictor import SAM2VideoPredictor
 
 from sam2_distill.two_clock.experiments import get_experiment
 from sam2_distill.two_clock.model import TwoClockSAM2Train
+from sam2_distill.two_clock.schedule import (
+    balanced_refresh_phase,
+    fixed_refresh_source,
+)
 from sam2_distill.two_clock.temporal import (
     FeatureAgeConditioner,
     TwoClockMemoryConditioner,
@@ -32,6 +36,8 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         experiment: str,
         max_feature_age: int = 5,
         fixed_refresh_interval: int = 1,
+        refresh_phase_mode: str = "anchor",
+        refresh_phase_seed: int = 250107256,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -40,6 +46,10 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         self.experiment = get_experiment(experiment)
         self.max_feature_age = max_feature_age
         self.fixed_refresh_interval = fixed_refresh_interval
+        if refresh_phase_mode not in {"anchor", "balanced"}:
+            raise ValueError("refresh phase mode must be anchor or balanced")
+        self.refresh_phase_mode = refresh_phase_mode
+        self.refresh_phase_seed = refresh_phase_seed
         self.age_conditioner = (
             FeatureAgeConditioner(max_age=max_feature_age)
             if self.experiment.age_conditioning
@@ -60,9 +70,23 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
     def init_state(self, *args, **kwargs):
         self._record_current_stream()
         state = super().init_state(*args, **kwargs)
+        video_path = kwargs.get("video_path")
+        if video_path is None and args:
+            video_path = args[0]
+        video_id = Path(str(video_path)).name if video_path is not None else ""
+        phase = 0
+        if self.refresh_phase_mode == "balanced":
+            if not video_id:
+                raise ValueError("balanced refresh phases require a video path")
+            phase = balanced_refresh_phase(
+                video_id,
+                self.fixed_refresh_interval,
+                seed=self.refresh_phase_seed,
+            )
         state["two_clock_encoder_calls"] = 1
         state["two_clock_frame_requests"] = 0
         state["two_clock_refresh_interval"] = self.fixed_refresh_interval
+        state["two_clock_refresh_phase"] = phase
         state["two_clock_anchor_frame"] = 0
         self._two_clock_last_state = state
         return state
@@ -117,6 +141,7 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         inference_state["two_clock_encoder_calls"] = 0
         inference_state["two_clock_frame_requests"] = 0
         inference_state["two_clock_anchor_frame"] = 0
+        inference_state["two_clock_refresh_phase"] = 0
         inference_state["two_clock_prompt_registered"] = False
 
     def _register_prompt_anchor(self, inference_state, frame_idx: int) -> None:
@@ -145,10 +170,12 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
 
     def _source_frame(self, inference_state, frame_idx: int) -> int:
         anchor = int(inference_state.get("two_clock_anchor_frame", 0))
-        if frame_idx < anchor:
-            raise ValueError("two-clock v1 does not propagate before its prompt anchor")
-        return anchor + (frame_idx - anchor) // self.fixed_refresh_interval * (
-            self.fixed_refresh_interval
+        phase = int(inference_state.get("two_clock_refresh_phase", 0))
+        return fixed_refresh_source(
+            frame_idx,
+            anchor=anchor,
+            interval=self.fixed_refresh_interval,
+            phase=phase,
         )
 
     def _get_image_feature(self, inference_state, frame_idx, batch_size):
@@ -260,6 +287,8 @@ def build_two_clock_video_predictor(
     checkpoint_path: str | Path,
     experiment: str,
     refresh_interval: int,
+    refresh_phase_mode: str = "anchor",
+    refresh_phase_seed: int = 250107256,
     device: str | torch.device,
 ) -> tuple[TwoClockVideoPredictor, dict]:
     """Build and strictly load a training or official SAM2.1-L checkpoint."""
@@ -271,6 +300,8 @@ def build_two_clock_video_predictor(
     model._target_ = "sam2_distill.two_clock.predictor.TwoClockVideoPredictor"
     model.experiment = experiment
     model.fixed_refresh_interval = refresh_interval
+    model.refresh_phase_mode = refresh_phase_mode
+    model.refresh_phase_seed = refresh_phase_seed
     for key in (
         "teacher_model_config",
         "teacher_checkpoint",
@@ -311,6 +342,8 @@ def build_two_clock_video_predictor(
     return predictor, {
         "experiment": experiment,
         "refresh_interval": refresh_interval,
+        "refresh_phase_mode": refresh_phase_mode,
+        "refresh_phase_seed": refresh_phase_seed,
         "checkpoint": str(checkpoint_path),
         "checkpoint_epoch": checkpoint.get("epoch")
         if isinstance(checkpoint, dict)

@@ -31,6 +31,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolved-config", type=Path)
     parser.add_argument("--experiment")
     parser.add_argument("--refresh-interval", type=int, default=1)
+    parser.add_argument(
+        "--refresh-phase-mode", choices=("anchor", "balanced"), default="anchor"
+    )
+    parser.add_argument("--refresh-phase-seed", type=int, default=250107256)
     parser.add_argument("--image-root", required=True, type=Path)
     parser.add_argument("--input-mask-root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
@@ -148,6 +152,8 @@ def main() -> None:
             checkpoint_path=args.checkpoint,
             experiment=args.experiment,
             refresh_interval=args.refresh_interval,
+            refresh_phase_mode=args.refresh_phase_mode,
+            refresh_phase_seed=args.refresh_phase_seed,
             device=device,
         )
         predictor.non_overlap_masks = not args.per_obj_png_file
@@ -250,6 +256,8 @@ def main() -> None:
         "two_clock_tracking_frames": two_clock_tracking_frames,
         "two_clock_refresh_rate": two_clock_encoder_calls
         / max(two_clock_tracking_frames, 1),
+        "two_clock_refresh_phase_mode": args.refresh_phase_mode,
+        "two_clock_refresh_phase_seed": args.refresh_phase_seed,
     }
     summary_name = "summary.json" if world_size == 1 else f"summary.rank{rank:03d}.json"
     (args.out_dir / summary_name).write_text(

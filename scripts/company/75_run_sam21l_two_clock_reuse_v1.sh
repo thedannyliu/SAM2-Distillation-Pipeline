@@ -153,7 +153,7 @@ main() {
     echo "SAM2.1-L two-clock stale-observation reuse v1"
     echo "Wave 1 nodes: O2, A, B, C, D, E; each node uses four H100s"
     echo "Training: full 50,337-video SA-V train, raw 24 FPS T8, five epochs"
-    echo "Selection: full SA-V val R4 J&F across checkpoint_1..checkpoint_5"
+    echo "Selection: phase-balanced full SA-V val R4 J&F across checkpoint_1..checkpoint_5"
     echo "Controls: official O0 R1 and frozen O1 R2--R6"
     echo "Run root: ${run_root}"
     echo "W&B: ${wandb_project} (${wandb_mode})"
@@ -333,11 +333,21 @@ PY
   evaluate_checkpoint() {
     local experiment="$1" checkpoint_path="$2" resolved_config="$3"
     local interval="$4" output="$5" status log_file
-    if [[ -f "${output}/sav_eval.json" && "${SKIP_DONE:-1}" == "1" ]]; then
-      if python - "${output}/sav_eval.json" <<'PY'
+    if [[ -f "${output}/sav_eval.json" && -f "${output}/age_metrics.json" && "${SKIP_DONE:-1}" == "1" ]]; then
+      if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${interval}" <<'PY'
 import json
 import sys
-raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("status") == "pass" else 1)
+sav = json.load(open(sys.argv[1], encoding="utf-8"))
+age = json.load(open(sys.argv[2], encoding="utf-8"))
+valid = (
+    sav.get("status") == "pass"
+    and age.get("status") == "pass"
+    and age.get("protocol") == "balanced_phase_v1"
+    and age.get("refresh_phase_mode") == "balanced"
+    and age.get("refresh_interval") == int(sys.argv[3])
+    and all(row.get("count", 0) > 0 for row in age.get("by_age", []))
+)
+raise SystemExit(0 if valid else 1)
 PY
       then
         echo "Skip completed evaluation: ${output}"
@@ -358,6 +368,8 @@ PY
         --resolved-config "${resolved_config}" \
         --experiment "${experiment}" \
         --refresh-interval "${interval}" \
+        --refresh-phase-mode balanced \
+        --refresh-phase-seed 250107256 \
         --image-root "${sav_root}/sav_val/JPEGImages_24fps" \
         --input-mask-root "${sav_root}/sav_val/Annotations_6fps" \
         --video-list-file "${sav_root}/sav_val/sav_val.txt" \
@@ -383,6 +395,8 @@ PY
       --gt-root "${sav_root}/sav_val/Annotations_6fps" \
       --pred-root "${output}/pred" \
       --refresh-interval "${interval}" \
+      --refresh-phase-mode balanced \
+      --refresh-phase-seed 250107256 \
       --video-list-file "${sav_root}/sav_val/sav_val.txt" \
       --out-json "${output}/age_metrics.json" \
       --out-csv "${output}/age_metrics.csv"
@@ -419,7 +433,7 @@ source = run / "checkpoints" / f"checkpoint_{best['epoch']}.pt"
 destination = run / "checkpoints" / "best.pt"
 shutil.copy2(source, destination)
 result = {
-    "selection_metric": "full_sav_val_R4_J&F",
+    "selection_metric": "full_sav_val_balanced_phase_R4_J&F",
     "selected_epoch": best["epoch"],
     "selected_checkpoint": str(destination),
     "rows": rows,
@@ -491,6 +505,10 @@ PY
     train) train_target "${target}" formal ;;
     select) select_checkpoint "${target}" ;;
     curves) curves "${target}" ;;
+    val)
+      select_checkpoint "${target}" && curves "${target}" && \
+        postrun_audit "${target}"
+      ;;
     controls) controls ;;
     run)
       audit && train_target "${target}" formal && select_checkpoint "${target}" && \
@@ -498,7 +516,7 @@ PY
       ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|controls|run|status} [O2|A|B|C|C-r|D|E]" >&2
+      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|run|status} [O2|A|B|C|C-r|D|E]" >&2
       return 2
       ;;
   esac

@@ -9,6 +9,8 @@ from sam2_distill.two_clock.losses import (
     group_normalized_supervision,
 )
 from sam2_distill.two_clock.schedule import (
+    balanced_refresh_phase,
+    fixed_refresh_source,
     fixed_refresh_trajectory,
     training_trajectory,
 )
@@ -38,6 +40,30 @@ def test_training_trajectory_is_deterministic_and_bounded() -> None:
 def test_fixed_refresh_rejects_unsupported_interval() -> None:
     with pytest.raises(ValueError, match="interval"):
         fixed_refresh_trajectory(8, 7)
+
+
+@pytest.mark.parametrize("interval,target", [(2, 8), (4, 8), (6, 12)])
+def test_phase_balancing_covers_every_age_at_sav_gt_cadence(
+    interval: int,
+    target: int,
+) -> None:
+    ages = {
+        target
+        - fixed_refresh_source(
+            target,
+            anchor=0,
+            interval=interval,
+            phase=phase,
+        )
+        for phase in range(interval)
+    }
+    assert ages == set(range(interval))
+
+
+def test_balanced_refresh_phase_is_stable_and_bounded() -> None:
+    first = balanced_refresh_phase("sav_000123", 6)
+    assert first == balanced_refresh_phase("sav_000123", 6)
+    assert 0 <= first < 6
 
 
 def test_registered_experiment_ladder() -> None:

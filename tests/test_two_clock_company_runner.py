@@ -66,3 +66,21 @@ def test_selection_and_curves_recheck_formal_launch_identity() -> None:
     assert runner.count('check_launch "${experiment}" "${run_dir}"') == 2
     run_action = runner.split("    run)", maxsplit=1)[1].split("      ;;", maxsplit=1)[0]
     assert 'postrun_audit "${target}"' in run_action
+
+
+def test_validation_uses_paired_balanced_refresh_phases() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    runner = (
+        repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
+    ).read_text(encoding="utf-8")
+    evaluate = runner.split("evaluate_checkpoint()", maxsplit=1)[1]
+    evaluate = evaluate.split("select_checkpoint()", maxsplit=1)[0]
+    assert evaluate.count("--refresh-phase-mode balanced") == 2
+    assert 'age.get("protocol") == "balanced_phase_v1"' in evaluate
+    assert "full_sav_val_balanced_phase_R4_J&F" in runner
+    val_action = runner.split("    val)", maxsplit=1)[1].split(
+        "      ;;", maxsplit=1
+    )[0]
+    assert 'select_checkpoint "${target}"' in val_action
+    assert 'curves "${target}"' in val_action
+    assert 'train_target "${target}"' not in val_action
