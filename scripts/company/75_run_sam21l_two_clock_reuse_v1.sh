@@ -498,7 +498,11 @@ for name in selected:
         if link.resolve() != target.resolve():
             raise SystemExit(f"quick-val GT link points to the wrong target: {link}")
     else:
-        link.symlink_to(target, target_is_directory=True)
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except FileExistsError:
+            if link.resolve() != target.resolve():
+                raise
 metadata = {
     "protocol": "sav_val_hash_sample_v1",
     "seed": seed,
