@@ -660,10 +660,11 @@ def postrun_audit(args: argparse.Namespace, contract: dict[str, Any]) -> None:
         args.run_dir / "training_status.json",
         args.run_dir / "training_model_summary.json",
         args.run_dir / "gradient_diagnostics.json",
-        args.run_dir / "optimizer_audit.json",
         args.run_dir / "best_selection.json",
         args.run_dir / "checkpoints/best.pt",
     ]
+    if not legacy:
+        required.append(args.run_dir / "optimizer_audit.json")
     required.extend(
         args.run_dir / f"checkpoints/checkpoint_{epoch}.pt"
         for epoch in range(1, 6)
@@ -680,15 +681,16 @@ def postrun_audit(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     if not missing:
         training = load_json(args.run_dir / "training_status.json")
         gradients = load_json(args.run_dir / "gradient_diagnostics.json")
-        optimizer = load_json(args.run_dir / "optimizer_audit.json")
         if training.get("status") != "complete":
             failures.append("training did not complete")
         if gradients.get("status") != "pass" or gradients.get("nonfinite_steps"):
             failures.append("gradient diagnostics failed")
-        try:
-            validate_optimizer_audit(optimizer)
-        except ValueError as error:
-            failures.append(str(error))
+        optimizer_path = args.run_dir / "optimizer_audit.json"
+        if optimizer_path.is_file():
+            try:
+                validate_optimizer_audit(load_json(optimizer_path))
+            except ValueError as error:
+                failures.append(str(error))
         for interval in range(1, 7):
             evaluation = load_json(
                 args.run_dir / f"val/selected/R{interval}/sav_eval.json"
