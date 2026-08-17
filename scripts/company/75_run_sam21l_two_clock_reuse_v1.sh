@@ -349,7 +349,7 @@ PY
     local interval="$4" output="$5" video_list="${6:-${sav_root}/sav_val/sav_val.txt}"
     local gt_root="${7:-${sav_root}/sav_val/Annotations_6fps}"
     local model_kind="${8:-two-clock}"
-    local status log_file inference_complete=0
+    local status log_file log_key inference_complete=0
     if [[ -f "${output}/sav_eval.json" && -f "${output}/age_metrics.json" && -f "${output}/pred/summary.json" && "${SKIP_DONE:-1}" == "1" ]]; then
       if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${output}/pred/summary.json" "${experiment}" "${interval}" "${model_kind}" <<'PY'
 import json
@@ -377,7 +377,9 @@ PY
       fi
     fi
     mkdir -p "${output}/pred" "${log_root}/eval"
-    log_file="${log_root}/eval/${experiment}_${model_kind}_$(basename "${output}").log"
+    log_key="${output#${run_root}/}"
+    log_key="${log_key//\//_}"
+    log_file="${log_root}/eval/${log_key}.log"
     if [[ -f "${output}/sav_eval.json" && -f "${output}/pred/summary.json" && "${SKIP_DONE:-1}" == "1" ]]; then
       if python - "${output}/sav_eval.json" "${output}/pred" "${checkpoint_path}" "${experiment}" "${interval}" "${model_kind}" <<'PY'
 import json
