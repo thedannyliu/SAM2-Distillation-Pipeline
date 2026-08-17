@@ -41,8 +41,12 @@ def _mask(path: Path) -> np.ndarray:
 
 
 def _single_frame_metrics(evaluator_class, prediction, target) -> tuple[float, float]:
-    if not prediction.any() and not target.any():
+    prediction_present = bool(prediction.any())
+    target_present = bool(target.any())
+    if not prediction_present and not target_present:
         return 100.0, 100.0
+    if prediction_present != target_present:
+        return 0.0, 0.0
     evaluator = evaluator_class()
     evaluator.feed_frame(prediction, target)
     iou, boundary = evaluator.conclude()
