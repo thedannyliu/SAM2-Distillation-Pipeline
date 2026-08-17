@@ -30,8 +30,9 @@ def main() -> None:
     tracking_frames = sum(int(row.get("two_clock_tracking_frames", 0)) for row in ranks)
     phase_modes = {row.get("two_clock_refresh_phase_mode") for row in ranks}
     phase_seeds = {row.get("two_clock_refresh_phase_seed") for row in ranks}
-    if len(phase_modes) != 1 or len(phase_seeds) != 1:
-        raise RuntimeError("rank summaries disagree on the refresh-phase protocol")
+    video_storage = {bool(row.get("offload_video_to_cpu", False)) for row in ranks}
+    if len(phase_modes) != 1 or len(phase_seeds) != 1 or len(video_storage) != 1:
+        raise RuntimeError("rank summaries disagree on evaluation protocol")
     summary = {
         "status": "pass",
         "world_size": expected,
@@ -51,6 +52,7 @@ def main() -> None:
         "two_clock_refresh_rate": encoder_calls / max(tracking_frames, 1),
         "two_clock_refresh_phase_mode": phase_modes.pop(),
         "two_clock_refresh_phase_seed": phase_seeds.pop(),
+        "offload_video_to_cpu": video_storage.pop(),
     }
     out = args.out or args.run_dir / "summary.json"
     out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

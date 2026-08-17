@@ -42,6 +42,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use-all-masks", action="store_true")
     parser.add_argument("--per-obj-png-file", action="store_true")
     parser.add_argument("--track-object-appearing-later-in-video", action="store_true")
+    parser.add_argument(
+        "--offload-video-to-cpu",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Keep preprocessed video frames on CPU and transfer them per frame.",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -110,6 +116,17 @@ def validate_initial_object_masks(
         )
 
 
+def configure_video_storage(predictor, offload_video_to_cpu: bool) -> None:
+    """Set the storage policy for init_state calls made inside upstream VOS code."""
+    original_init_state = predictor.init_state
+
+    def init_state_with_storage_policy(*args, **kwargs):
+        kwargs.setdefault("offload_video_to_cpu", offload_video_to_cpu)
+        return original_init_state(*args, **kwargs)
+
+    predictor.init_state = init_state_with_storage_policy
+
+
 def main() -> None:
     args = parse_args()
     for path in (args.edgetam_root, args.checkpoint, args.image_root, args.input_mask_root):
@@ -167,6 +184,7 @@ def main() -> None:
             apply_postprocessing=False,
             hydra_overrides_extra=hydra_overrides_extra,
         )
+    configure_video_storage(predictor, args.offload_video_to_cpu)
     original_propagate = predictor.propagate_in_video
     model_frame_latencies_ms = []
 
@@ -257,6 +275,7 @@ def main() -> None:
         ),
         "per_obj_png_file": args.per_obj_png_file,
         "track_object_appearing_later_in_video": args.track_object_appearing_later_in_video,
+        "offload_video_to_cpu": args.offload_video_to_cpu,
         "num_prediction_pngs": sum(
             count_pngs(args.out_dir / video_name) for video_name in video_names
         ),

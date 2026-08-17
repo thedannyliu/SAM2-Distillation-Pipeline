@@ -149,6 +149,13 @@ This evaluates official O0 at R1 and the frozen official O1 at R2--R6. O1 R1
 is exactly O0 and is not recomputed. The causal schedule-exposure comparison
 is A versus O2 at matched R2--R6, not A versus O1.
 
+Validation keeps preprocessed video frames on CPU and transfers the requested
+frame to the rank's GPU. Model and temporal state remain on GPU. This avoids a
+single long SA-V video requesting roughly 9 GiB of contiguous GPU memory in
+`init_state`. It does not change masks or J&F, but all final latency comparisons
+must use this same storage policy. Check `nvidia-smi` before retrying: CPU
+offload does not make unrelated GPU occupancy acceptable.
+
 ## Monitoring and targeted resume
 
 Status is read-only:
@@ -195,6 +202,35 @@ is marked `provisional` rather than being presented as prospectively verified.
 GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh val E
 ```
 
+### Ten-video provisional screen
+
+Before the full validation matrix finishes, each experiment node may produce
+one fast directional result from `checkpoint_5.pt` at R4:
+
+```bash
+GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh quick-val E
+```
+
+Replace `E` with that node's target (`O2`, `A`, `B`, `C`, `D`, or `E`). Every
+node uses the same deterministic 10-video hash cohort. A symlink-only GT view
+allows the official SA-V evaluator to remain in strict mode without copying
+annotations. Run the matching official baselines once on any free node:
+
+```bash
+GPUS=0,1,2,3 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh quick-controls
+```
+
+Then print and save the currently available quick comparison:
+
+```bash
+scripts/company/75_run_sam21l_two_clock_reuse_v1.sh quick-report
+```
+
+These numbers are marked provisional. Ten videos and an unselected epoch-5
+checkpoint are sufficient for failure detection and directional screening,
+but not checkpoint selection, promotion decisions, uncertainty estimates, or
+paper claims. Full validation remains authoritative.
+
 O2/A/B/C/D/E may run this action concurrently on six four-GPU nodes. Run
 `controls` on the first released node. Do not access SA-V test until these
 validation results select and freeze one parent and one reporting policy.
@@ -211,6 +247,18 @@ The report is written under
 Markdown. Every row includes J/F/J&F, measured encoder refresh rate,
 single-stream model mean and rank-P95 latency, wall latency, J&F deltas versus
 O0 R1 and the official matched-R baseline, plus model/wall speedups versus O0.
+
+While controls or some R-curves are still pending, collect every completed row
+without failing on the missing matrix entries:
+
+```bash
+scripts/company/75_run_sam21l_two_clock_reuse_v1.sh report-partial
+```
+
+This prints the current table and writes JSON, CSV, and Markdown under
+`runs/sam21l_two_clock_reuse_v1/reports/partial_balanced_phase_v1`. Missing
+artifacts remain listed explicitly and are not interpreted as zero-valued
+results.
 
 ## Promotion boundary
 

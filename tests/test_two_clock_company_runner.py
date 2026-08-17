@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.eval.run_edgetam_vos_dataset import configure_video_storage
+
 
 def test_company_runner_exports_sam2_root_to_training_process() -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -63,7 +65,7 @@ def test_selection_and_curves_verify_completed_training_for_evaluation() -> None
     runner = (
         repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
     ).read_text(encoding="utf-8")
-    assert runner.count('check_eval "${experiment}" "${run_dir}"') == 2
+    assert runner.count('check_eval "${experiment}" "${run_dir}"') == 3
     run_action = runner.split("    run)", maxsplit=1)[1].split("      ;;", maxsplit=1)[0]
     assert 'postrun_audit "${target}"' in run_action
 
@@ -106,3 +108,48 @@ def test_report_requires_complete_jf_and_latency_matrix() -> None:
     )[0]
     assert "summarize_two_clock_validation.py" in report
     assert "--require-complete" in report
+
+
+def test_vos_eval_offloads_video_frames_but_keeps_explicit_override() -> None:
+    class Predictor:
+        def __init__(self):
+            self.calls = []
+
+        def init_state(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
+            return kwargs
+
+    predictor = Predictor()
+    configure_video_storage(predictor, offload_video_to_cpu=True)
+
+    default = predictor.init_state(video_path="video")
+    explicit = predictor.init_state(video_path="video", offload_video_to_cpu=False)
+
+    assert default["offload_video_to_cpu"] is True
+    assert explicit["offload_video_to_cpu"] is False
+
+
+def test_partial_report_does_not_require_complete_matrix() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    runner = (
+        repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
+    ).read_text(encoding="utf-8")
+    partial = runner.split("  report_partial()", maxsplit=1)[1].split(
+        "  status()", maxsplit=1
+    )[0]
+    assert "summarize_two_clock_validation.py" in partial
+    assert "--require-complete" not in partial
+
+
+def test_quick_val_is_fixed_ten_video_epoch_five_r4_screen() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    runner = (
+        repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
+    ).read_text(encoding="utf-8")
+    assert 'count = 10' in runner
+    assert 'gt_10_seed250107256/Annotations_6fps' in runner
+    assert 'local experiment="$1" epoch="${QUICK_EPOCH:-5}"' in runner
+    quick = runner.split("  quick_val()", maxsplit=1)[1].split(
+        "  quick_controls()", maxsplit=1
+    )[0]
+    assert '4 "${run_dir}/quick_val/epoch_${epoch}/R4"' in quick

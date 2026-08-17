@@ -346,19 +346,23 @@ PY
 
   evaluate_checkpoint() {
     local experiment="$1" checkpoint_path="$2" resolved_config="$3"
-    local interval="$4" output="$5" status log_file inference_complete=0
-    if [[ -f "${output}/sav_eval.json" && -f "${output}/age_metrics.json" && "${SKIP_DONE:-1}" == "1" ]]; then
-      if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${interval}" <<'PY'
+    local interval="$4" output="$5" video_list="${6:-${sav_root}/sav_val/sav_val.txt}"
+    local gt_root="${7:-${sav_root}/sav_val/Annotations_6fps}"
+    local status log_file inference_complete=0
+    if [[ -f "${output}/sav_eval.json" && -f "${output}/age_metrics.json" && -f "${output}/pred/summary.json" && "${SKIP_DONE:-1}" == "1" ]]; then
+      if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${output}/pred/summary.json" "${interval}" <<'PY'
 import json
 import sys
 sav = json.load(open(sys.argv[1], encoding="utf-8"))
 age = json.load(open(sys.argv[2], encoding="utf-8"))
+timing = json.load(open(sys.argv[3], encoding="utf-8"))
 valid = (
     sav.get("status") == "pass"
     and age.get("status") == "pass"
     and age.get("protocol") == "balanced_phase_v1"
     and age.get("refresh_phase_mode") == "balanced"
-    and age.get("refresh_interval") == int(sys.argv[3])
+    and age.get("refresh_interval") == int(sys.argv[4])
+    and timing.get("offload_video_to_cpu") is True
     and all(row.get("count", 0) > 0 for row in age.get("by_age", []))
 )
 raise SystemExit(0 if valid else 1)
@@ -389,6 +393,7 @@ valid = (
     and all(row.get("status") == "pass" for row in ranks)
     and all(row.get("two_clock_refresh_phase_mode") == "balanced" for row in ranks)
     and all(row.get("two_clock_refresh_phase_seed") == 250107256 for row in ranks)
+    and all(row.get("offload_video_to_cpu") is True for row in ranks)
     and all(row.get("build", {}).get("checkpoint") == checkpoint for row in ranks)
     and all(row.get("build", {}).get("experiment") == experiment for row in ranks)
     and all(row.get("build", {}).get("refresh_interval") == interval for row in ranks)
@@ -417,10 +422,11 @@ PY
           --refresh-phase-seed 250107256 \
           --image-root "${sav_root}/sav_val/JPEGImages_24fps" \
           --input-mask-root "${sav_root}/sav_val/Annotations_6fps" \
-          --video-list-file "${sav_root}/sav_val/sav_val.txt" \
+          --video-list-file "${video_list}" \
           --out-dir "${output}/pred" \
           --per-obj-png-file \
           --track-object-appearing-later-in-video \
+          --offload-video-to-cpu \
           --device cuda 2>&1 | tee -a "${log_file}"
       status="${PIPESTATUS[0]}"
       if [[ "${status}" -ne 0 ]]; then
@@ -430,7 +436,7 @@ PY
         --run-dir "${output}/pred" || return $?
       python tools/eval/run_sav_evaluator.py \
         --evaluator "${sam2_root}/sav_dataset/sav_evaluator.py" \
-        --gt-root "${sav_root}/sav_val/Annotations_6fps" \
+        --gt-root "${gt_root}" \
         --pred-root "${output}/pred" \
         --out-json "${output}/sav_eval.json" \
         --num-processes "${EVAL_PROCESSES:-16}" \
@@ -438,14 +444,98 @@ PY
     fi
     python tools/eval/evaluate_two_clock_age.py \
       --sam2-root "${sam2_root}" \
-      --gt-root "${sav_root}/sav_val/Annotations_6fps" \
+      --gt-root "${gt_root}" \
       --pred-root "${output}/pred" \
       --refresh-interval "${interval}" \
       --refresh-phase-mode balanced \
       --refresh-phase-seed 250107256 \
-      --video-list-file "${sav_root}/sav_val/sav_val.txt" \
+      --video-list-file "${video_list}" \
       --out-json "${output}/age_metrics.json" \
       --out-csv "${output}/age_metrics.csv"
+  }
+
+  make_quick_cohort() {
+    local cohort="${run_root}/quick_val/cohort_10_seed250107256.txt"
+    local gt_view="${run_root}/quick_val/gt_10_seed250107256/Annotations_6fps"
+    python - \
+      "${sav_root}/sav_val/sav_val.txt" "${cohort}" \
+      "${sav_root}/sav_val/Annotations_6fps" "${gt_view}" <<'PY'
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+output = Path(sys.argv[2])
+source_gt = Path(sys.argv[3])
+gt_view = Path(sys.argv[4])
+seed = 250107256
+count = 10
+names = [line.strip() for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
+if len(names) < count:
+    raise SystemExit(f"quick-val requested {count} videos, found {len(names)}")
+ranked = sorted(names, key=lambda name: hashlib.sha256(f"{seed}:{name}".encode()).digest())
+selected = ranked[:count]
+output.parent.mkdir(parents=True, exist_ok=True)
+temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
+temporary.write_text("\n".join(selected) + "\n", encoding="utf-8")
+temporary.replace(output)
+gt_view.mkdir(parents=True, exist_ok=True)
+for name in selected:
+    target = source_gt / name
+    if not target.is_dir():
+        raise SystemExit(f"quick-val GT directory is missing: {target}")
+    link = gt_view / name
+    if link.exists() or link.is_symlink():
+        if link.resolve() != target.resolve():
+            raise SystemExit(f"quick-val GT link points to the wrong target: {link}")
+    else:
+        link.symlink_to(target, target_is_directory=True)
+metadata = {
+    "protocol": "sav_val_hash_sample_v1",
+    "seed": seed,
+    "count": count,
+    "source": str(source),
+    "gt_view": str(gt_view),
+    "videos": selected,
+}
+metadata_path = output.with_suffix(".json")
+metadata_tmp = metadata_path.with_name(f".{metadata_path.name}.{os.getpid()}.tmp")
+metadata_tmp.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+metadata_tmp.replace(metadata_path)
+print(json.dumps(metadata, indent=2), file=sys.stderr)
+PY
+    if [[ "$?" -ne 0 ]]; then
+      return 1
+    fi
+    echo "${cohort}"
+  }
+
+  quick_val() {
+    local experiment="$1" epoch="${QUICK_EPOCH:-5}" run_dir checkpoint_path cohort gt_view
+    run_dir="${run_root}/${experiment}"
+    check_eval "${experiment}" "${run_dir}" || return $?
+    require_path "${run_dir}/resolved_config.yaml" || return 1
+    checkpoint_path="${run_dir}/checkpoints/checkpoint_${epoch}.pt"
+    require_path "${checkpoint_path}" || return 1
+    cohort="$(make_quick_cohort)" || return $?
+    gt_view="${run_root}/quick_val/gt_10_seed250107256/Annotations_6fps"
+    evaluate_checkpoint \
+      "${experiment}" "${checkpoint_path}" "${run_dir}/resolved_config.yaml" \
+      4 "${run_dir}/quick_val/epoch_${epoch}/R4" "${cohort}" "${gt_view}"
+  }
+
+  quick_controls() {
+    local cohort gt_view
+    cohort="$(make_quick_cohort)" || return $?
+    gt_view="${run_root}/quick_val/gt_10_seed250107256/Annotations_6fps"
+    evaluate_checkpoint \
+      O0 "${checkpoint}" "${model_config}" 1 \
+      "${run_root}/quick_val/controls/O0/R1" "${cohort}" "${gt_view}" || return $?
+    evaluate_checkpoint \
+      O1 "${checkpoint}" "${model_config}" 4 \
+      "${run_root}/quick_val/controls/O1/R4" "${cohort}" "${gt_view}"
   }
 
   select_checkpoint() {
@@ -522,6 +612,22 @@ PY
       --require-complete
   }
 
+  report_partial() {
+    python tools/eval/summarize_two_clock_validation.py \
+      --run-root "${run_root}" \
+      --out-dir "${run_root}/reports/partial_balanced_phase_v1" || return $?
+    echo "===== completed validation rows ====="
+    cat "${run_root}/reports/partial_balanced_phase_v1/comparison.md"
+  }
+
+  quick_report() {
+    python tools/eval/summarize_two_clock_validation.py \
+      --run-root "${run_root}" \
+      --out-dir "${run_root}/reports/quick_val_10_epoch_${QUICK_EPOCH:-5}" \
+      --quick-epoch "${QUICK_EPOCH:-5}" || return $?
+    cat "${run_root}/reports/quick_val_10_epoch_${QUICK_EPOCH:-5}/comparison.md"
+  }
+
   status() {
     local experiment run_dir
     for experiment in O2 A B C D E; do
@@ -563,14 +669,18 @@ PY
         postrun_audit "${target}"
       ;;
     controls) controls ;;
+    quick-val) quick_val "${target}" ;;
+    quick-controls) quick_controls ;;
+    quick-report) quick_report ;;
     report) report ;;
+    report-partial) report_partial ;;
     run)
       audit && train_target "${target}" formal && select_checkpoint "${target}" && \
         curves "${target}" && postrun_audit "${target}"
       ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|report|run|status} [O2|A|B|C|C-r|D|E]" >&2
+      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|quick-val|quick-controls|quick-report|report|report-partial|run|status} [O2|A|B|C|C-r|D|E]" >&2
       return 2
       ;;
   esac
