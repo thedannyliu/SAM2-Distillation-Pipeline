@@ -281,7 +281,16 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         return compact, masks
 
 
-def build_two_clock_video_predictor(
+class OfficialReuseVideoPredictor(TwoClockVideoPredictor):
+    """Official SAM2 tracking/memory path with only image-feature reuse."""
+
+    track_step = SAM2VideoPredictor.track_step
+    _prepare_memory_conditioned_features = (
+        SAM2VideoPredictor._prepare_memory_conditioned_features
+    )
+
+
+def _build_video_predictor(
     *,
     resolved_config: str | Path,
     checkpoint_path: str | Path,
@@ -290,14 +299,15 @@ def build_two_clock_video_predictor(
     refresh_phase_mode: str = "anchor",
     refresh_phase_seed: int = 250107256,
     device: str | torch.device,
-) -> tuple[TwoClockVideoPredictor, dict]:
+    predictor_target: str,
+):
     """Build and strictly load a training or official SAM2.1-L checkpoint."""
     from hydra.utils import instantiate
     from omegaconf import OmegaConf
 
     config = OmegaConf.load(Path(resolved_config))
     model = config.model if "model" in config else config.trainer.model
-    model._target_ = "sam2_distill.two_clock.predictor.TwoClockVideoPredictor"
+    model._target_ = predictor_target
     model.experiment = experiment
     model.fixed_refresh_interval = refresh_interval
     model.refresh_phase_mode = refresh_phase_mode
@@ -340,6 +350,7 @@ def build_two_clock_video_predictor(
     for parameter in predictor.parameters():
         parameter.requires_grad_(False)
     return predictor, {
+        "predictor_class": type(predictor).__name__,
         "experiment": experiment,
         "refresh_interval": refresh_interval,
         "refresh_phase_mode": refresh_phase_mode,
@@ -350,3 +361,48 @@ def build_two_clock_video_predictor(
         else None,
         "strict_load": True,
     }
+
+
+def build_two_clock_video_predictor(
+    *,
+    resolved_config: str | Path,
+    checkpoint_path: str | Path,
+    experiment: str,
+    refresh_interval: int,
+    refresh_phase_mode: str = "anchor",
+    refresh_phase_seed: int = 250107256,
+    device: str | torch.device,
+) -> tuple[TwoClockVideoPredictor, dict]:
+    return _build_video_predictor(
+        resolved_config=resolved_config,
+        checkpoint_path=checkpoint_path,
+        experiment=experiment,
+        refresh_interval=refresh_interval,
+        refresh_phase_mode=refresh_phase_mode,
+        refresh_phase_seed=refresh_phase_seed,
+        device=device,
+        predictor_target="sam2_distill.two_clock.predictor.TwoClockVideoPredictor",
+    )
+
+
+def build_official_reuse_video_predictor(
+    *,
+    resolved_config: str | Path,
+    checkpoint_path: str | Path,
+    refresh_interval: int,
+    refresh_phase_mode: str = "anchor",
+    refresh_phase_seed: int = 250107256,
+    device: str | torch.device,
+) -> tuple[OfficialReuseVideoPredictor, dict]:
+    return _build_video_predictor(
+        resolved_config=resolved_config,
+        checkpoint_path=checkpoint_path,
+        experiment="O1",
+        refresh_interval=refresh_interval,
+        refresh_phase_mode=refresh_phase_mode,
+        refresh_phase_seed=refresh_phase_seed,
+        device=device,
+        predictor_target=(
+            "sam2_distill.two_clock.predictor.OfficialReuseVideoPredictor"
+        ),
+    )

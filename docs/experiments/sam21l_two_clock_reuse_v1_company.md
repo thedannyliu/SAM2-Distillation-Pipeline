@@ -231,6 +231,49 @@ checkpoint are sufficient for failure detection and directional screening,
 but not checkpoint selection, promotion decisions, uncertainty estimates, or
 paper claims. Full validation remains authoritative.
 
+The first 10-video O0/O1 screen used the full two-clock predictor for both
+controls. It is therefore invalid as an official-baseline comparison: that
+wrapper changes the tracking and memory-write path in addition to selecting a
+cached image feature. Do not use those old O0/O1 values.
+
+### Corrected 50-video single-GPU screen
+
+The corrected screen uses one deterministic 50-video hash cohort and separates
+three controls:
+
+- `O0 R1`: pure official `SAM2VideoPredictor`, fresh image encoding every frame;
+- `W0 R1`: two-clock wrapper with no reuse, used only as an implementation
+  identity audit against O0;
+- `O1 R4`: official tracking and memory behavior with only `_get_image_feature`
+  reused for three frames between refreshes.
+
+O0 and W0 prediction masks must be pixel-identical before O1 or A--E are
+compared with the official baseline. O2/A/B/C/D/E use `checkpoint_5.pt` at R4.
+Each command is an independent foreground job and requires exactly one GPU:
+
+```bash
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50-control O0
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50-control W0
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50-control O1
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50 O2
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50 A
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50 B
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50 C
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50 D
+GPUS=0 scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50 E
+```
+
+After all jobs finish, generate the table and run the O0/W0 decoded-mask
+identity audit without a GPU:
+
+```bash
+scripts/company/75_run_sam21l_two_clock_reuse_v1.sh screen50-report
+```
+
+Outputs live under `screen50/` within the experiment run root. These 50-video
+numbers remain a provisional checkpoint-5 screen; full 155-video validation
+and checkpoint selection remain authoritative.
+
 O2/A/B/C/D/E may run this action concurrently on six four-GPU nodes. Run
 `controls` on the first released node. Do not access SA-V test until these
 validation results select and freeze one parent and one reporting policy.

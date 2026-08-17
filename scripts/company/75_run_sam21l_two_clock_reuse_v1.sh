@@ -168,7 +168,7 @@ main() {
     echo "Wave 1 nodes: O2, A, B, C, D, E; each node uses four H100s"
     echo "Training: full 50,337-video SA-V train, raw 24 FPS T8, five epochs"
     echo "Selection: phase-balanced full SA-V val R4 J&F across checkpoint_1..checkpoint_5"
-    echo "Controls: official O0 R1 and frozen O1 R2--R6"
+    echo "Controls: official O0 R1, wrapper identity W0 R1, and minimal-reuse O1 R2--R6"
     echo "Run root: ${run_root}"
     echo "W&B: ${wandb_project} (${wandb_mode})"
     echo "GPUs: ${gpus}"
@@ -348,9 +348,10 @@ PY
     local experiment="$1" checkpoint_path="$2" resolved_config="$3"
     local interval="$4" output="$5" video_list="${6:-${sav_root}/sav_val/sav_val.txt}"
     local gt_root="${7:-${sav_root}/sav_val/Annotations_6fps}"
+    local model_kind="${8:-two-clock}"
     local status log_file inference_complete=0
     if [[ -f "${output}/sav_eval.json" && -f "${output}/age_metrics.json" && -f "${output}/pred/summary.json" && "${SKIP_DONE:-1}" == "1" ]]; then
-      if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${output}/pred/summary.json" "${interval}" <<'PY'
+      if python - "${output}/sav_eval.json" "${output}/age_metrics.json" "${output}/pred/summary.json" "${experiment}" "${interval}" "${model_kind}" <<'PY'
 import json
 import sys
 sav = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -361,8 +362,11 @@ valid = (
     and age.get("status") == "pass"
     and age.get("protocol") == "balanced_phase_v1"
     and age.get("refresh_phase_mode") == "balanced"
-    and age.get("refresh_interval") == int(sys.argv[4])
+    and age.get("refresh_interval") == int(sys.argv[5])
     and timing.get("offload_video_to_cpu") is True
+    and timing.get("model_kind") == sys.argv[6]
+    and timing.get("build_experiment") == sys.argv[4]
+    and timing.get("build_refresh_interval") == int(sys.argv[5])
     and all(row.get("count", 0) > 0 for row in age.get("by_age", []))
 )
 raise SystemExit(0 if valid else 1)
@@ -373,9 +377,9 @@ PY
       fi
     fi
     mkdir -p "${output}/pred" "${log_root}/eval"
-    log_file="${log_root}/eval/${experiment}_$(basename "${output}").log"
+    log_file="${log_root}/eval/${experiment}_${model_kind}_$(basename "${output}").log"
     if [[ -f "${output}/sav_eval.json" && -f "${output}/pred/summary.json" && "${SKIP_DONE:-1}" == "1" ]]; then
-      if python - "${output}/sav_eval.json" "${output}/pred" "${checkpoint_path}" "${experiment}" "${interval}" <<'PY'
+      if python - "${output}/sav_eval.json" "${output}/pred" "${checkpoint_path}" "${experiment}" "${interval}" "${model_kind}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -385,6 +389,7 @@ pred = Path(sys.argv[2])
 checkpoint = str(Path(sys.argv[3]))
 experiment = sys.argv[4]
 interval = int(sys.argv[5])
+model_kind = sys.argv[6]
 ranks = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(pred.glob("summary.rank*.json"))]
 valid = (
     sav.get("status") == "pass"
@@ -394,6 +399,7 @@ valid = (
     and all(row.get("two_clock_refresh_phase_mode") == "balanced" for row in ranks)
     and all(row.get("two_clock_refresh_phase_seed") == 250107256 for row in ranks)
     and all(row.get("offload_video_to_cpu") is True for row in ranks)
+    and all(row.get("model_kind") == model_kind for row in ranks)
     and all(row.get("build", {}).get("checkpoint") == checkpoint for row in ranks)
     and all(row.get("build", {}).get("experiment") == experiment for row in ranks)
     and all(row.get("build", {}).get("refresh_interval") == interval for row in ranks)
@@ -411,7 +417,7 @@ PY
       PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
         torchrun --standalone --nproc_per_node="${gpu_count}" \
           tools/eval/run_edgetam_vos_dataset.py \
-          --model-kind two-clock \
+          --model-kind "${model_kind}" \
           --sam2-root "${sam2_root}" \
           --sam2-cfg "${model_config}" \
           --checkpoint "${checkpoint_path}" \
@@ -454,12 +460,13 @@ PY
       --out-csv "${output}/age_metrics.csv"
   }
 
-  make_quick_cohort() {
-    local cohort="${run_root}/quick_val/cohort_10_seed250107256.txt"
-    local gt_view="${run_root}/quick_val/gt_10_seed250107256/Annotations_6fps"
+  make_hash_cohort() {
+    local count="$1" namespace="$2"
+    local cohort="${run_root}/${namespace}/cohort_${count}_seed250107256.txt"
+    local gt_view="${run_root}/${namespace}/gt_${count}_seed250107256/Annotations_6fps"
     python - \
       "${sav_root}/sav_val/sav_val.txt" "${cohort}" \
-      "${sav_root}/sav_val/Annotations_6fps" "${gt_view}" <<'PY'
+      "${sav_root}/sav_val/Annotations_6fps" "${gt_view}" "${count}" <<'PY'
 import hashlib
 import json
 import os
@@ -471,7 +478,7 @@ output = Path(sys.argv[2])
 source_gt = Path(sys.argv[3])
 gt_view = Path(sys.argv[4])
 seed = 250107256
-count = 10
+count = int(sys.argv[5])
 names = [line.strip() for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
 if len(names) < count:
     raise SystemExit(f"quick-val requested {count} videos, found {len(names)}")
@@ -512,6 +519,15 @@ PY
     echo "${cohort}"
   }
 
+  make_quick_cohort() {
+    local count=10
+    make_hash_cohort "${count}" quick_val
+  }
+
+  make_screen50_cohort() {
+    make_hash_cohort 50 screen50
+  }
+
   quick_val() {
     local experiment="$1" epoch="${QUICK_EPOCH:-5}" run_dir checkpoint_path cohort gt_view
     run_dir="${run_root}/${experiment}"
@@ -532,10 +548,57 @@ PY
     gt_view="${run_root}/quick_val/gt_10_seed250107256/Annotations_6fps"
     evaluate_checkpoint \
       O0 "${checkpoint}" "${model_config}" 1 \
-      "${run_root}/quick_val/controls/O0/R1" "${cohort}" "${gt_view}" || return $?
+      "${run_root}/quick_val/controls/O0/R1" "${cohort}" "${gt_view}" official || return $?
     evaluate_checkpoint \
       O1 "${checkpoint}" "${model_config}" 4 \
-      "${run_root}/quick_val/controls/O1/R4" "${cohort}" "${gt_view}"
+      "${run_root}/quick_val/controls/O1/R4" "${cohort}" "${gt_view}" official-reuse
+  }
+
+  require_single_gpu() {
+    if [[ "${gpu_count}" -ne 1 ]]; then
+      echo "[ERROR] screen50 actions require exactly one GPU; got ${gpus}" >&2
+      return 1
+    fi
+  }
+
+  screen50_val() {
+    local experiment="$1" epoch="${SCREEN_EPOCH:-5}" run_dir checkpoint_path cohort gt_view
+    require_single_gpu || return $?
+    run_dir="${run_root}/${experiment}"
+    check_eval "${experiment}" "${run_dir}" || return $?
+    require_path "${run_dir}/resolved_config.yaml" || return 1
+    checkpoint_path="${run_dir}/checkpoints/checkpoint_${epoch}.pt"
+    require_path "${checkpoint_path}" || return 1
+    cohort="$(make_screen50_cohort)" || return $?
+    gt_view="${run_root}/screen50/gt_50_seed250107256/Annotations_6fps"
+    evaluate_checkpoint \
+      "${experiment}" "${checkpoint_path}" "${run_dir}/resolved_config.yaml" \
+      4 "${run_dir}/screen50/epoch_${epoch}/R4" "${cohort}" "${gt_view}" two-clock
+  }
+
+  screen50_control() {
+    local control="$1" cohort gt_view
+    require_single_gpu || return $?
+    cohort="$(make_screen50_cohort)" || return $?
+    gt_view="${run_root}/screen50/gt_50_seed250107256/Annotations_6fps"
+    case "${control}" in
+      O0)
+        evaluate_checkpoint O0 "${checkpoint}" "${model_config}" 1 \
+          "${run_root}/screen50/controls/O0/R1" "${cohort}" "${gt_view}" official
+        ;;
+      W0)
+        evaluate_checkpoint O0 "${checkpoint}" "${model_config}" 1 \
+          "${run_root}/screen50/controls/W0/R1" "${cohort}" "${gt_view}" two-clock
+        ;;
+      O1)
+        evaluate_checkpoint O1 "${checkpoint}" "${model_config}" 4 \
+          "${run_root}/screen50/controls/O1/R4" "${cohort}" "${gt_view}" official-reuse
+        ;;
+      *)
+        echo "[ERROR] screen50-control target must be O0, W0, or O1" >&2
+        return 2
+        ;;
+    esac
   }
 
   select_checkpoint() {
@@ -597,11 +660,15 @@ PY
   controls() {
     local interval
     evaluate_checkpoint \
-      O0 "${checkpoint}" "${model_config}" 1 "${run_root}/controls/O0/R1" || return $?
+      O0 "${checkpoint}" "${model_config}" 1 "${run_root}/controls/O0/R1" \
+      "${sav_root}/sav_val/sav_val.txt" "${sav_root}/sav_val/Annotations_6fps" official || return $?
+    evaluate_checkpoint \
+      O0 "${checkpoint}" "${model_config}" 1 "${run_root}/controls/W0/R1" || return $?
     for interval in 2 3 4 5 6; do
       evaluate_checkpoint \
         O1 "${checkpoint}" "${model_config}" "${interval}" \
-        "${run_root}/controls/O1/R${interval}" || return $?
+        "${run_root}/controls/O1/R${interval}" \
+        "${sav_root}/sav_val/sav_val.txt" "${sav_root}/sav_val/Annotations_6fps" official-reuse || return $?
     done
   }
 
@@ -626,6 +693,25 @@ PY
       --out-dir "${run_root}/reports/quick_val_10_epoch_${QUICK_EPOCH:-5}" \
       --quick-epoch "${QUICK_EPOCH:-5}" || return $?
     cat "${run_root}/reports/quick_val_10_epoch_${QUICK_EPOCH:-5}/comparison.md"
+  }
+
+  screen50_report() {
+    local report_dir identity_status=0
+    report_dir="${run_root}/reports/screen50_epoch_${SCREEN_EPOCH:-5}"
+    if [[ -d "${run_root}/screen50/controls/O0/R1/pred" && -d "${run_root}/screen50/controls/W0/R1/pred" ]]; then
+      python tools/eval/compare_vos_prediction_trees.py \
+        --left "${run_root}/screen50/controls/O0/R1/pred" \
+        --right "${run_root}/screen50/controls/W0/R1/pred" \
+        --out-json "${report_dir}/o0_w0_identity.json" || identity_status=$?
+    else
+      echo "O0/W0 identity audit pending because one prediction tree is missing"
+    fi
+    python tools/eval/summarize_two_clock_validation.py \
+      --run-root "${run_root}" \
+      --out-dir "${report_dir}" \
+      --screen50-epoch "${SCREEN_EPOCH:-5}" || return $?
+    cat "${report_dir}/comparison.md"
+    return "${identity_status}"
   }
 
   status() {
@@ -671,6 +757,9 @@ PY
     controls) controls ;;
     quick-val) quick_val "${target}" ;;
     quick-controls) quick_controls ;;
+    screen50) screen50_val "${target}" ;;
+    screen50-control) screen50_control "${target}" ;;
+    screen50-report) screen50_report ;;
     quick-report) quick_report ;;
     report) report ;;
     report-partial) report_partial ;;
@@ -680,7 +769,7 @@ PY
       ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|quick-val|quick-controls|quick-report|report|report-partial|run|status} [O2|A|B|C|C-r|D|E]" >&2
+      echo "Usage: $0 {describe|audit|verify-local|smoke|verify-remote|audit-existing|postrun|train|select|curves|val|controls|quick-val|quick-controls|screen50|screen50-control|screen50-report|quick-report|report|report-partial|run|status} [O0|W0|O1|O2|A|B|C|C-r|D|E]" >&2
       return 2
       ;;
   esac

@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tools.eval.summarize_two_clock_validation import collect, collect_quick
+from tools.eval.summarize_two_clock_validation import (
+    collect,
+    collect_quick,
+    collect_screen50,
+)
 
 
 def _write_output(root: Path, *, jf: float, model_ms: float, wall_ms: float) -> None:
@@ -54,4 +58,18 @@ def test_quick_summary_uses_fixed_epoch_r4_and_quick_controls(tmp_path: Path) ->
     a = next(row for row in rows if row["model"] == "A")
     assert a["refresh_interval"] == 4
     assert a["delta_J&F_vs_O0_R1"] == -15
+    assert a["delta_J&F_vs_official_matched"] == 5
+
+
+def test_screen50_summary_includes_wrapper_identity_control(tmp_path: Path) -> None:
+    _write_output(tmp_path / "screen50/controls/O0/R1", jf=80, model_ms=20, wall_ms=30)
+    _write_output(tmp_path / "screen50/controls/W0/R1", jf=80, model_ms=21, wall_ms=31)
+    _write_output(tmp_path / "screen50/controls/O1/R4", jf=60, model_ms=10, wall_ms=15)
+    _write_output(tmp_path / "A/screen50/epoch_5/R4", jf=65, model_ms=11, wall_ms=16)
+
+    rows, missing = collect_screen50(tmp_path, epoch=5)
+
+    assert missing
+    assert [row["model"] for row in rows[:3]] == ["O0", "W0", "O1"]
+    a = next(row for row in rows if row["model"] == "A")
     assert a["delta_J&F_vs_official_matched"] == 5

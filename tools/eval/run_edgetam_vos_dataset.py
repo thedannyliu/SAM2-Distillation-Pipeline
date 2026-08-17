@@ -24,7 +24,9 @@ def parse_args() -> argparse.Namespace:
         "--edgetam-root", "--sam2-root", dest="edgetam_root", required=True, type=Path
     )
     parser.add_argument(
-        "--model-kind", choices=("official", "two-clock"), default="official"
+        "--model-kind",
+        choices=("official", "official-reuse", "two-clock"),
+        default="official",
     )
     parser.add_argument("--sam2-cfg", default="configs/edgetam.yaml")
     parser.add_argument("--checkpoint", required=True, type=Path)
@@ -59,6 +61,17 @@ def count_pngs(root: Path) -> int:
 def add_import_roots(edgetam_root: Path) -> None:
     sys.path.insert(0, str(REPO_ROOT))
     sys.path.insert(0, str(edgetam_root))
+
+
+def normalize_sam2_config(edgetam_root: Path, config: str) -> str:
+    """Convert an absolute in-package SAM2 config to Hydra's package path."""
+    path = Path(config)
+    if not path.is_absolute():
+        return config
+    try:
+        return str(path.relative_to(edgetam_root / "sam2"))
+    except ValueError:
+        return config
 
 
 def load_vos_module(edgetam_root: Path):
@@ -157,32 +170,55 @@ def main() -> None:
             args.image_root, args.input_mask_root, video_names
         )
     build_summary = {"model_kind": args.model_kind}
-    if args.model_kind == "two-clock":
+    if args.model_kind in {"two-clock", "official-reuse"}:
         if args.resolved_config is None or args.experiment is None:
             raise ValueError(
                 "two-clock evaluation requires --resolved-config and --experiment"
             )
-        from sam2_distill.two_clock.predictor import build_two_clock_video_predictor
+        if args.model_kind == "two-clock":
+            from sam2_distill.two_clock.predictor import build_two_clock_video_predictor
 
-        predictor, build_summary = build_two_clock_video_predictor(
-            resolved_config=args.resolved_config,
-            checkpoint_path=args.checkpoint,
-            experiment=args.experiment,
-            refresh_interval=args.refresh_interval,
-            refresh_phase_mode=args.refresh_phase_mode,
-            refresh_phase_seed=args.refresh_phase_seed,
-            device=device,
-        )
+            predictor, build_summary = build_two_clock_video_predictor(
+                resolved_config=args.resolved_config,
+                checkpoint_path=args.checkpoint,
+                experiment=args.experiment,
+                refresh_interval=args.refresh_interval,
+                refresh_phase_mode=args.refresh_phase_mode,
+                refresh_phase_seed=args.refresh_phase_seed,
+                device=device,
+            )
+        else:
+            from sam2_distill.two_clock.predictor import (
+                build_official_reuse_video_predictor,
+            )
+
+            predictor, build_summary = build_official_reuse_video_predictor(
+                resolved_config=args.resolved_config,
+                checkpoint_path=args.checkpoint,
+                refresh_interval=args.refresh_interval,
+                refresh_phase_mode=args.refresh_phase_mode,
+                refresh_phase_seed=args.refresh_phase_seed,
+                device=device,
+            )
+        build_summary["model_kind"] = args.model_kind
         predictor.non_overlap_masks = not args.per_obj_png_file
     else:
         from sam2.build_sam import build_sam2_video_predictor
 
         predictor = build_sam2_video_predictor(
-            config_file=args.sam2_cfg,
+            config_file=normalize_sam2_config(args.edgetam_root, args.sam2_cfg),
             ckpt_path=str(args.checkpoint),
             device=device,
             apply_postprocessing=False,
             hydra_overrides_extra=hydra_overrides_extra,
+        )
+        build_summary.update(
+            {
+                "experiment": args.experiment,
+                "refresh_interval": 1,
+                "checkpoint": str(args.checkpoint),
+                "predictor_class": type(predictor).__name__,
+            }
         )
     configure_video_storage(predictor, args.offload_video_to_cpu)
     original_propagate = predictor.propagate_in_video
@@ -216,7 +252,7 @@ def main() -> None:
     two_clock_encoder_calls = 0
     two_clock_frame_requests = 0
     two_clock_tracking_frames = 0
-    if args.model_kind == "two-clock":
+    if args.model_kind in {"two-clock", "official-reuse"}:
         predictor.reset_two_clock_telemetry()
     for video_name in video_names:
         inference_fn(
@@ -228,11 +264,15 @@ def main() -> None:
             use_all_masks=args.use_all_masks,
             per_obj_png_file=args.per_obj_png_file,
         )
-    if args.model_kind == "two-clock":
+    if args.model_kind in {"two-clock", "official-reuse"}:
         telemetry = predictor.two_clock_telemetry()
         two_clock_encoder_calls = int(telemetry["encoder_calls"])
         two_clock_frame_requests = int(telemetry["frame_requests"])
         two_clock_tracking_frames = int(telemetry["tracking_frames"])
+    else:
+        two_clock_encoder_calls = len(model_frame_latencies_ms)
+        two_clock_frame_requests = len(model_frame_latencies_ms)
+        two_clock_tracking_frames = len(model_frame_latencies_ms)
 
     elapsed = time.perf_counter() - started
     processed_frames = sum(
@@ -243,6 +283,7 @@ def main() -> None:
     )
     summary = {
         "status": "pass",
+        "model_kind": args.model_kind,
         "sam2_cfg": args.sam2_cfg,
         "checkpoint": str(args.checkpoint),
         "image_root": str(args.image_root),
@@ -288,10 +329,12 @@ def main() -> None:
         "two_clock_refresh_phase_mode": args.refresh_phase_mode,
         "two_clock_refresh_phase_seed": args.refresh_phase_seed,
     }
-    summary_name = "summary.json" if world_size == 1 else f"summary.rank{rank:03d}.json"
-    (args.out_dir / summary_name).write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    payload = json.dumps(summary, indent=2) + "\n"
+    (args.out_dir / f"summary.rank{rank:03d}.json").write_text(
+        payload, encoding="utf-8"
     )
+    if world_size == 1:
+        (args.out_dir / "summary.json").write_text(payload, encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
 

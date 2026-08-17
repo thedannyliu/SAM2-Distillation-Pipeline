@@ -15,7 +15,10 @@ def main() -> None:
     args = parser.parse_args()
     paths = sorted(args.run_dir.glob("summary.rank*.json"))
     if not paths:
-        raise FileNotFoundError(f"No rank summaries under {args.run_dir}")
+        single = args.run_dir / "summary.json"
+        if not single.is_file():
+            raise FileNotFoundError(f"No rank summaries under {args.run_dir}")
+        paths = [single]
     ranks = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     expected = int(ranks[0]["world_size"])
     if len(ranks) != expected or sorted(row["rank"] for row in ranks) != list(range(expected)):
@@ -31,10 +34,26 @@ def main() -> None:
     phase_modes = {row.get("two_clock_refresh_phase_mode") for row in ranks}
     phase_seeds = {row.get("two_clock_refresh_phase_seed") for row in ranks}
     video_storage = {bool(row.get("offload_video_to_cpu", False)) for row in ranks}
-    if len(phase_modes) != 1 or len(phase_seeds) != 1 or len(video_storage) != 1:
+    model_kinds = {row.get("model_kind") for row in ranks}
+    build_experiments = {row.get("build", {}).get("experiment") for row in ranks}
+    build_intervals = {row.get("build", {}).get("refresh_interval") for row in ranks}
+    if any(
+        len(values) != 1
+        for values in (
+            phase_modes,
+            phase_seeds,
+            video_storage,
+            model_kinds,
+            build_experiments,
+            build_intervals,
+        )
+    ):
         raise RuntimeError("rank summaries disagree on evaluation protocol")
     summary = {
         "status": "pass",
+        "model_kind": model_kinds.pop(),
+        "build_experiment": build_experiments.pop(),
+        "build_refresh_interval": build_intervals.pop(),
         "world_size": expected,
         "videos": videos,
         "processed_frames": frames,

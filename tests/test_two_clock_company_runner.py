@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.eval.run_edgetam_vos_dataset import configure_video_storage
+from tools.eval.run_edgetam_vos_dataset import (
+    configure_video_storage,
+    normalize_sam2_config,
+)
 
 
 def test_company_runner_exports_sam2_root_to_training_process() -> None:
@@ -65,7 +68,7 @@ def test_selection_and_curves_verify_completed_training_for_evaluation() -> None
     runner = (
         repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
     ).read_text(encoding="utf-8")
-    assert runner.count('check_eval "${experiment}" "${run_dir}"') == 3
+    assert runner.count('check_eval "${experiment}" "${run_dir}"') == 4
     run_action = runner.split("    run)", maxsplit=1)[1].split("      ;;", maxsplit=1)[0]
     assert 'postrun_audit "${target}"' in run_action
 
@@ -129,6 +132,14 @@ def test_vos_eval_offloads_video_frames_but_keeps_explicit_override() -> None:
     assert explicit["offload_video_to_cpu"] is False
 
 
+def test_official_builder_uses_hydra_package_relative_sam2_config() -> None:
+    root = Path("/repo/facebookresearch-sam2")
+    absolute = root / "sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
+    assert normalize_sam2_config(root, str(absolute)) == (
+        "configs/sam2.1/sam2.1_hiera_l.yaml"
+    )
+
+
 def test_partial_report_does_not_require_complete_matrix() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     runner = (
@@ -146,10 +157,49 @@ def test_quick_val_is_fixed_ten_video_epoch_five_r4_screen() -> None:
     runner = (
         repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
     ).read_text(encoding="utf-8")
-    assert 'count = 10' in runner
+    assert 'local count=10' in runner
     assert 'gt_10_seed250107256/Annotations_6fps' in runner
     assert 'local experiment="$1" epoch="${QUICK_EPOCH:-5}"' in runner
     quick = runner.split("  quick_val()", maxsplit=1)[1].split(
         "  quick_controls()", maxsplit=1
     )[0]
     assert '4 "${run_dir}/quick_val/epoch_${epoch}/R4"' in quick
+
+
+def test_screen50_jobs_are_single_gpu_and_use_distinct_control_predictors() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    runner = (
+        repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
+    ).read_text(encoding="utf-8")
+    screen = runner.split("  require_single_gpu()", maxsplit=1)[1].split(
+        "  select_checkpoint()", maxsplit=1
+    )[0]
+    assert 'make_hash_cohort 50 screen50' in runner
+    assert 'if [[ "${gpu_count}" -ne 1 ]]' in screen
+    assert '"${gt_view}" official' in screen
+    assert '"${gt_view}" two-clock' in screen
+    assert '"${gt_view}" official-reuse' in screen
+
+
+def test_evaluation_resume_validates_predictor_identity() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    runner = (
+        repo_root / "scripts/company/75_run_sam21l_two_clock_reuse_v1.sh"
+    ).read_text(encoding="utf-8")
+    evaluate = runner.split("evaluate_checkpoint()", maxsplit=1)[1].split(
+        "make_hash_cohort()", maxsplit=1
+    )[0]
+    assert 'timing.get("model_kind") == sys.argv[6]' in evaluate
+    assert 'all(row.get("model_kind") == model_kind for row in ranks)' in evaluate
+
+
+def test_official_reuse_predictor_restores_official_tracking_and_memory_path() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    predictor = (repo_root / "sam2_distill/two_clock/predictor.py").read_text(
+        encoding="utf-8"
+    )
+    official_reuse = predictor.split(
+        "class OfficialReuseVideoPredictor", maxsplit=1
+    )[1].split("def _build_video_predictor", maxsplit=1)[0]
+    assert "track_step = SAM2VideoPredictor.track_step" in official_reuse
+    assert "SAM2VideoPredictor._prepare_memory_conditioned_features" in official_reuse
