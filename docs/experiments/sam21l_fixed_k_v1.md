@@ -126,7 +126,7 @@ the six formal commands may run concurrently in six separate 4-H100 terminals:
 | 6 | A20 | 4 | `train A20` |
 
 A seventh terminal uses one H100 and `eval-current`. It launches no distributed
-workers and executes all 27 current-model units strictly sequentially. A
+workers and executes all 30 current-model units strictly sequentially. A
 rerun verifies and skips complete units; if inference completed but metric
 generation did not, it computes only the missing metrics. The final files are
 `eval30_current/report/report.{md,json}` plus CSV tables and the O0/W0 exact
