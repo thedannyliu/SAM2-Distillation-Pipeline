@@ -21,8 +21,10 @@ main() {
   local wandb_mode="${WANDB_MODE:-online}"
   local gpus="${GPUS:-0,1,2,3}"
   local gpu_count
+  local git_sha
   IFS=, read -r -a gpu_array <<< "${gpus}"
   gpu_count="${#gpu_array[@]}"
+  git_sha="$(git rev-parse --short=12 HEAD)" || return 1
 
   fixed_interval() {
     case "$1" in
@@ -135,7 +137,7 @@ PY
       return 2
     fi
     if [[ "${scope}" == "smoke" ]]; then
-      run_dir="${run_root}/smoke/${target}"
+      run_dir="${run_root}/smoke/${git_sha}/${target}"
       max_videos="${SMOKE_MAX_VIDEOS:-8}"
       freeze_steps=1
       mode=disabled

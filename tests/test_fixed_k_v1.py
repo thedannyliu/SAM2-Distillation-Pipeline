@@ -4,11 +4,15 @@ import json
 from pathlib import Path
 
 import pytest
+import torch
 
 from sam2_distill.two_clock.schedule import fixed_refresh_trajectory
 from tools.eval.run_two_clock_eval30 import Target, _prediction_complete
 from tools.eval.summarize_two_clock_phase_sweep import summarize
-from tools.train.run_sam2_task_training import fraction_checkpoint_steps
+from tools.train.run_sam2_task_training import (
+    fraction_checkpoint_steps,
+    trainable_parameter_names,
+)
 
 
 def test_k20_trajectory_is_causal_and_reaches_age_19() -> None:
@@ -26,6 +30,14 @@ def test_fraction_checkpoint_steps_round_up_to_completed_updates() -> None:
     }
     with pytest.raises(ValueError, match="inside"):
         fraction_checkpoint_steps("1.0", 100)
+
+
+def test_optimizer_allowlist_excludes_frozen_parameters() -> None:
+    model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Linear(2, 1))
+    for parameter in model[1].parameters():
+        parameter.requires_grad_(False)
+
+    assert trainable_parameter_names(model) == {"0.weight", "0.bias"}
 
 
 def _write_unit(
@@ -88,6 +100,7 @@ def test_company_runner_has_six_fixed_k_targets_and_sequential_eval() -> None:
     assert "TASK_FRACTION_CHECKPOINTS=" in runner
     assert "run_two_clock_eval30.py" in runner
     assert 'if [[ "${gpu_count}" -ne 1 ]]' in runner
+    assert 'run_dir="${run_root}/smoke/${git_sha}/${target}"' in runner
 
 
 def test_eval_resume_rejects_wrong_phase_or_checkpoint(tmp_path: Path) -> None:
