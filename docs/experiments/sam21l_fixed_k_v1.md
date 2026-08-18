@@ -92,6 +92,12 @@ the official checkpoint rather than an A-K checkpoint. D20 must first pass the
 four-H100 T21 smoke because it jointly exercises the longest clip and all D
 temporal modules.
 
+After training, `eval-fixed DK` runs the same predetermined 30-video cohort and
+all K fixed phases for O0-R1, frozen O1-K, A1@K, AK@K, and DK@K. The report
+includes paired bootstrap intervals against O0, O1-K, and AK@K. Therefore
+`DK@K - AK@K` is computed from paired per-video phase-neutral scores rather
+than from two independently aggregated headline numbers.
+
 Each run trains for at most one full 50,337-video epoch. In addition to the
 resumable epoch checkpoint, selection-only model snapshots are written after
 0.10, 0.25, and 0.50 epoch. These fractional snapshots are not resume points.
@@ -133,7 +139,7 @@ D-K is not part of this first causal suite.
 - TensorBoard: within each run directory
 - Terminal logs: `/user-volume/log/sam21l_fixed_k_v1`
 - Eval30 root: `/group-volume/danny-dataset/sam2_distill/runs/sam21l_fixed_k_v1/eval30_current`
-- Fixed-K eval root: `/group-volume/danny-dataset/sam2_distill/runs/sam21l_fixed_k_v1/eval30_fixed/<AK>`
+- Fixed-K eval root: `/group-volume/danny-dataset/sam2_distill/runs/sam21l_fixed_k_v1/eval30_fixed/<TARGET>`
 
 ## Company execution map
 
@@ -170,3 +176,7 @@ After A1 and the corresponding AK training both finish, reuse the six 4-H100
 nodes with `eval-fixed A1`, `eval-fixed A4`, ..., `eval-fixed A20`. Each action
 runs in the foreground, resumes at verified model/phase boundaries, and writes
 `eval30_fixed/<AK>/report/report.{md,json}`.
+
+The D commands use the same entry point: `eval-fixed D4`, `eval-fixed D8`,
+`eval-fixed D12`, `eval-fixed D16`, and `eval-fixed D20`. Each D evaluation
+requires the matching A-K `last.pt` because A-K is its causal mechanism control.

@@ -246,16 +246,15 @@ PY
 
   eval_fixed() {
     local interval output status
-    if [[ "${target}" != A* ]]; then
-      echo "[ERROR] eval-fixed currently supports A targets only" >&2
-      return 2
-    fi
     interval="$(fixed_interval "${target}")" || return $?
     if [[ "${gpu_count}" -ne 4 ]]; then
       echo "[ERROR] eval-fixed requires exactly four GPUs; got ${gpus}" >&2
       return 2
     fi
     require_path "${run_root}/A1/checkpoints/last.pt" || return $?
+    if [[ "${target}" == D* ]]; then
+      require_path "${run_root}/A${interval}/checkpoints/last.pt" || return $?
+    fi
     require_path "${run_root}/${target}/checkpoints/last.pt" || return $?
     output="${run_root}/eval30_fixed/${target}"
     mkdir -p "${output}" "${log_root}/eval"

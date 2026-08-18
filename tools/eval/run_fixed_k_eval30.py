@@ -23,8 +23,9 @@ from tools.eval.run_two_clock_eval30 import (
 
 
 def _targets(args: argparse.Namespace, interval: int) -> list[Target]:
-    target = f"A{interval}"
-    target_config = args.run_root / target / "resolved_config.yaml"
+    requested = args.target
+    a_target = f"A{interval}"
+    target_config = args.run_root / requested / "resolved_config.yaml"
     a1_config = args.run_root / "A1/resolved_config.yaml"
     targets = [
         Target("O0", "official", "O0", 1, args.official_checkpoint, None),
@@ -45,14 +46,25 @@ def _targets(args: argparse.Namespace, interval: int) -> list[Target]:
             a1_config,
         ),
     ]
-    if target != "A1":
+    if a_target != "A1":
         targets.append(
             Target(
-                target,
+                a_target,
                 "two-clock",
                 "A",
                 interval,
-                args.run_root / target / "checkpoints/last.pt",
+                args.run_root / a_target / "checkpoints/last.pt",
+                args.run_root / a_target / "resolved_config.yaml",
+            )
+        )
+    if requested.startswith("D"):
+        targets.append(
+            Target(
+                requested,
+                "two-clock",
+                "D",
+                interval,
+                args.run_root / requested / "checkpoints/last.pt",
                 target_config,
             )
         )
@@ -67,7 +79,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-root", required=True, type=Path)
     parser.add_argument("--official-checkpoint", required=True, type=Path)
     parser.add_argument("--out-root", required=True, type=Path)
-    parser.add_argument("--target", required=True, choices=("A1", "A4", "A8", "A12", "A16", "A20"))
+    parser.add_argument(
+        "--target",
+        required=True,
+        choices=(
+            "A1",
+            "A4",
+            "A8",
+            "A12",
+            "A16",
+            "A20",
+            "D4",
+            "D8",
+            "D12",
+            "D16",
+            "D20",
+        ),
+    )
     parser.add_argument("--world-size", type=int, default=4)
     parser.add_argument("--count", type=int, default=30)
     parser.add_argument("--seed", type=int, default=250107256)
@@ -214,6 +242,9 @@ def main() -> None:
                 raise RuntimeError(f"unit failed completion audit: {unit}")
 
     models = [target.name for target in targets]
+    references = ["O0", "O1"]
+    if args.target.startswith("D"):
+        references.append(f"A{interval}")
     report = args.out_root / "report"
     summary = [
         sys.executable,
@@ -224,6 +255,8 @@ def main() -> None:
         str(report),
         "--models",
         ",".join(models),
+        "--references",
+        ",".join(references),
         "--bootstrap-samples",
         "10000",
         "--seed",
