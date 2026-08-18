@@ -163,6 +163,17 @@ def test_company_runner_has_six_fixed_k_targets_and_sequential_eval() -> None:
     ).read_text(encoding="utf-8")
     for target in ("A1", "A4", "A8", "A12", "A16", "A20"):
         assert f"{target})" in runner
+    for target in ("D4", "D8", "D12", "D16", "D20"):
+        assert f"{target})" in runner
+    assert "D*) echo D" in runner
+    assert 'TASK_TWO_CLOCK_EXPERIMENT="${experiment}"' in runner
+    assert '"experiment": experiment' in runner
+    training = (
+        Path(__file__).resolve().parents[1]
+        / "tools/train/run_sam2_task_training.py"
+    ).read_text(encoding="utf-8")
+    assert 'experiment_name not in {"A", "D"}' in training
+    assert 'experiment_name == "D" and fixed_interval == 1' in training
     assert "TASK_FRACTION_CHECKPOINTS=" in runner
     assert "run_two_clock_eval30.py" in runner
     assert 'if [[ "${gpu_count}" -ne 1 ]]' in runner
