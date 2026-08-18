@@ -79,6 +79,7 @@ trainer:
             seed: ${trainer.seed_value}
             force_full_refresh: false
             fixed_refresh_interval: 0
+            max_feature_age: 5
           multiplier: 1
       shuffle: true
       num_workers: ${scratch.num_train_workers}

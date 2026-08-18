@@ -262,12 +262,14 @@ class ContiguousSAV24FPSSampler:
         seed: int = 250107256,
         force_full_refresh: bool = False,
         fixed_refresh_interval: int = 0,
+        max_feature_age: int = 5,
     ) -> None:
         self.num_frames = num_frames
         self.max_num_objects = max_num_objects
         self.seed = seed
         self.force_full_refresh = force_full_refresh
         self.fixed_refresh_interval = fixed_refresh_interval
+        self.max_feature_age = max_feature_age
 
     def sample(
         self,
@@ -287,10 +289,14 @@ class ContiguousSAV24FPSSampler:
         frames = video.frames[anchor : anchor + self.num_frames]
 
         if self.force_full_refresh:
-            trajectory = fixed_refresh_trajectory(self.num_frames, 1)
+            trajectory = fixed_refresh_trajectory(
+                self.num_frames, 1, max_age=self.max_feature_age
+            )
         elif self.fixed_refresh_interval:
             trajectory = fixed_refresh_trajectory(
-                self.num_frames, self.fixed_refresh_interval
+                self.num_frames,
+                self.fixed_refresh_interval,
+                max_age=self.max_feature_age,
             )
         else:
             trajectory = training_trajectory(
