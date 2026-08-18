@@ -99,6 +99,13 @@ reuse is `AK@K - O1-K`. Exact phase-neutral evaluation averages all K phases
 for a selected fixed-K checkpoint. A trained model is promoted only if its
 phase-neutral gain over O1-K is at least 0.5 J&F without worse worst-age J&F.
 
+The first fixed-K comparison uses the predetermined one-epoch `last.pt`; the
+30-video cohort is never used to select a checkpoint. Each K is evaluated on
+one 4-H100 node with O0-R1, frozen O1-K, A1@K, and AK@K. For K=1, A1@K and
+AK@K are the same row. All K causal fixed phases are run. The primary score
+first averages phases within each video and then macro-averages the 30 videos,
+removing aliasing between raw 24 FPS refresh phase and 6 FPS GT.
+
 If A-K fails at long intervals, a later D-K suite may test whether explicit
 age/two-clock conditioning and stale-write suppression rescue the limitation.
 D-K is not part of this first causal suite.
@@ -110,6 +117,7 @@ D-K is not part of this first causal suite.
 - TensorBoard: within each run directory
 - Terminal logs: `/user-volume/log/sam21l_fixed_k_v1`
 - Eval30 root: `/group-volume/danny-dataset/sam2_distill/runs/sam21l_fixed_k_v1/eval30_current`
+- Fixed-K eval root: `/group-volume/danny-dataset/sam2_distill/runs/sam21l_fixed_k_v1/eval30_fixed/<AK>`
 
 ## Company execution map
 
@@ -131,3 +139,8 @@ rerun verifies and skips complete units; if inference completed but metric
 generation did not, it computes only the missing metrics. The final files are
 `eval30_current/report/report.{md,json}` plus CSV tables and the O0/W0 exact
 identity audit.
+
+After A1 and the corresponding AK training both finish, reuse the six 4-H100
+nodes with `eval-fixed A1`, `eval-fixed A4`, ..., `eval-fixed A20`. Each action
+runs in the foreground, resumes at verified model/phase boundaries, and writes
+`eval30_fixed/<AK>/report/report.{md,json}`.
