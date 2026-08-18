@@ -7,6 +7,7 @@ import argparse
 import fnmatch
 import json
 import logging
+import math
 import os
 import statistics
 import sys
@@ -18,6 +19,24 @@ import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+
+
+def fraction_checkpoint_steps(spec: str, steps_per_epoch: int) -> dict[int, float]:
+    """Map completed optimizer steps to selection-only epoch fractions."""
+    if not spec.strip():
+        return {}
+    if steps_per_epoch < 1:
+        raise ValueError("steps_per_epoch must be positive")
+    result = {}
+    for value in spec.split(","):
+        fraction = float(value)
+        if not 0 < fraction < 1:
+            raise ValueError("fraction checkpoints must be inside (0, 1)")
+        step = math.ceil(fraction * steps_per_epoch)
+        if step in result:
+            raise ValueError("fraction checkpoints resolve to duplicate steps")
+        result[step] = fraction
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,6 +88,15 @@ def init_wandb(args: argparse.Namespace):
             "trainable_mode": os.environ.get("TASK_TRAINABLE_MODE"),
             "epochs": int(os.environ.get("TASK_EPOCHS", "0")),
             "frames": int(os.environ.get("TASK_NUM_FRAMES", "0")),
+            "fixed_refresh_interval": int(
+                os.environ.get("TASK_TWO_CLOCK_FIXED_INTERVAL", "0")
+            ),
+            "max_feature_age": int(
+                os.environ.get("TASK_TWO_CLOCK_MAX_AGE", "5")
+            ),
+            "fraction_checkpoints": os.environ.get(
+                "TASK_FRACTION_CHECKPOINTS", ""
+            ),
             "encoder_lr": float(os.environ.get("TASK_ENCODER_LR", "0")),
             "head_lr": float(os.environ.get("TASK_HEAD_LR", "0")),
             "mask_decoder_lr": float(
@@ -307,6 +335,7 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
             self.model = initializer(model=self.model)
 
     original_run_step = trainer_module.Trainer._run_step
+    original_train_epoch = trainer_module.Trainer.train_epoch
     original_save_checkpoint = trainer_module.Trainer._save_checkpoint
     loss_ema: dict[str, float] = {}
     ema_beta = float(os.environ.get("WANDB_LOSS_EMA_BETA", "0.98"))
@@ -326,6 +355,8 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         os.environ.get("TASK_ENCODER_FREEZE_STEPS", "0")
     )
     encoder_frozen = None
+    fraction_spec = os.environ.get("TASK_FRACTION_CHECKPOINTS", "")
+    fraction_state = {"pending": {}, "saved": set()}
     gradient_diagnostics_enabled = (
         os.environ.get("TASK_GRADIENT_DIAGNOSTICS", "0") == "1"
     )
@@ -397,8 +428,21 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         raise_on_error=True,
     ):
         nonlocal encoder_frozen
+        completed_before_step = int(self.steps[phase])
+        if phase == "train" and completed_before_step in fraction_state["pending"]:
+            fraction = fraction_state["pending"][completed_before_step]
+            name = f"selection_{round(fraction * 100):03d}"
+            if name not in fraction_state["saved"]:
+                self.save_checkpoint(self.epoch + fraction, [name])
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                fraction_state["saved"].add(name)
+                logging.info(
+                    "Saved selection-only checkpoint %s after %d updates",
+                    name,
+                    completed_before_step,
+                )
         if encoder_freeze_steps > 0:
-            completed_before_step = int(self.steps[phase])
             should_freeze = completed_before_step < encoder_freeze_steps
             if should_freeze != encoder_frozen:
                 wrapped_model = self.model
@@ -656,10 +700,17 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
             checkpoint["wandb_run_id"] = wandb_run.id
         return original_save_checkpoint(self, checkpoint, checkpoint_path)
 
+    def train_epoch_with_fraction_checkpoints(self, train_loader):
+        fraction_state["pending"] = fraction_checkpoint_steps(
+            fraction_spec, len(train_loader)
+        )
+        return original_train_epoch(self, train_loader)
+
     trainer_module.print_model_summary = compact_model_summary
     trainer_module.log_env_variables = lambda: None
     trainer_module.Trainer._call_model_initializer = compact_model_initializer
     trainer_module.Trainer._run_step = run_step_with_wandb
+    trainer_module.Trainer.train_epoch = train_epoch_with_fraction_checkpoints
     trainer_module.Trainer._save_checkpoint = save_checkpoint_with_wandb
     optimizer_module.GradientClipper.__call__ = (
         gradient_clipper_with_diagnostics
@@ -1336,8 +1387,18 @@ def apply_two_clock_overrides(config) -> None:
         raise ValueError(f"{experiment_name} is evaluation-only")
     if int(os.environ.get("TASK_TRAIN_BATCH_SIZE", "1")) != 1:
         raise ValueError("two-clock v1 requires TASK_TRAIN_BATCH_SIZE=1")
-    if int(os.environ.get("TASK_NUM_FRAMES", "8")) != 8:
-        raise ValueError("two-clock Wave 1 is pre-registered at T8")
+    num_frames = int(os.environ.get("TASK_NUM_FRAMES", "8"))
+    fixed_interval = int(os.environ.get("TASK_TWO_CLOCK_FIXED_INTERVAL", "0"))
+    fixed_k_suite = os.environ.get("TASK_EXPERIMENT_SUITE") == "sam21l_fixed_k_v1"
+    if fixed_k_suite:
+        if experiment_name != "A":
+            raise ValueError("fixed-K v1 trains experiment A only")
+        if fixed_interval not in {1, 4, 8, 12, 16, 20}:
+            raise ValueError("fixed-K interval must be one of 1/4/8/12/16/20")
+        if num_frames != max(8, fixed_interval + 1):
+            raise ValueError("fixed-K clip length must equal max(8, K + 1)")
+    elif num_frames != 8 or fixed_interval:
+        raise ValueError("two-clock Wave 1 is pre-registered at T8 with random reuse")
 
     teacher_config = Path(os.environ["TASK_TEACHER_MODEL_CONFIG"])
     teacher_checkpoint = Path(os.environ["TASK_TEACHER_CHECKPOINT"])
@@ -1350,9 +1411,10 @@ def apply_two_clock_overrides(config) -> None:
     model = official.model if "model" in official else official.trainer.model
     model._target_ = "sam2_distill.two_clock.model.TwoClockSAM2Train"
     model.experiment = experiment_name
-    model.max_feature_age = int(
-        os.environ.get("TASK_TWO_CLOCK_MAX_AGE", "5")
-    )
+    max_feature_age = int(os.environ.get("TASK_TWO_CLOCK_MAX_AGE", "5"))
+    if fixed_interval > max_feature_age + 1:
+        raise ValueError("fixed interval exceeds max feature age support")
+    model.max_feature_age = max_feature_age
     model.box_jitter_fraction = 0.05
     model.image_encoder.trunk.drop_path_rate = 0.1
     model.image_encoder_forward_batch_size = int(
@@ -1380,17 +1442,18 @@ def apply_two_clock_overrides(config) -> None:
     config.trainer.model = model
 
     config.scratch.train_batch_size = 1
-    config.scratch.num_frames = 8
+    config.scratch.num_frames = num_frames
     config.scratch.max_num_objects = int(
         os.environ.get("TASK_MAX_NUM_OBJECTS", "3")
     )
     train_data = config.trainer.data.train
     train_data.batch_sizes[0] = 1
     sampler = train_data.datasets[0].sampler
-    sampler.num_frames = 8
+    sampler.num_frames = num_frames
     sampler.max_num_objects = config.scratch.max_num_objects
-    sampler.force_full_refresh = experiment_name == "O2"
-    sampler.fixed_refresh_interval = 0
+    sampler.force_full_refresh = experiment_name == "O2" and not fixed_interval
+    sampler.fixed_refresh_interval = fixed_interval
+    sampler.max_feature_age = max_feature_age
 
     loss = config.trainer.loss.all
     use_state_distillation = experiment.privileged_state_distillation

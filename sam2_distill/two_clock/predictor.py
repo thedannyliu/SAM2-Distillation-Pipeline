@@ -37,6 +37,7 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         max_feature_age: int = 5,
         fixed_refresh_interval: int = 1,
         refresh_phase_mode: str = "anchor",
+        fixed_refresh_phase: int = 0,
         refresh_phase_seed: int = 250107256,
         **kwargs,
     ) -> None:
@@ -46,9 +47,12 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         self.experiment = get_experiment(experiment)
         self.max_feature_age = max_feature_age
         self.fixed_refresh_interval = fixed_refresh_interval
-        if refresh_phase_mode not in {"anchor", "balanced"}:
-            raise ValueError("refresh phase mode must be anchor or balanced")
+        if refresh_phase_mode not in {"anchor", "balanced", "fixed"}:
+            raise ValueError("refresh phase mode must be anchor, balanced, or fixed")
+        if not 0 <= fixed_refresh_phase < fixed_refresh_interval:
+            raise ValueError("fixed refresh phase must be in [0, interval)")
         self.refresh_phase_mode = refresh_phase_mode
+        self.fixed_refresh_phase = fixed_refresh_phase
         self.refresh_phase_seed = refresh_phase_seed
         self.age_conditioner = (
             FeatureAgeConditioner(max_age=max_feature_age)
@@ -74,7 +78,7 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         if video_path is None and args:
             video_path = args[0]
         video_id = Path(str(video_path)).name if video_path is not None else ""
-        phase = 0
+        phase = self.fixed_refresh_phase if self.refresh_phase_mode == "fixed" else 0
         if self.refresh_phase_mode == "balanced":
             if not video_id:
                 raise ValueError("balanced refresh phases require a video path")
@@ -141,7 +145,9 @@ class TwoClockVideoPredictor(SAM2VideoPredictor):
         inference_state["two_clock_encoder_calls"] = 0
         inference_state["two_clock_frame_requests"] = 0
         inference_state["two_clock_anchor_frame"] = 0
-        inference_state["two_clock_refresh_phase"] = 0
+        inference_state["two_clock_refresh_phase"] = (
+            self.fixed_refresh_phase if self.refresh_phase_mode == "fixed" else 0
+        )
         inference_state["two_clock_prompt_registered"] = False
 
     def _register_prompt_anchor(self, inference_state, frame_idx: int) -> None:
@@ -297,7 +303,9 @@ def _build_video_predictor(
     experiment: str,
     refresh_interval: int,
     refresh_phase_mode: str = "anchor",
+    fixed_refresh_phase: int = 0,
     refresh_phase_seed: int = 250107256,
+    max_feature_age: int | None = None,
     device: str | torch.device,
     predictor_target: str,
 ):
@@ -311,7 +319,10 @@ def _build_video_predictor(
     model.experiment = experiment
     model.fixed_refresh_interval = refresh_interval
     model.refresh_phase_mode = refresh_phase_mode
+    model.fixed_refresh_phase = fixed_refresh_phase
     model.refresh_phase_seed = refresh_phase_seed
+    if max_feature_age is not None:
+        model.max_feature_age = max_feature_age
     for key in (
         "teacher_model_config",
         "teacher_checkpoint",
@@ -354,7 +365,9 @@ def _build_video_predictor(
         "experiment": experiment,
         "refresh_interval": refresh_interval,
         "refresh_phase_mode": refresh_phase_mode,
+        "fixed_refresh_phase": fixed_refresh_phase,
         "refresh_phase_seed": refresh_phase_seed,
+        "max_feature_age": int(model.max_feature_age),
         "checkpoint": str(checkpoint_path),
         "checkpoint_epoch": checkpoint.get("epoch")
         if isinstance(checkpoint, dict)
@@ -370,7 +383,9 @@ def build_two_clock_video_predictor(
     experiment: str,
     refresh_interval: int,
     refresh_phase_mode: str = "anchor",
+    fixed_refresh_phase: int = 0,
     refresh_phase_seed: int = 250107256,
+    max_feature_age: int | None = None,
     device: str | torch.device,
 ) -> tuple[TwoClockVideoPredictor, dict]:
     return _build_video_predictor(
@@ -379,7 +394,9 @@ def build_two_clock_video_predictor(
         experiment=experiment,
         refresh_interval=refresh_interval,
         refresh_phase_mode=refresh_phase_mode,
+        fixed_refresh_phase=fixed_refresh_phase,
         refresh_phase_seed=refresh_phase_seed,
+        max_feature_age=max_feature_age,
         device=device,
         predictor_target="sam2_distill.two_clock.predictor.TwoClockVideoPredictor",
     )
@@ -391,7 +408,9 @@ def build_official_reuse_video_predictor(
     checkpoint_path: str | Path,
     refresh_interval: int,
     refresh_phase_mode: str = "anchor",
+    fixed_refresh_phase: int = 0,
     refresh_phase_seed: int = 250107256,
+    max_feature_age: int | None = None,
     device: str | torch.device,
 ) -> tuple[OfficialReuseVideoPredictor, dict]:
     return _build_video_predictor(
@@ -400,7 +419,9 @@ def build_official_reuse_video_predictor(
         experiment="O1",
         refresh_interval=refresh_interval,
         refresh_phase_mode=refresh_phase_mode,
+        fixed_refresh_phase=fixed_refresh_phase,
         refresh_phase_seed=refresh_phase_seed,
+        max_feature_age=max_feature_age,
         device=device,
         predictor_target=(
             "sam2_distill.two_clock.predictor.OfficialReuseVideoPredictor"

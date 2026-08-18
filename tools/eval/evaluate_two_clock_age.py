@@ -25,8 +25,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pred-root", required=True, type=Path)
     parser.add_argument("--refresh-interval", required=True, type=int)
     parser.add_argument(
-        "--refresh-phase-mode", choices=("anchor", "balanced"), default="anchor"
+        "--refresh-phase-mode",
+        choices=("anchor", "balanced", "fixed"),
+        default="anchor",
     )
+    parser.add_argument("--refresh-phase", type=int, default=0)
     parser.add_argument("--refresh-phase-seed", type=int, default=250107256)
     parser.add_argument("--out-json", required=True, type=Path)
     parser.add_argument("--out-csv", required=True, type=Path)
@@ -59,8 +62,10 @@ def _single_frame_metrics(evaluator_class, prediction, target) -> tuple[float, f
 
 def main() -> None:
     args = parse_args()
-    if not 1 <= args.refresh_interval <= 6:
-        raise ValueError("v1 refresh interval must be R1--R6")
+    if args.refresh_interval < 1:
+        raise ValueError("refresh interval must be positive")
+    if not 0 <= args.refresh_phase < args.refresh_interval:
+        raise ValueError("refresh phase must be in [0, interval)")
     for path in (args.sam2_root, args.gt_root, args.pred_root):
         if not path.exists():
             raise FileNotFoundError(path)
@@ -85,7 +90,7 @@ def main() -> None:
         lambda: defaultdict(list)
     )
     for video_name in video_names:
-        phase = 0
+        phase = args.refresh_phase if args.refresh_phase_mode == "fixed" else 0
         if args.refresh_phase_mode == "balanced":
             phase = balanced_refresh_phase(
                 video_name,
@@ -118,8 +123,13 @@ def main() -> None:
                 by_age[age].append(metrics)
                 per_video[video_name][age].append(metrics)
 
+    ages_to_report = (
+        range(args.refresh_interval)
+        if args.refresh_phase_mode != "fixed"
+        else sorted(by_age)
+    )
     rows = []
-    for age in range(args.refresh_interval):
+    for age in ages_to_report:
         values = by_age.get(age, [])
         if values:
             j = float(np.mean([value[0] for value in values]))
@@ -136,7 +146,7 @@ def main() -> None:
             }
         )
     missing_ages = [row["age"] for row in rows if row["count"] == 0]
-    if missing_ages:
+    if missing_ages and args.refresh_phase_mode == "balanced":
         raise RuntimeError(
             "GT-only evaluation did not cover feature ages "
             f"{missing_ages}; check refresh-phase balancing"
@@ -160,11 +170,10 @@ def main() -> None:
 
     payload = {
         "status": "pass",
-        "protocol": "balanced_phase_v1"
-        if args.refresh_phase_mode == "balanced"
-        else "anchor_phase_v1",
+        "protocol": f"{args.refresh_phase_mode}_phase_v1",
         "refresh_interval": args.refresh_interval,
         "refresh_phase_mode": args.refresh_phase_mode,
+        "refresh_phase": args.refresh_phase,
         "refresh_phase_seed": args.refresh_phase_seed,
         "gt_only": True,
         "skip_first_and_last": not args.include_first_and_last,
