@@ -111,5 +111,23 @@ D-K is not part of this first causal suite.
 - Terminal logs: `/user-volume/log/sam21l_fixed_k_v1`
 - Eval30 root: `/group-volume/danny-dataset/sam2_distill/runs/sam21l_fixed_k_v1/eval30_current`
 
-The company runner and final launch commands are added only after local
-trajectory, config, report, shell, and smoke-contract tests pass.
+## Company execution map
+
+Run the input audit once, then run the A20 capacity smoke once. After it passes,
+the six formal commands may run concurrently in six separate 4-H100 terminals:
+
+| Terminal | Target | GPUs | Foreground action |
+|---|---|---:|---|
+| 1 | A1 | 4 | `train A1` |
+| 2 | A4 | 4 | `train A4` |
+| 3 | A8 | 4 | `train A8` |
+| 4 | A12 | 4 | `train A12` |
+| 5 | A16 | 4 | `train A16` |
+| 6 | A20 | 4 | `train A20` |
+
+A seventh terminal uses one H100 and `eval-current`. It launches no distributed
+workers and executes all 27 current-model units strictly sequentially. A
+rerun verifies and skips complete units; if inference completed but metric
+generation did not, it computes only the missing metrics. The final files are
+`eval30_current/report/report.{md,json}` plus CSV tables and the O0/W0 exact
+identity audit.

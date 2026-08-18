@@ -77,14 +77,15 @@ main() {
   record_launch() {
     local run_dir="$1" scope="$2" interval="$3" frames="$4" max_videos="$5"
     python - "${run_dir}" "${scope}" "${target}" "${interval}" "${frames}" \
-      "${max_videos}" "${manifest}" "${checkpoint}" "${train_config}" "${gpus}" <<'PY'
+      "${max_videos}" "${manifest}" "${checkpoint}" "${train_config}" "${gpus}" \
+      "${wandb_project}" "${wandb_mode}" <<'PY'
 import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-run, scope, target, interval, frames, max_videos, manifest, checkpoint, config, gpus = sys.argv[1:]
+run, scope, target, interval, frames, max_videos, manifest, checkpoint, config, gpus, wandb_project, wandb_mode = sys.argv[1:]
 run = Path(run)
 payload = {
     "schema_version": 1,
@@ -98,7 +99,15 @@ payload = {
     "max_videos": int(max_videos),
     "epochs": 1,
     "gpus": gpus,
+    "gpu_type": subprocess.run(
+        ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+        text=True,
+        capture_output=True,
+    ).stdout.strip().splitlines(),
     "seed": 250107256,
+    "wandb_project": wandb_project,
+    "wandb_mode": "disabled" if scope == "smoke" else wandb_mode,
+    "run_directory": str(run),
     "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "inputs": {},
 }

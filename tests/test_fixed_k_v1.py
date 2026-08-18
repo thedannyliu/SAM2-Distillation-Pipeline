@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from sam2_distill.two_clock.schedule import fixed_refresh_trajectory
+from tools.eval.run_two_clock_eval30 import Target, _prediction_complete
 from tools.eval.summarize_two_clock_phase_sweep import summarize
 from tools.train.run_sam2_task_training import fraction_checkpoint_steps
 
@@ -87,3 +88,32 @@ def test_company_runner_has_six_fixed_k_targets_and_sequential_eval() -> None:
     assert "TASK_FRACTION_CHECKPOINTS=" in runner
     assert "run_two_clock_eval30.py" in runner
     assert 'if [[ "${gpu_count}" -ne 1 ]]' in runner
+
+
+def test_eval_resume_rejects_wrong_phase_or_checkpoint(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint.pt"
+    checkpoint.touch()
+    target = Target("A", "two-clock", "A", 4, checkpoint, None)
+    unit = tmp_path / "unit"
+    pred = unit / "pred/video/object"
+    pred.mkdir(parents=True)
+    (pred / "000000.png").touch()
+    summary = {
+        "status": "pass",
+        "model_kind": "two-clock",
+        "two_clock_refresh_phase_mode": "fixed",
+        "two_clock_refresh_phase": 2,
+        "video_names": ["video"],
+        "num_prediction_pngs": 1,
+        "build": {
+            "checkpoint": str(checkpoint),
+            "experiment": "A",
+            "refresh_interval": 4,
+        },
+    }
+    (unit / "pred/summary.json").write_text(json.dumps(summary))
+    assert _prediction_complete(unit, target, 2, ["video"])
+    assert not _prediction_complete(unit, target, 1, ["video"])
+    summary["build"]["checkpoint"] = str(tmp_path / "other.pt")
+    (unit / "pred/summary.json").write_text(json.dumps(summary))
+    assert not _prediction_complete(unit, target, 2, ["video"])

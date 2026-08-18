@@ -55,26 +55,42 @@ def _make_gt_view(source: Path, output: Path, videos: list[str]) -> None:
             link.symlink_to(target, target_is_directory=True)
 
 
-def _complete(unit: Path, target: Target, phase: int, videos: list[str]) -> bool:
-    required = (
-        unit / "sav_eval.json",
-        unit / "age_metrics.json",
-        unit / "pred/summary.json",
+def _prediction_complete(
+    unit: Path, target: Target, phase: int, videos: list[str]
+) -> bool:
+    summary_path = unit / "pred/summary.json"
+    if not summary_path.is_file():
+        return False
+    timing = json.loads(summary_path.read_text())
+    build = timing.get("build", {})
+    png_count = sum(1 for _ in (unit / "pred").rglob("*.png"))
+    return bool(
+        timing.get("status") == "pass"
+        and timing.get("model_kind") == target.kind
+        and timing.get("two_clock_refresh_phase_mode") == "fixed"
+        and timing.get("two_clock_refresh_phase") == phase
+        and set(timing.get("video_names", [])) == set(videos)
+        and build.get("checkpoint") == str(target.checkpoint)
+        and build.get("experiment") == target.experiment
+        and build.get("refresh_interval") == target.interval
+        and png_count == timing.get("num_prediction_pngs")
     )
+
+
+def _complete(unit: Path, target: Target, phase: int, videos: list[str]) -> bool:
+    if not _prediction_complete(unit, target, phase, videos):
+        return False
+    required = (unit / "sav_eval.json", unit / "age_metrics.json")
     if not all(path.is_file() for path in required):
         return False
-    sav, age, timing = (json.loads(path.read_text()) for path in required)
+    sav, age = (json.loads(path.read_text()) for path in required)
     return bool(
         sav.get("status") == "pass"
         and age.get("status") == "pass"
         and age.get("protocol") == "fixed_phase_v1"
         and age.get("refresh_interval") == target.interval
         and age.get("refresh_phase") == phase
-        and timing.get("status") == "pass"
-        and timing.get("model_kind") == target.kind
-        and timing.get("two_clock_refresh_phase_mode") == "fixed"
-        and timing.get("two_clock_refresh_phase") == phase
-        and set(timing.get("video_names", [])) == set(videos)
+        and age.get("videos") == len(videos)
     )
 
 
@@ -159,6 +175,8 @@ def main() -> None:
                 str(args.sam2_root / "sam2/configs/sam2.1/sam2.1_hiera_l.yaml"),
                 "--checkpoint",
                 str(target.checkpoint),
+                "--experiment",
+                target.experiment,
                 "--refresh-interval",
                 str(target.interval),
                 "--refresh-phase-mode",
@@ -184,11 +202,12 @@ def main() -> None:
                     [
                         "--resolved-config",
                         str(target.resolved_config),
-                        "--experiment",
-                        target.experiment,
                     ]
                 )
-            _run(inference, env=env)
+            if _prediction_complete(unit, target, phase, videos):
+                print(f"Resume completed inference; compute metrics: {unit}", flush=True)
+            else:
+                _run(inference, env=env)
             _run(
                 [
                     sys.executable,
