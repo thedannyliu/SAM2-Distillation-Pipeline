@@ -117,6 +117,9 @@ def summarize(
         }
         video_metrics[model] = model_video
         metrics = _macro(list(model_video.values()))
+        eval_gpu_counts = {int(row.get("world_size", 1)) for row in phase_timing}
+        if len(eval_gpu_counts) != 1:
+            raise RuntimeError(f"mixed evaluation GPU counts for {model}")
 
         by_age_video: dict[int, dict[str, list[dict]]] = defaultdict(
             lambda: defaultdict(list)
@@ -142,6 +145,7 @@ def summarize(
                 "interval": interval,
                 "phases": interval,
                 "videos": len(model_video),
+                "eval_gpus": eval_gpu_counts.pop(),
                 **metrics,
                 "refresh_pct": 100
                 * float(np.mean([row["two_clock_refresh_rate"] for row in phase_timing])),
@@ -204,12 +208,13 @@ def _markdown(payload: dict) -> str:
         "",
         "Primary metric: per-video metrics averaged over all fixed phases, then macro-averaged over videos.",
         "",
-        "| Model | R | Videos | J&F | J | F | Refresh % | Model mean ms | Model P95 max ms | Single-stream wall ms | 4-GPU throughput ms/frame |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Model | R | Videos | Eval GPUs | J&F | J | F | Refresh % | Model mean ms | Model P95 max ms | Single-stream wall ms | Parallel throughput ms/frame |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in payload["models"]:
         lines.append(
             f"| {row['model']} | {row['interval']} | {row['videos']} | "
+            f"{row['eval_gpus']} | "
             f"{row['J&F']:.2f} | {row['J']:.2f} | {row['F']:.2f} | "
             f"{row['refresh_pct']:.2f} | {row['model_mean_ms']:.2f} | "
             f"{row['model_p95_max_ms']:.2f} | {row['wall_mean_ms']:.2f} | "

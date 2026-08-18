@@ -10,7 +10,10 @@ import torch
 
 from sam2_distill.two_clock.schedule import fixed_refresh_trajectory
 from tools.eval.merge_vos_rank_summaries import main as merge_rank_summaries
-from tools.eval.run_fixed_k_eval30 import _targets as fixed_k_eval_targets
+from tools.eval.run_fixed_k_eval30 import (
+    _existing_world_sizes,
+    _targets as fixed_k_eval_targets,
+)
 from tools.eval.run_two_clock_eval30 import Target, _prediction_complete
 from tools.eval.summarize_two_clock_phase_sweep import summarize
 from tools.train.run_sam2_task_training import (
@@ -126,6 +129,13 @@ def test_d_eval_includes_all_matched_controls(tmp_path: Path) -> None:
     assert [target.experiment for target in targets] == ["O0", "O1", "A", "A", "D"]
 
 
+def test_fixed_k_eval_detects_existing_gpu_count(tmp_path: Path) -> None:
+    summary = tmp_path / "O1/R8/phase_0/pred/summary.json"
+    summary.parent.mkdir(parents=True)
+    summary.write_text(json.dumps({"status": "pass", "world_size": 4}))
+    assert _existing_world_sizes(tmp_path) == {4}
+
+
 def test_rank_merge_preserves_fixed_phase_resume_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -199,6 +209,7 @@ def test_company_runner_has_six_fixed_k_targets_and_sequential_eval() -> None:
     assert 'run_dir="${run_root}/smoke/${git_sha}/${target}"' in runner
     assert "run_fixed_k_eval30.py" in runner
     assert "eval-fixed) eval_fixed" in runner
+    assert '"${gpu_count}" -lt 1 || "${gpu_count}" -gt 4' in runner
 
 
 def test_eval_resume_rejects_wrong_phase_or_checkpoint(tmp_path: Path) -> None:

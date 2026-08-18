@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -103,8 +104,28 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _existing_world_sizes(out_root: Path) -> set[int]:
+    sizes = set()
+    for path in out_root.glob("*/R*/phase_*/pred/summary.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if payload.get("status") == "pass":
+            sizes.add(int(payload.get("world_size", 1)))
+    return sizes
+
+
 def main() -> None:
     args = parse_args()
+    if not 1 <= args.world_size <= 4:
+        raise ValueError("world size must be in [1, 4]")
+    existing_world_sizes = _existing_world_sizes(args.out_root)
+    if existing_world_sizes and existing_world_sizes != {args.world_size}:
+        raise RuntimeError(
+            "evaluation GPU count must stay fixed within one target: "
+            f"existing={sorted(existing_world_sizes)}, requested={args.world_size}"
+        )
     interval = int(args.target[1:])
     image_root = args.sav_root / "sav_val/JPEGImages_24fps"
     gt_root = args.sav_root / "sav_val/Annotations_6fps"
