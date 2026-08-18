@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 import torch
 
 from sam2_distill.two_clock.schedule import fixed_refresh_trajectory
+from tools.eval.merge_vos_rank_summaries import main as merge_rank_summaries
 from tools.eval.run_two_clock_eval30 import Target, _prediction_complete
 from tools.eval.summarize_two_clock_phase_sweep import summarize
 from tools.train.run_sam2_task_training import (
@@ -90,6 +92,70 @@ def test_phase_sweep_uses_per_video_phase_neutral_macro(tmp_path: Path) -> None:
     assert payload["paired_bootstrap"]["A"]["O1"]["delta_J&F"] == pytest.approx(5.0)
 
 
+def test_phase_sweep_supports_fixed_k_model_intervals(tmp_path: Path) -> None:
+    _write_unit(tmp_path, "O0", 1, 0, {"v1": 10.0, "v2": 30.0})
+    for phase in range(8):
+        _write_unit(tmp_path, "O1", 8, phase, {"v1": 20.0, "v2": 40.0})
+        _write_unit(tmp_path, "A8", 8, phase, {"v1": 25.0, "v2": 45.0})
+
+    payload = summarize(
+        tmp_path,
+        models=("O0", "O1", "A8"),
+        intervals={"O0": 1, "O1": 8, "A8": 8},
+        bootstrap_samples=100,
+    )
+    rows = {row["model"]: row for row in payload["models"]}
+    assert rows["A8"]["interval"] == 8
+    assert rows["A8"]["J&F"] == pytest.approx(35.0)
+    assert payload["paired_bootstrap"]["A8"]["O1"]["delta_J&F"] == pytest.approx(5.0)
+
+
+def test_rank_merge_preserves_fixed_phase_resume_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for rank in range(2):
+        payload = {
+            "world_size": 2,
+            "rank": rank,
+            "video_names": [f"video{rank}"],
+            "processed_frames": 10,
+            "elapsed_sec": 2.0,
+            "model_timed_frames": 8,
+            "model_frame_latency_sum_ms": 80.0,
+            "model_frame_median_ms": 10.0,
+            "model_frame_p95_ms": 12.0,
+            "num_prediction_pngs": 5,
+            "model_kind": "two-clock",
+            "build": {
+                "experiment": "A",
+                "refresh_interval": 8,
+                "checkpoint": "/runs/A8/checkpoints/last.pt",
+            },
+            "two_clock_encoder_calls": 2,
+            "two_clock_tracking_frames": 16,
+            "two_clock_refresh_phase_mode": "fixed",
+            "two_clock_refresh_phase": 3,
+            "two_clock_refresh_phase_seed": 250107256,
+            "offload_video_to_cpu": True,
+        }
+        (tmp_path / f"summary.rank{rank:03d}.json").write_text(
+            json.dumps(payload)
+        )
+
+    output = tmp_path / "summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["merge", "--run-dir", str(tmp_path), "--out", str(output)],
+    )
+    merge_rank_summaries()
+    merged = json.loads(output.read_text())
+    assert merged["build"]["checkpoint"] == "/runs/A8/checkpoints/last.pt"
+    assert merged["two_clock_refresh_phase"] == 3
+    assert merged["video_names"] == ["video0", "video1"]
+    assert merged["num_prediction_pngs"] == 10
+
+
 def test_company_runner_has_six_fixed_k_targets_and_sequential_eval() -> None:
     runner = (
         Path(__file__).resolve().parents[1]
@@ -101,6 +167,8 @@ def test_company_runner_has_six_fixed_k_targets_and_sequential_eval() -> None:
     assert "run_two_clock_eval30.py" in runner
     assert 'if [[ "${gpu_count}" -ne 1 ]]' in runner
     assert 'run_dir="${run_root}/smoke/${git_sha}/${target}"' in runner
+    assert "run_fixed_k_eval30.py" in runner
+    assert "eval-fixed) eval_fixed" in runner
 
 
 def test_eval_resume_rejects_wrong_phase_or_checkpoint(tmp_path: Path) -> None:
