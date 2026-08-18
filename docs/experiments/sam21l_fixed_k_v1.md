@@ -74,7 +74,23 @@ The existing supervision and optimizer recipe is retained:
 - student on-policy memory rollout;
 - batch size one per GPU on four H100s;
 - the existing AdamW/LR groups, LayerNorm weight-decay exclusion, bf16, and
-  gradient clipping; no BatchNorm is introduced.
+gradient clipping; no BatchNorm is introduced.
+
+## Fixed-K D follow-up
+
+The D follow-up independently initializes D4/D8/D12/D16/D20 from the official
+SAM2.1-L checkpoint. It keeps the same K, clip length, SA-V data, prompts,
+teacher pseudo-mask supervision, optimizer, one-epoch budget, and fractional
+snapshots as the corresponding A-K run. The only mechanism change is experiment
+D: feature-age FiLM on the read path, memory recency plus freshness residuals,
+and refresh-only spatial-memory writes. Reuse frames retain lightweight object
+state but do not write stale spatial memory. D does not use E's privileged
+state/pointer/score distillation.
+
+The direct mechanism comparison is `DK@K - AK@K`. Every D-K run starts from
+the official checkpoint rather than an A-K checkpoint. D20 must first pass the
+four-H100 T21 smoke because it jointly exercises the longest clip and all D
+temporal modules.
 
 Each run trains for at most one full 50,337-video epoch. In addition to the
 resumable epoch checkpoint, selection-only model snapshots are written after
@@ -132,6 +148,16 @@ the six formal commands may run concurrently in six separate 4-H100 terminals:
 | 4 | A12 | 4 | `train A12` |
 | 5 | A16 | 4 | `train A16` |
 | 6 | A20 | 4 | `train A20` |
+
+The D follow-up uses five independent 4-H100 nodes after `smoke D20` passes:
+
+| Node | Target | GPUs | Foreground action |
+|---|---|---:|---|
+| 1 | D4 | 4 | `train D4` |
+| 2 | D8 | 4 | `train D8` |
+| 3 | D12 | 4 | `train D12` |
+| 4 | D16 | 4 | `train D16` |
+| 5 | D20 | 4 | `train D20` |
 
 A seventh terminal uses one H100 and `eval-current`. It launches no distributed
 workers and executes all 30 current-model units strictly sequentially. A

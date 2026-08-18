@@ -34,7 +34,20 @@ main() {
       A12) echo 12 ;;
       A16) echo 16 ;;
       A20) echo 20 ;;
-      *) echo "[ERROR] target must be A1/A4/A8/A12/A16/A20" >&2; return 2 ;;
+      D4) echo 4 ;;
+      D8) echo 8 ;;
+      D12) echo 12 ;;
+      D16) echo 16 ;;
+      D20) echo 20 ;;
+      *) echo "[ERROR] unsupported fixed-K target: $1" >&2; return 2 ;;
+    esac
+  }
+
+  experiment_name() {
+    case "$1" in
+      A*) echo A ;;
+      D*) echo D ;;
+      *) echo "[ERROR] unsupported experiment target: $1" >&2; return 2 ;;
     esac
   }
 
@@ -48,7 +61,7 @@ main() {
   }
 
   describe() {
-    echo "SAM2.1-L fixed-K v1: A1/A4/A8/A12/A16/A20"
+    echo "SAM2.1-L fixed-K v1: A1/A4/A8/A12/A16/A20 and D4/D8/D12/D16/D20"
     echo "Each formal training target uses one 4xH100 node for one SA-V epoch."
     echo "Each eval-fixed target uses one 4xH100 node for its phase-neutral eval30."
     echo "Selection-only snapshots: 10%, 25%, 50%; resumable checkpoint: epoch 1."
@@ -78,24 +91,24 @@ main() {
   }
 
   record_launch() {
-    local run_dir="$1" scope="$2" interval="$3" frames="$4" max_videos="$5"
+    local run_dir="$1" scope="$2" experiment="$3" interval="$4" frames="$5" max_videos="$6"
     python - "${run_dir}" "${scope}" "${target}" "${interval}" "${frames}" \
       "${max_videos}" "${manifest}" "${checkpoint}" "${train_config}" "${gpus}" \
-      "${wandb_project}" "${wandb_mode}" <<'PY'
+      "${wandb_project}" "${wandb_mode}" "${experiment}" <<'PY'
 import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-run, scope, target, interval, frames, max_videos, manifest, checkpoint, config, gpus, wandb_project, wandb_mode = sys.argv[1:]
+run, scope, target, interval, frames, max_videos, manifest, checkpoint, config, gpus, wandb_project, wandb_mode, experiment = sys.argv[1:]
 run = Path(run)
 payload = {
     "schema_version": 1,
     "suite": "sam21l_fixed_k_v1",
     "scope": scope,
     "target": target,
-    "experiment": "A",
+    "experiment": experiment,
     "fixed_refresh_interval": int(interval),
     "num_frames": int(frames),
     "max_feature_age": 19,
@@ -130,7 +143,8 @@ PY
   }
 
   train_target() {
-    local scope="${1:-formal}" interval frames run_dir max_videos freeze_steps mode fractions
+    local scope="${1:-formal}" experiment interval frames run_dir max_videos freeze_steps mode fractions
+    experiment="$(experiment_name "${target}")" || return $?
     interval="$(fixed_interval "${target}")" || return $?
     frames="$(clip_length "${interval}")"
     if [[ "${gpu_count}" -ne 4 ]]; then
@@ -150,14 +164,14 @@ PY
       mode="${wandb_mode}"
       fractions="0.10,0.25,0.50"
     fi
-    record_launch "${run_dir}" "${scope}" "${interval}" "${frames}" "${max_videos}" || return $?
+    record_launch "${run_dir}" "${scope}" "${experiment}" "${interval}" "${frames}" "${max_videos}" || return $?
     mkdir -p "${run_dir}" "${log_root}/${scope}"
     echo "===== ${scope} ${target}: fixed K=${interval}, T=${frames} ====="
     CUDA_VISIBLE_DEVICES="${gpus}" \
     PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
     SAM2_TRAINING_ROOT="${sam2_root}" \
     TASK_TWO_CLOCK_V1=1 \
-    TASK_TWO_CLOCK_EXPERIMENT=A \
+    TASK_TWO_CLOCK_EXPERIMENT="${experiment}" \
     TASK_TWO_CLOCK_FIXED_INTERVAL="${interval}" \
     TASK_TWO_CLOCK_MAX_AGE=19 \
     TASK_EXPERIMENT_SUITE=sam21l_fixed_k_v1 \
@@ -232,6 +246,10 @@ PY
 
   eval_fixed() {
     local interval output status
+    if [[ "${target}" != A* ]]; then
+      echo "[ERROR] eval-fixed currently supports A targets only" >&2
+      return 2
+    fi
     interval="$(fixed_interval "${target}")" || return $?
     if [[ "${gpu_count}" -ne 4 ]]; then
       echo "[ERROR] eval-fixed requires exactly four GPUs; got ${gpus}" >&2
@@ -263,7 +281,7 @@ PY
 
   status() {
     local item run_dir
-    for item in A1 A4 A8 A12 A16 A20; do
+    for item in A1 A4 A8 A12 A16 A20 D4 D8 D12 D16 D20; do
       run_dir="${run_root}/${item}"
       echo "===== ${item} ====="
       if [[ -f "${run_dir}/training_status.json" ]]; then
@@ -289,7 +307,7 @@ PY
     eval-fixed) eval_fixed ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|smoke|train|eval-current|eval-fixed|status} [A1|A4|A8|A12|A16|A20]" >&2
+      echo "Usage: $0 {describe|audit|smoke|train|eval-current|eval-fixed|status} [A1|A4|A8|A12|A16|A20|D4|D8|D12|D16|D20]" >&2
       return 2
       ;;
   esac
