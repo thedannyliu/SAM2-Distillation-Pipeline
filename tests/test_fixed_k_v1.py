@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
 
 from sam2_distill.two_clock.schedule import fixed_refresh_trajectory
 from tools.eval.merge_vos_rank_summaries import main as merge_rank_summaries
+from tools.eval.run_fixed_k_eval30 import _targets as fixed_k_eval_targets
 from tools.eval.run_two_clock_eval30 import Target, _prediction_complete
 from tools.eval.summarize_two_clock_phase_sweep import summarize
 from tools.train.run_sam2_task_training import (
@@ -97,17 +99,31 @@ def test_phase_sweep_supports_fixed_k_model_intervals(tmp_path: Path) -> None:
     for phase in range(8):
         _write_unit(tmp_path, "O1", 8, phase, {"v1": 20.0, "v2": 40.0})
         _write_unit(tmp_path, "A8", 8, phase, {"v1": 25.0, "v2": 45.0})
+        _write_unit(tmp_path, "D8", 8, phase, {"v1": 30.0, "v2": 50.0})
 
     payload = summarize(
         tmp_path,
-        models=("O0", "O1", "A8"),
-        intervals={"O0": 1, "O1": 8, "A8": 8},
+        models=("O0", "O1", "A8", "D8"),
+        intervals={"O0": 1, "O1": 8, "A8": 8, "D8": 8},
+        references=("O0", "O1", "A8"),
         bootstrap_samples=100,
     )
     rows = {row["model"]: row for row in payload["models"]}
     assert rows["A8"]["interval"] == 8
     assert rows["A8"]["J&F"] == pytest.approx(35.0)
     assert payload["paired_bootstrap"]["A8"]["O1"]["delta_J&F"] == pytest.approx(5.0)
+    assert payload["paired_bootstrap"]["D8"]["A8"]["delta_J&F"] == pytest.approx(5.0)
+
+
+def test_d_eval_includes_all_matched_controls(tmp_path: Path) -> None:
+    args = SimpleNamespace(
+        target="D8",
+        run_root=tmp_path,
+        official_checkpoint=tmp_path / "official.pt",
+    )
+    targets = fixed_k_eval_targets(args, 8)
+    assert [target.name for target in targets] == ["O0", "O1", "A1", "A8", "D8"]
+    assert [target.experiment for target in targets] == ["O0", "O1", "A", "A", "D"]
 
 
 def test_rank_merge_preserves_fixed_phase_resume_contract(

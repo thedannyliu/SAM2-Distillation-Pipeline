@@ -74,6 +74,7 @@ def summarize(
     models: tuple[str, ...] = DEFAULT_MODELS,
     *,
     intervals: dict[str, int] | None = None,
+    references: tuple[str, ...] = ("O0", "O1"),
     bootstrap_samples: int = 10_000,
     seed: int = 250107256,
 ) -> dict:
@@ -170,7 +171,7 @@ def summarize(
     paired = {}
     for model in models:
         paired[model] = {}
-        for reference in ("O0", "O1"):
+        for reference in references:
             if model == reference or reference not in video_metrics:
                 continue
             paired[model][reference] = _bootstrap_delta(
@@ -247,6 +248,7 @@ def main() -> None:
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--models", default=",".join(DEFAULT_MODELS))
+    parser.add_argument("--references", default="O0,O1")
     parser.add_argument(
         "--model-interval",
         action="append",
@@ -257,6 +259,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=250107256)
     args = parser.parse_args()
     models = tuple(value for value in args.models.split(",") if value)
+    references = tuple(value for value in args.references.split(",") if value)
     if args.model_interval:
         intervals = {
             model: int(interval)
@@ -270,6 +273,7 @@ def main() -> None:
         args.root,
         models=models,
         intervals=intervals,
+        references=references,
         bootstrap_samples=args.bootstrap_samples,
         seed=args.seed,
     )
