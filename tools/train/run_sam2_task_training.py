@@ -1411,12 +1411,12 @@ def apply_two_clock_overrides(config) -> None:
     fixed_interval = int(os.environ.get("TASK_TWO_CLOCK_FIXED_INTERVAL", "0"))
     fixed_k_suite = os.environ.get("TASK_EXPERIMENT_SUITE") == "sam21l_fixed_k_v1"
     if fixed_k_suite:
-        if experiment_name not in {"A", "D"}:
-            raise ValueError("fixed-K v1 trains experiments A and D only")
+        if experiment_name not in {"A", "D", "E"}:
+            raise ValueError("fixed-K v1 trains experiments A, D, and E only")
         if fixed_interval not in {1, 4, 8, 12, 16, 20}:
             raise ValueError("fixed-K interval must be one of 1/4/8/12/16/20")
-        if experiment_name == "D" and fixed_interval == 1:
-            raise ValueError("fixed-K D follow-up is registered at K=4/8/12/16/20")
+        if experiment_name in {"D", "E"} and fixed_interval == 1:
+            raise ValueError("fixed-K D/E follow-ups are registered at K=4/8/12/16/20")
         if num_frames != max(8, fixed_interval + 1):
             raise ValueError("fixed-K clip length must equal max(8, K + 1)")
     elif num_frames != 8 or fixed_interval:

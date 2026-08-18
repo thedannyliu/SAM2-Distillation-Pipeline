@@ -98,6 +98,22 @@ includes paired bootstrap intervals against O0, O1-K, and AK@K. Therefore
 `DK@K - AK@K` is computed from paired per-video phase-neutral scores rather
 than from two independently aggregated headline numbers.
 
+## Fixed-K E follow-up
+
+E4/E8/E12/E16/E20 independently initialize from the official SAM2.1-L
+checkpoint; they never resume from D. They retain D's age conditioning,
+recency/freshness memory residuals, and refresh-only spatial writes, then add
+privileged full-refresh teacher supervision on reuse frames: post-memory state
+MSE at weight 0.25, object-pointer cosine loss at 0.1, and object-score BCE at
+0.1. The teacher encodes and tracks every frame but supplies supervision only;
+the student rolls out its own memory and never consumes teacher memory.
+
+All data, K/T schedules, manual-GT and pseudo-mask loss, optimizer, one-epoch
+budget, and selection snapshots remain matched to A-K and D-K. E20 must pass a
+four-H100 T21 smoke before formal launch because it is the highest-memory
+variant. If D failed because of OOM or non-finite optimization, that failure
+must be diagnosed rather than assuming E will avoid it.
+
 Each run trains for at most one full 50,337-video epoch. In addition to the
 resumable epoch checkpoint, selection-only model snapshots are written after
 0.10, 0.25, and 0.50 epoch. These fractional snapshots are not resume points.
@@ -164,6 +180,16 @@ The D follow-up uses five independent 4-H100 nodes after `smoke D20` passes:
 | 3 | D12 | 4 | `train D12` |
 | 4 | D16 | 4 | `train D16` |
 | 5 | D20 | 4 | `train D20` |
+
+The E follow-up likewise uses five independent 4-H100 nodes after `smoke E20`:
+
+| Node | Target | GPUs | Foreground action |
+|---|---|---:|---|
+| 1 | E4 | 4 | `train E4` |
+| 2 | E8 | 4 | `train E8` |
+| 3 | E12 | 4 | `train E12` |
+| 4 | E16 | 4 | `train E16` |
+| 5 | E20 | 4 | `train E20` |
 
 A seventh terminal uses one H100 and `eval-current`. It launches no distributed
 workers and executes all 30 current-model units strictly sequentially. A

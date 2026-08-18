@@ -39,6 +39,11 @@ main() {
       D12) echo 12 ;;
       D16) echo 16 ;;
       D20) echo 20 ;;
+      E4) echo 4 ;;
+      E8) echo 8 ;;
+      E12) echo 12 ;;
+      E16) echo 16 ;;
+      E20) echo 20 ;;
       *) echo "[ERROR] unsupported fixed-K target: $1" >&2; return 2 ;;
     esac
   }
@@ -47,6 +52,7 @@ main() {
     case "$1" in
       A*) echo A ;;
       D*) echo D ;;
+      E*) echo E ;;
       *) echo "[ERROR] unsupported experiment target: $1" >&2; return 2 ;;
     esac
   }
@@ -61,9 +67,9 @@ main() {
   }
 
   describe() {
-    echo "SAM2.1-L fixed-K v1: A1/A4/A8/A12/A16/A20 and D4/D8/D12/D16/D20"
+    echo "SAM2.1-L fixed-K v1: A1/A4/A8/A12/A16/A20, D4/D8/D12/D16/D20, and E4/E8/E12/E16/E20"
     echo "Each formal training target uses one 4xH100 node for one SA-V epoch."
-    echo "Each eval-fixed target uses one 4xH100 node for its phase-neutral eval30."
+    echo "Each registered eval-fixed target uses one 4xH100 node for phase-neutral eval30."
     echo "Selection-only snapshots: 10%, 25%, 50%; resumable checkpoint: epoch 1."
     echo "The eval-current action uses exactly one H100 and runs all old models sequentially."
     echo "Run root: ${run_root}"
@@ -246,6 +252,10 @@ PY
 
   eval_fixed() {
     local interval output status
+    if [[ "${target}" == E* ]]; then
+      echo "[ERROR] fixed-K E evaluation is not registered yet" >&2
+      return 2
+    fi
     interval="$(fixed_interval "${target}")" || return $?
     if [[ "${gpu_count}" -ne 4 ]]; then
       echo "[ERROR] eval-fixed requires exactly four GPUs; got ${gpus}" >&2
@@ -280,7 +290,7 @@ PY
 
   status() {
     local item run_dir
-    for item in A1 A4 A8 A12 A16 A20 D4 D8 D12 D16 D20; do
+    for item in A1 A4 A8 A12 A16 A20 D4 D8 D12 D16 D20 E4 E8 E12 E16 E20; do
       run_dir="${run_root}/${item}"
       echo "===== ${item} ====="
       if [[ -f "${run_dir}/training_status.json" ]]; then
@@ -306,7 +316,7 @@ PY
     eval-fixed) eval_fixed ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|smoke|train|eval-current|eval-fixed|status} [A1|A4|A8|A12|A16|A20|D4|D8|D12|D16|D20]" >&2
+      echo "Usage: $0 {describe|audit|smoke|train|eval-current|eval-fixed|status} [A1|A4|A8|A12|A16|A20|D4|D8|D12|D16|D20|E4|E8|E12|E16|E20]" >&2
       return 2
       ;;
   esac
