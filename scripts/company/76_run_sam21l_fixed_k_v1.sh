@@ -69,7 +69,7 @@ main() {
   describe() {
     echo "SAM2.1-L fixed-K v1: A1/A4/A8/A12/A16/A20, D4/D8/D12/D16/D20, and E4/E8/E12/E16/E20"
     echo "Each formal training target uses one 4xH100 node for one SA-V epoch."
-    echo "Each registered eval-fixed target uses one 4xH100 node for phase-neutral eval30."
+    echo "Each registered eval-fixed target uses 1--4 H100s for phase-neutral eval30."
     echo "Selection-only snapshots: 10%, 25%, 50%; resumable checkpoint: epoch 1."
     echo "The eval-current action uses exactly one H100 and runs all old models sequentially."
     echo "Run root: ${run_root}"
@@ -257,8 +257,8 @@ PY
       return 2
     fi
     interval="$(fixed_interval "${target}")" || return $?
-    if [[ "${gpu_count}" -ne 4 ]]; then
-      echo "[ERROR] eval-fixed requires exactly four GPUs; got ${gpus}" >&2
+    if [[ "${gpu_count}" -lt 1 || "${gpu_count}" -gt 4 ]]; then
+      echo "[ERROR] eval-fixed requires one to four GPUs; got ${gpus}" >&2
       return 2
     fi
     require_path "${run_root}/A1/checkpoints/last.pt" || return $?
