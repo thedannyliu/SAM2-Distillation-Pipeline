@@ -198,10 +198,15 @@ generation did not, it computes only the missing metrics. The final files are
 `eval30_current/report/report.{md,json}` plus CSV tables and the O0/W0 exact
 identity audit.
 
-After A1 and the corresponding AK training both finish, reuse the six 4-H100
+After A1 and the corresponding AK training both finish, use available H100
 nodes with `eval-fixed A1`, `eval-fixed A4`, ..., `eval-fixed A20`. Each action
 runs in the foreground, resumes at verified model/phase boundaries, and writes
 `eval30_fixed/<AK>/report/report.{md,json}`.
+
+An eval target may use one to four H100s; GPUs only shard the 30 videos within
+each phase and do not change predictions. The GPU count must remain fixed when
+resuming a partially completed target so latency and throughput fields remain
+comparable. Different targets can run concurrently on separate one-GPU nodes.
 
 The D commands use the same entry point: `eval-fixed D4`, `eval-fixed D8`,
 `eval-fixed D12`, `eval-fixed D16`, and `eval-fixed D20`. Each D evaluation
