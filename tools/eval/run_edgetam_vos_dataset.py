@@ -34,9 +34,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--experiment")
     parser.add_argument("--refresh-interval", type=int, default=1)
     parser.add_argument(
-        "--refresh-phase-mode", choices=("anchor", "balanced"), default="anchor"
+        "--refresh-phase-mode",
+        choices=("anchor", "balanced", "fixed"),
+        default="anchor",
     )
+    parser.add_argument("--refresh-phase", type=int, default=0)
     parser.add_argument("--refresh-phase-seed", type=int, default=250107256)
+    parser.add_argument("--max-feature-age", type=int)
     parser.add_argument("--image-root", required=True, type=Path)
     parser.add_argument("--input-mask-root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
@@ -184,7 +188,9 @@ def main() -> None:
                 experiment=args.experiment,
                 refresh_interval=args.refresh_interval,
                 refresh_phase_mode=args.refresh_phase_mode,
+                fixed_refresh_phase=args.refresh_phase,
                 refresh_phase_seed=args.refresh_phase_seed,
+                max_feature_age=args.max_feature_age,
                 device=device,
             )
         else:
@@ -197,7 +203,9 @@ def main() -> None:
                 checkpoint_path=args.checkpoint,
                 refresh_interval=args.refresh_interval,
                 refresh_phase_mode=args.refresh_phase_mode,
+                fixed_refresh_phase=args.refresh_phase,
                 refresh_phase_seed=args.refresh_phase_seed,
+                max_feature_age=args.max_feature_age,
                 device=device,
             )
         build_summary["model_kind"] = args.model_kind
@@ -327,6 +335,7 @@ def main() -> None:
         "two_clock_refresh_rate": two_clock_encoder_calls
         / max(two_clock_tracking_frames, 1),
         "two_clock_refresh_phase_mode": args.refresh_phase_mode,
+        "two_clock_refresh_phase": args.refresh_phase,
         "two_clock_refresh_phase_seed": args.refresh_phase_seed,
     }
     payload = json.dumps(summary, indent=2) + "\n"
