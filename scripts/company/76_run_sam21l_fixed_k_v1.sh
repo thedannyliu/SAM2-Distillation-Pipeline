@@ -50,6 +50,7 @@ main() {
   describe() {
     echo "SAM2.1-L fixed-K v1: A1/A4/A8/A12/A16/A20"
     echo "Each formal training target uses one 4xH100 node for one SA-V epoch."
+    echo "Each eval-fixed target uses one 4xH100 node for its phase-neutral eval30."
     echo "Selection-only snapshots: 10%, 25%, 50%; resumable checkpoint: epoch 1."
     echo "The eval-current action uses exactly one H100 and runs all old models sequentially."
     echo "Run root: ${run_root}"
@@ -229,6 +230,37 @@ PY
     return "${status}"
   }
 
+  eval_fixed() {
+    local interval output status
+    interval="$(fixed_interval "${target}")" || return $?
+    if [[ "${gpu_count}" -ne 4 ]]; then
+      echo "[ERROR] eval-fixed requires exactly four GPUs; got ${gpus}" >&2
+      return 2
+    fi
+    require_path "${run_root}/A1/checkpoints/last.pt" || return $?
+    require_path "${run_root}/${target}/checkpoints/last.pt" || return $?
+    output="${run_root}/eval30_fixed/${target}"
+    mkdir -p "${output}" "${log_root}/eval"
+    CUDA_VISIBLE_DEVICES="${gpus}" \
+    PYTHONPATH="${repo_root}:${sam2_root}:${PYTHONPATH:-}" \
+      python tools/eval/run_fixed_k_eval30.py \
+        --repo-root "${repo_root}" \
+        --sam2-root "${sam2_root}" \
+        --sav-root "${sav_root}" \
+        --run-root "${run_root}" \
+        --official-checkpoint "${checkpoint}" \
+        --out-root "${output}" \
+        --target "${target}" \
+        --world-size "${gpu_count}" \
+        --count 30 \
+        --seed 250107256 \
+        --eval-processes "${EVAL_PROCESSES:-16}" 2>&1 | \
+          tee -a "${log_root}/eval/eval30_fixed_${target}.log"
+    status="${PIPESTATUS[0]}"
+    echo "Fixed-K eval30 status (${target}): ${status}"
+    return "${status}"
+  }
+
   status() {
     local item run_dir
     for item in A1 A4 A8 A12 A16 A20; do
@@ -254,9 +286,10 @@ PY
     smoke) train_target smoke ;;
     train) train_target formal ;;
     eval-current) eval_current ;;
+    eval-fixed) eval_fixed ;;
     status) status ;;
     *)
-      echo "Usage: $0 {describe|audit|smoke|train|eval-current|status} [A1|A4|A8|A12|A16|A20]" >&2
+      echo "Usage: $0 {describe|audit|smoke|train|eval-current|eval-fixed|status} [A1|A4|A8|A12|A16|A20]" >&2
       return 2
       ;;
   esac

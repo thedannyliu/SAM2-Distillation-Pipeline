@@ -73,15 +73,21 @@ def summarize(
     root: Path,
     models: tuple[str, ...] = DEFAULT_MODELS,
     *,
+    intervals: dict[str, int] | None = None,
     bootstrap_samples: int = 10_000,
     seed: int = 250107256,
 ) -> dict:
+    intervals = intervals or {
+        model: 1 if model in {"O0", "W0"} else 4 for model in models
+    }
+    if set(intervals) != set(models):
+        raise ValueError("intervals must define exactly one interval per model")
     phase_rows = []
     video_metrics: dict[str, dict[str, dict[str, float]]] = {}
     age_rows = []
     model_rows = []
     for model in models:
-        interval = 1 if model in {"O0", "W0"} else 4
+        interval = intervals[model]
         phases = range(interval)
         phase_video = {}
         phase_timing = []
@@ -147,6 +153,17 @@ def summarize(
                 "wall_mean_ms": float(
                     np.mean([row["wall_ms_per_frame"] for row in phase_timing])
                 ),
+                "parallel_throughput_ms": float(
+                    np.mean(
+                        [
+                            row.get(
+                                "parallel_throughput_ms_per_frame",
+                                row["wall_ms_per_frame"],
+                            )
+                            for row in phase_timing
+                        ]
+                    )
+                ),
             }
         )
 
@@ -186,15 +203,16 @@ def _markdown(payload: dict) -> str:
         "",
         "Primary metric: per-video metrics averaged over all fixed phases, then macro-averaged over videos.",
         "",
-        "| Model | R | Videos | J&F | J | F | Refresh % | Model mean ms | Model P95 max ms | Wall mean ms |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Model | R | Videos | J&F | J | F | Refresh % | Model mean ms | Model P95 max ms | Single-stream wall ms | 4-GPU throughput ms/frame |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in payload["models"]:
         lines.append(
             f"| {row['model']} | {row['interval']} | {row['videos']} | "
             f"{row['J&F']:.2f} | {row['J']:.2f} | {row['F']:.2f} | "
             f"{row['refresh_pct']:.2f} | {row['model_mean_ms']:.2f} | "
-            f"{row['model_p95_max_ms']:.2f} | {row['wall_mean_ms']:.2f} |"
+            f"{row['model_p95_max_ms']:.2f} | {row['wall_mean_ms']:.2f} | "
+            f"{row['parallel_throughput_ms']:.2f} |"
         )
     lines.extend(["", "## Paired J&F differences", ""])
     lines.extend(
@@ -228,11 +246,30 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--models", default=",".join(DEFAULT_MODELS))
+    parser.add_argument(
+        "--model-interval",
+        action="append",
+        default=[],
+        metavar="MODEL=K",
+    )
     parser.add_argument("--bootstrap-samples", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=250107256)
     args = parser.parse_args()
+    models = tuple(value for value in args.models.split(",") if value)
+    if args.model_interval:
+        intervals = {
+            model: int(interval)
+            for model, interval in (
+                value.split("=", 1) for value in args.model_interval
+            )
+        }
+    else:
+        intervals = None
     payload = summarize(
         args.root,
+        models=models,
+        intervals=intervals,
         bootstrap_samples=args.bootstrap_samples,
         seed=args.seed,
     )

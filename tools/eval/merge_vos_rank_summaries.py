@@ -37,6 +37,8 @@ def main() -> None:
     model_kinds = {row.get("model_kind") for row in ranks}
     build_experiments = {row.get("build", {}).get("experiment") for row in ranks}
     build_intervals = {row.get("build", {}).get("refresh_interval") for row in ranks}
+    build_checkpoints = {row.get("build", {}).get("checkpoint") for row in ranks}
+    refresh_phases = {row.get("two_clock_refresh_phase") for row in ranks}
     if any(
         len(values) != 1
         for values in (
@@ -46,30 +48,54 @@ def main() -> None:
             model_kinds,
             build_experiments,
             build_intervals,
+            build_checkpoints,
+            refresh_phases,
         )
     ):
         raise RuntimeError("rank summaries disagree on evaluation protocol")
+    experiment = build_experiments.pop()
+    interval = build_intervals.pop()
+    checkpoint = build_checkpoints.pop()
+    model_mean_ms = model_latency_sum_ms / max(timed_frames, 1)
+    rank_p95 = [row.get("model_frame_p95_ms") for row in ranks]
+    single_stream_wall_ms = gpu_seconds * 1000.0 / max(frames, 1)
+    parallel_wall_ms = wall_seconds * 1000.0 / max(frames, 1)
     summary = {
         "status": "pass",
         "model_kind": model_kinds.pop(),
-        "build_experiment": build_experiments.pop(),
-        "build_refresh_interval": build_intervals.pop(),
+        "build_experiment": experiment,
+        "build_refresh_interval": interval,
+        "build": {
+            "experiment": experiment,
+            "refresh_interval": interval,
+            "checkpoint": checkpoint,
+        },
         "world_size": expected,
         "videos": videos,
+        "video_names": sorted(
+            name for row in ranks for name in row.get("video_names", [])
+        ),
         "processed_frames": frames,
         "gpu_seconds": gpu_seconds,
         "parallel_wall_seconds": wall_seconds,
-        "single_stream_wall_ms_per_frame": gpu_seconds * 1000.0 / max(frames, 1),
-        "parallel_throughput_ms_per_frame": wall_seconds * 1000.0 / max(frames, 1),
+        "single_stream_wall_ms_per_frame": single_stream_wall_ms,
+        "parallel_throughput_ms_per_frame": parallel_wall_ms,
+        "wall_ms_per_frame": single_stream_wall_ms,
         "model_timed_frames": timed_frames,
-        "single_stream_model_mean_ms": model_latency_sum_ms / max(timed_frames, 1),
+        "single_stream_model_mean_ms": model_mean_ms,
+        "model_frame_mean_ms": model_mean_ms,
+        "model_frame_p95_ms": max(value for value in rank_p95 if value is not None),
         "rank_model_median_ms": [row["model_frame_median_ms"] for row in ranks],
-        "rank_model_p95_ms": [row.get("model_frame_p95_ms") for row in ranks],
+        "rank_model_p95_ms": rank_p95,
         "rank_summaries": [str(path) for path in paths],
+        "num_prediction_pngs": sum(
+            int(row.get("num_prediction_pngs", 0)) for row in ranks
+        ),
         "two_clock_encoder_calls": encoder_calls,
         "two_clock_tracking_frames": tracking_frames,
         "two_clock_refresh_rate": encoder_calls / max(tracking_frames, 1),
         "two_clock_refresh_phase_mode": phase_modes.pop(),
+        "two_clock_refresh_phase": refresh_phases.pop(),
         "two_clock_refresh_phase_seed": phase_seeds.pop(),
         "offload_video_to_cpu": video_storage.pop(),
     }
