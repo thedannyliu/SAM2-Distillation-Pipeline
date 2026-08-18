@@ -21,6 +21,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 
+def trainable_parameter_names(model: torch.nn.Module) -> set[str]:
+    """Return the exact student parameters that may receive optimizer updates."""
+    return {
+        name
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    }
+
+
 def fraction_checkpoint_steps(spec: str, steps_per_epoch: int) -> dict[int, float]:
     """Map completed optimizer steps to selection-only epoch fractions."""
     if not spec.strip():
@@ -333,6 +342,16 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
         if initializer is not None:
             logging.info("Loading task model checkpoint initializer")
             self.model = initializer(model=self.model)
+
+    original_construct_optimizer = trainer_module.construct_optimizer
+
+    def construct_trainable_optimizer(model, *args, **kwargs):
+        kwargs["param_allowlist"] = trainable_parameter_names(model)
+        # The upstream validator compares against every registered parameter,
+        # including intentionally frozen modules. The stricter repo-owned audit
+        # below validates the final optimizer membership before step zero.
+        kwargs["validate_param_groups"] = False
+        return original_construct_optimizer(model, *args, **kwargs)
 
     original_run_step = trainer_module.Trainer._run_step
     original_train_epoch = trainer_module.Trainer.train_epoch
@@ -708,6 +727,7 @@ def patch_sam2_training_runtime(wandb_run=None) -> dict:
 
     trainer_module.print_model_summary = compact_model_summary
     trainer_module.log_env_variables = lambda: None
+    trainer_module.construct_optimizer = construct_trainable_optimizer
     trainer_module.Trainer._call_model_initializer = compact_model_initializer
     trainer_module.Trainer._run_step = run_step_with_wandb
     trainer_module.Trainer.train_epoch = train_epoch_with_fraction_checkpoints
