@@ -11,7 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest>=8", "torch", "numpy", "pillow", "pandas", "pyarrow",
-        "opencv-python-headless", "omegaconf", "pycocotools"]
+        "opencv-python-headless", "omegaconf", "pycocotools", "tqdm"]
 
 [tool.setuptools.packages.find]
 include = ["sam2_distill*"]
