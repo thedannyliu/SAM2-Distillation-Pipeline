@@ -241,7 +241,7 @@ mkdir -p /user-volume/sam2_tv_multiplex_v1_logs
 GPUS=0,1,2,3 \
 WANDB_MODE=online \
 SKIP_DONE=1 \
-scripts/company/70_run_sam2_tv_multiplex_v1.sh all 2>&1 | \
+scripts/experiments/70_run_sam2_tv_multiplex_v1.sh all 2>&1 | \
 tee "/user-volume/sam2_tv_multiplex_v1_logs/all_$(date +%Y%m%d_%H%M%S).log"
 echo "SAM2-TV multiplex status: ${PIPESTATUS[0]}"
 ```
@@ -262,7 +262,7 @@ checkpoint and cohort:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 SAM2_TV_COMPILE=1 \
 WANDB_MODE=online \
-scripts/company/70_run_sam2_tv_multiplex_v1.sh latency-compiled 2>&1 | \
+scripts/experiments/70_run_sam2_tv_multiplex_v1.sh latency-compiled 2>&1 | \
 tee "/user-volume/sam2_tv_multiplex_v1_logs/latency_compiled_$(date +%Y%m%d_%H%M%S).log"
 echo "Compiled latency status: ${PIPESTATUS[0]}"
 ```

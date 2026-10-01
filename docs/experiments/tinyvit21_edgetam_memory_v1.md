@@ -24,10 +24,10 @@ full SA-V and EdgeTAM memory components on one 4xH100 node.
 | Tracking | W&B `tinyvit21-edgetam-memory-v1` plus the existing TensorBoard/checkpoint directory |
 
 The implementation reuses
-[`49_run_edgetam_memory_ablation.sh`](../../scripts/company/49_run_edgetam_memory_ablation.sh)
+[`49_run_edgetam_memory_ablation.sh`](../../scripts/lib/train_eval_engine.sh)
 for model construction, checkpoint resume, and evaluation. The foreground
 orchestrator is
-[`69_run_tinyvit21_edgetam_memory_v1.sh`](../../scripts/company/69_run_tinyvit21_edgetam_memory_v1.sh).
+[`69_run_tinyvit21_edgetam_memory_v1.sh`](../../scripts/experiments/69_run_tinyvit21_edgetam_memory_v1.sh).
 Official temporal tensor selection and coherent checkpoint transfer live in
 [`task_finetune.py`](../../sam2_distill/models/task_finetune.py). Trainable-module
 selection lives in
@@ -159,7 +159,7 @@ SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill \
 SAV_ROOT=/group-volume/danny-dataset/SA-V \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_train_6fps_full.parquet \
 WANDB_MODE=online \
-scripts/company/69_run_tinyvit21_edgetam_memory_v1.sh all 2>&1 | \
+scripts/experiments/69_run_tinyvit21_edgetam_memory_v1.sh all 2>&1 | \
 tee "/user-volume/tv21_edgetam_memory_logs/all_$(date +%Y%m%d_%H%M%S).log"
 echo "Pipeline status: ${PIPESTATUS[0]}"
 ```
@@ -176,8 +176,8 @@ TensorBoard directory, and run directory.
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-scripts/company/69_run_tinyvit21_edgetam_memory_v1.sh status
-scripts/company/69_run_tinyvit21_edgetam_memory_v1.sh summarize
+scripts/experiments/69_run_tinyvit21_edgetam_memory_v1.sh status
+scripts/experiments/69_run_tinyvit21_edgetam_memory_v1.sh summarize
 ```
 
 Final metrics are expected under:

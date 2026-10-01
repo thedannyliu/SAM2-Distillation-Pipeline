@@ -31,3 +31,6 @@ docs/EdgeTAM/
 
 # Third-party checkouts are created by setup scripts and should stay untracked.
 /third_party/
+
+# Local Python package metadata
+*.egg-info/

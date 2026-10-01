@@ -78,7 +78,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 
 DATA_ROOT=/group-volume/danny-dataset \
-scripts/company/26_run_sam31_stage1_tv21.sh setup
+scripts/experiments/26_run_sam31_stage1_tv21.sh setup
 ```
 
 Run checkpoint/shape inspection on at least one node:
@@ -87,7 +87,7 @@ Run checkpoint/shape inspection on at least one node:
 DATA_ROOT=/group-volume/danny-dataset \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
 GPUS=0 \
-scripts/company/26_run_sam31_stage1_tv21.sh inspect
+scripts/experiments/26_run_sam31_stage1_tv21.sh inspect
 ```
 
 Verify batch size 4 before starting all queues:
@@ -98,7 +98,7 @@ MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6f
 GPUS=0 \
 SMOKE_BATCH_SIZE=4 \
 WANDB_NAME=sam31-tv21m-b4-smoke \
-scripts/company/26_run_sam31_stage1_tv21.sh smoke
+scripts/experiments/26_run_sam31_stage1_tv21.sh smoke
 ```
 
 If this OOMs, change `BATCH_SIZE=4` to `BATCH_SIZE=2` in all three queue scripts
@@ -114,7 +114,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 DATA_ROOT=/group-volume/danny-dataset \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
 GPUS=0,1,2,3 \
-scripts/company/27_queue_sam31_4gpu_cosine.sh
+scripts/experiments/27_queue_sam31_4gpu_cosine.sh
 ```
 
 Node 2:
@@ -124,7 +124,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 DATA_ROOT=/group-volume/danny-dataset \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
 GPUS=0,1,2,3 \
-scripts/company/28_queue_sam31_4gpu_interface.sh
+scripts/experiments/28_queue_sam31_4gpu_interface.sh
 ```
 
 Node 3:
@@ -134,7 +134,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 DATA_ROOT=/group-volume/danny-dataset \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
 GPUS=0,1,2,3 \
-scripts/company/29_queue_sam31_4gpu_relations.sh
+scripts/experiments/29_queue_sam31_4gpu_relations.sh
 ```
 
 Rerunning the same queue command resumes the active experiment from `last.pt` and

@@ -111,7 +111,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
 mkdir -p /user-volume/log/eventsam2_coast_v2
 
-scripts/company/73_run_eventsam2_coast_screen.sh screen 2>&1 | \
+scripts/experiments/73_run_eventsam2_coast_screen.sh screen 2>&1 | \
   tee /user-volume/log/eventsam2_coast_v2/selection_screen32.log
 echo "Selection screen status: ${PIPESTATUS[0]}"
 ```
@@ -127,7 +127,7 @@ Only after the screen is complete should the same frozen action be evaluated
 on full validation:
 
 ```bash
-scripts/company/73_run_eventsam2_coast_screen.sh val 2>&1 | \
+scripts/experiments/73_run_eventsam2_coast_screen.sh val 2>&1 | \
   tee /user-volume/log/eventsam2_coast_v2/sav_val.log
 echo "Full sav_val status: ${PIPESTATUS[0]}"
 ```

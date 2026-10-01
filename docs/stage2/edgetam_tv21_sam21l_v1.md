@@ -204,7 +204,7 @@ global DDP batch, and image-encoder microbatch must be recorded separately.
 The probe entry point is:
 
 ```text
-scripts/company/71_probe_edgetam_tv21_batch.sh
+scripts/edgetam/probe_batch_capacity.sh
 ```
 
 Its generated summary is:
@@ -286,7 +286,7 @@ correction frames, and seven correction clicks. The image stage uses up to
 eight objects. Object-pointer KD and gradient accumulation remain disabled.
 
 The dedicated foreground entry point is
-`scripts/company/72_run_edgetam_tv21_sam21l_v1.sh`. It provides `describe`,
+`scripts/edgetam/run_tv21_compressed_memory.sh`. It provides `describe`,
 `audit`, a bounded one-update-per-stage `smoke`, individual stage actions,
 `all`, `test`, and `status`. The formal runner includes the separate T8
 mask-decoder LR group and explicit video augmentation in each resolved config.

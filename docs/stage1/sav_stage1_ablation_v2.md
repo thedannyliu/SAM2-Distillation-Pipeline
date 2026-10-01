@@ -43,7 +43,7 @@ Audit a newly mounted release before generating manifests or starting jobs:
 ```bash
 SAV_ROOT=/mnt/data/danny-dataset/SA-V \
 NUM_WORKERS=64 \
-scripts/company/31_audit_mounted_sav_release.sh
+scripts/experiments/31_audit_mounted_sav_release.sh
 ```
 
 The default audit inventories every file and decodes deterministic samples.
@@ -67,7 +67,7 @@ CACHE_NAME=stage1_vbal16_6fps \
 TRAIN_FRAMES_PER_VIDEO=16 \
 VAL_FRAMES_PER_VIDEO=8 \
 NUM_WORKERS=64 \
-scripts/company/18_prepare_sav_stage1_frame_cache.sh
+scripts/core/data_prepare_frame_cache.sh
 ```
 
 Outputs:
@@ -100,7 +100,7 @@ REUSE_TRAIN_MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stag
 DATA_ROOT=/group-volume/danny-dataset \
 SAV_ROOT=/mnt/data/danny-dataset/SA-V \
 NUM_WORKERS=64 \
-scripts/company/18_prepare_sav_stage1_frame_cache.sh
+scripts/core/data_prepare_frame_cache.sh
 ```
 
 ## Run Ablations
@@ -115,12 +115,12 @@ non-overlapping run directories, keep W&B enabled, and save only `last.pt` and
 
 ```bash
 # 8 GPU node
-GPUS=0,1,2,3,4,5,6,7 scripts/company/20_queue_sav_stage1_ablation_8gpu.sh
+GPUS=0,1,2,3,4,5,6,7 scripts/experiments/20_queue_sav_stage1_ablation_8gpu.sh
 
 # 4 GPU nodes
-GPUS=0,1,2,3 scripts/company/21_queue_sav_stage1_ablation_4gpu_size.sh
-GPUS=0,1,2,3 scripts/company/22_queue_sav_stage1_ablation_4gpu_loss.sh
-GPUS=0,1,2,3 scripts/company/23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh
+GPUS=0,1,2,3 scripts/experiments/21_queue_sav_stage1_ablation_4gpu_size.sh
+GPUS=0,1,2,3 scripts/experiments/22_queue_sav_stage1_ablation_4gpu_loss.sh
+GPUS=0,1,2,3 scripts/experiments/23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh
 ```
 
 After each experiment, the launcher evaluates `best.pt` on the official SA-V
@@ -150,7 +150,7 @@ EXPERIMENT=tv21_proj_sam21l_msehr \
 GPUS=0,1,2,3,4,5,6,7 \
 EPOCHS=5 \
 NUM_WORKERS=16 \
-scripts/company/19_run_sav_stage1_ablation.sh
+scripts/experiments/19_run_sav_stage1_ablation.sh
 ```
 
 Example 4-GPU run:
@@ -160,7 +160,7 @@ EXPERIMENT=tv11_proj_sam21l_msehr \
 GPUS=0,1,2,3 \
 EPOCHS=5 \
 NUM_WORKERS=16 \
-scripts/company/19_run_sav_stage1_ablation.sh
+scripts/experiments/19_run_sav_stage1_ablation.sh
 ```
 
 Priority presets:

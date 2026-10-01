@@ -36,7 +36,7 @@ this Stage 1 flow uses only images for encoder feature distillation.
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 
-bash scripts/company/00_setup_env.sh \
+bash scripts/core/setup_env.sh \
   --sam2-upstream /user-volume/repo/facebookresearch-sam2 \
   --requirements requirements-stage1.txt
 
@@ -47,7 +47,7 @@ wandb login
 Download weights if they are not already present:
 
 ```bash
-bash scripts/company/01_download_weights.sh \
+bash scripts/core/download_weights.sh \
   --out /group-volume/danny-dataset/sam2_distill/checkpoints
 ```
 
@@ -66,7 +66,7 @@ not download teacher embeddings.
 ```bash
 HF_MAX_IMAGES=25000 \
 HF_MAX_GB=0 \
-scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh download
+scripts/core/stage1_distill_encoder.sh download
 ```
 
 Use `HF_MAX_GB` to cap local image storage:
@@ -74,7 +74,7 @@ Use `HF_MAX_GB` to cap local image storage:
 ```bash
 HF_MAX_IMAGES=200000 \
 HF_MAX_GB=180 \
-scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh download
+scripts/core/stage1_distill_encoder.sh download
 ```
 
 Outputs:
@@ -111,7 +111,7 @@ BATCH_SIZE=1 \
 MAX_STEPS=10000 \
 PROJECTION_WARMUP_STEPS=1000 \
 LR_WARMUP_STEPS=1000 \
-scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh train
+scripts/core/stage1_distill_encoder.sh train
 ```
 
 Four GPUs:
@@ -124,7 +124,7 @@ BATCH_SIZE=1 \
 MAX_STEPS=10000 \
 PROJECTION_WARMUP_STEPS=1000 \
 LR_WARMUP_STEPS=1000 \
-scripts/company/11_run_sa1b_hf_online_teacher_stage1_21m.sh train
+scripts/core/stage1_distill_encoder.sh train
 ```
 
 If `train` reports a missing manifest, run `download` first. `train` now checks

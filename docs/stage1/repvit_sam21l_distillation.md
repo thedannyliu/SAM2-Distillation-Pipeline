@@ -19,7 +19,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only origin edgetam-tinyvit-pipeline
 
 HF_XET_HIGH_PERFORMANCE=1 \
-scripts/company/37_download_repvit_pretrained.sh
+scripts/experiments/37_download_repvit_pretrained.sh
 ```
 
 The command writes checkpoints, Hugging Face configs, SHA256 files, and model
@@ -61,7 +61,7 @@ LOG="/user-volume/repvit_logs/repvit_stage1_$(date +%Y%m%d_%H%M%S).log"
 GPUS=0,1,2,3 \
 FULL_EVAL_GPUS=0,1,2,3 \
 WANDB_MODE=online \
-scripts/company/38_run_repvit_sam21l_stage1.sh all \
+scripts/experiments/38_run_repvit_sam21l_stage1.sh all \
 2>&1 | tee "$LOG"
 
 STATUS=${PIPESTATUS[0]}

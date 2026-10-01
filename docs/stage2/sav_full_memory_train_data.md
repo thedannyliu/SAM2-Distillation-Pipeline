@@ -44,7 +44,7 @@ mkdir -p /user-volume/sav_full_memory_logs
 # Set this only when the company Data Lake requires a custom endpoint.
 # export S3_ENDPOINT_URL="https://company-s3-endpoint"
 
-scripts/company/65_prepare_full_sav_memory_data.sh all 2>&1 | \
+scripts/core/data_prepare_sav.sh all 2>&1 | \
 tee "/user-volume/sav_full_memory_logs/all_$(date +%Y%m%d_%H%M%S).log"
 echo "Full preparation status: ${PIPESTATUS[0]}"
 ```
@@ -52,12 +52,12 @@ echo "Full preparation status: ${PIPESTATUS[0]}"
 The same workflow can be resumed one stage at a time:
 
 ```bash
-scripts/company/65_prepare_full_sav_memory_data.sh source-audit
-scripts/company/65_prepare_full_sav_memory_data.sh source-repair
-scripts/company/65_prepare_full_sav_memory_data.sh sync
-scripts/company/65_prepare_full_sav_memory_data.sh prepare
-scripts/company/65_prepare_full_sav_memory_data.sh audit
-scripts/company/65_prepare_full_sav_memory_data.sh cohorts
+scripts/core/data_prepare_sav.sh source-audit
+scripts/core/data_prepare_sav.sh source-repair
+scripts/core/data_prepare_sav.sh sync
+scripts/core/data_prepare_sav.sh prepare
+scripts/core/data_prepare_sav.sh audit
+scripts/core/data_prepare_sav.sh cohorts
 ```
 
 `source-audit` lists every object under the Data Lake `sav_train` prefix and
@@ -77,10 +77,10 @@ For four-node frame extraction, each node owns one deterministic shard. A
 failed shard can be rerun directly; completed shard markers remain untouched:
 
 ```bash
-NUM_WORKERS=64 scripts/company/66_prepare_full_sav_frames_4node.sh node 4
-scripts/company/66_prepare_full_sav_frames_4node.sh status
-scripts/company/66_prepare_full_sav_frames_4node.sh merge
-scripts/company/65_prepare_full_sav_memory_data.sh audit
+NUM_WORKERS=64 scripts/core/data_prepare_sav_frames_4node.sh node 4
+scripts/core/data_prepare_sav_frames_4node.sh status
+scripts/core/data_prepare_sav_frames_4node.sh merge
+scripts/core/data_prepare_sav.sh audit
 ```
 
 ## Training selection

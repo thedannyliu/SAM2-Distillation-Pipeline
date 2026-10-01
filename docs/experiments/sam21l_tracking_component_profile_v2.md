@@ -40,7 +40,7 @@ cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
 mkdir -p /user-volume/log/sam21l_tracking_component_profile_v2
 
-GPU=0 scripts/company/74_profile_sam2_tracking_components.sh 2>&1 | \
+GPU=0 scripts/deploy/profile_tracking_components.sh 2>&1 | \
   tee /user-volume/log/sam21l_tracking_component_profile_v2/run.log
 echo "SAM2.1-L profile status: ${PIPESTATUS[0]}"
 ```

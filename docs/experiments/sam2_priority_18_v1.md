@@ -136,15 +136,15 @@ multiplex fixed cost at low occupancy.
 ## Entry point
 
 ```bash
-scripts/company/68_run_sam2_priority_18.sh describe
-scripts/company/68_run_sam2_priority_18.sh audit
-scripts/company/68_run_sam2_priority_18.sh node 1
-scripts/company/68_run_sam2_priority_18.sh summarize
+scripts/experiments/68_run_sam2_priority_18.sh describe
+scripts/experiments/68_run_sam2_priority_18.sh audit
+scripts/experiments/68_run_sam2_priority_18.sh node 1
+scripts/experiments/68_run_sam2_priority_18.sh summarize
 ```
 
 Primary implementation paths:
 
-- Priority queues: `scripts/company/68_run_sam2_priority_18.sh`
+- Priority queues: `scripts/experiments/68_run_sam2_priority_18.sh`
 - Original experiment definitions: `tools/experiments/sam2_full_data_50.py`
-- Full-data pipeline: `scripts/company/67_run_sam2_full_data_50.sh`
-- Training and evaluation: `scripts/company/49_run_edgetam_memory_ablation.sh`
+- Full-data pipeline: `scripts/experiments/67_run_sam2_full_data_50.sh`
+- Training and evaluation: `scripts/lib/train_eval_engine.sh`

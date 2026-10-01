@@ -9,7 +9,7 @@ git pull origin edgetam-tinyvit-pipeline
 
 SAV_ROOT=/mnt/data/danny-dataset/SA-V \
 RUNS_ROOTS=/group-volume/danny-dataset/sam2_distill/runs:/mnt/data/danny-dataset/sam2_distill/runs \
-scripts/company/32_audit_stage1_run_progress.sh
+scripts/experiments/32_audit_stage1_run_progress.sh
 ```
 
 The audit is read-only. It reads checkpoint metadata and local W&B run IDs but
@@ -55,7 +55,7 @@ and discovered legacy runs, use:
 ```bash
 SAV_ROOT=/mnt/data/danny-dataset/SA-V \
 RUNS_ROOTS=/group-volume/danny-dataset/sam2_distill/runs:/mnt/data/danny-dataset/sam2_distill/runs \
-scripts/company/35_report_stage1_experiment_metrics.sh
+scripts/experiments/35_report_stage1_experiment_metrics.sh
 ```
 
 This command is read-only and does not require a GPU. It writes:
@@ -82,7 +82,7 @@ state from `best.pt`, provide one checkpoint for each TinyViT variant:
 TV21_CHECKPOINT=/path/to/tv21m/checkpoints/best.pt \
 TV11_CHECKPOINT=/path/to/tv11m/checkpoints/best.pt \
 TV5_CHECKPOINT=/path/to/tv5m/checkpoints/best.pt \
-scripts/company/36_measure_sam2_hybrid_sizes.sh
+scripts/experiments/36_measure_sam2_hybrid_sizes.sh
 ```
 
 The report separates the TinyViT image encoder from the shared SAM2.1
@@ -107,10 +107,10 @@ Prepare the mounted manifest once before starting the recovery lanes:
 
 ```bash
 SAV_ROOT=/mnt/data/danny-dataset/SA-V \
-scripts/company/33_prepare_mounted_sav_stage1_manifest.sh
+scripts/experiments/33_prepare_mounted_sav_stage1_manifest.sh
 ```
 
-`scripts/company/34_run_stage1_recovery_lane.sh` is intentionally strict. For
+`scripts/experiments/34_run_stage1_recovery_lane.sh` is intentionally strict. For
 every registered experiment assigned to the lane it performs these steps in
 order:
 

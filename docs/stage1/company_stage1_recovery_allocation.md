@@ -15,7 +15,7 @@ git pull origin edgetam-tinyvit-pipeline
 
 SAV_ROOT=/mnt/data/danny-dataset/SA-V \
 NUM_WORKERS=64 \
-scripts/company/33_prepare_mounted_sav_stage1_manifest.sh
+scripts/experiments/33_prepare_mounted_sav_stage1_manifest.sh
 ```
 
 This preserves the corrected manifest row order and exact 807,248-frame train
@@ -38,7 +38,7 @@ Runs the two incomplete experiments from the original 8-GPU queue:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 WANDB_MODE=online GPUS=0,1,2,3,4,5,6,7 \
-scripts/company/34_run_stage1_recovery_lane.sh 8gpu_primary
+scripts/experiments/34_run_stage1_recovery_lane.sh 8gpu_primary
 ```
 
 ### 8 H100 node 2
@@ -52,12 +52,12 @@ git pull origin edgetam-tinyvit-pipeline
 mkdir -p /user-volume/stage1_recovery_logs
 
 WANDB_MODE=online GPUS=0,1,2,3 \
-scripts/company/34_run_stage1_recovery_lane.sh lane1 \
+scripts/experiments/34_run_stage1_recovery_lane.sh lane1 \
   2>&1 | tee /user-volume/stage1_recovery_logs/lane1.log &
 pid1=$!
 
 WANDB_MODE=online GPUS=4,5,6,7 \
-scripts/company/34_run_stage1_recovery_lane.sh lane2 \
+scripts/experiments/34_run_stage1_recovery_lane.sh lane2 \
   2>&1 | tee /user-volume/stage1_recovery_logs/lane2.log &
 pid2=$!
 
@@ -71,7 +71,7 @@ wait "${pid2}"
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 WANDB_MODE=online GPUS=0,1,2,3 \
-scripts/company/34_run_stage1_recovery_lane.sh lane3
+scripts/experiments/34_run_stage1_recovery_lane.sh lane3
 ```
 
 ### 4 H100 node 2
@@ -80,7 +80,7 @@ scripts/company/34_run_stage1_recovery_lane.sh lane3
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 WANDB_MODE=online GPUS=0,1,2,3 \
-scripts/company/34_run_stage1_recovery_lane.sh lane4
+scripts/experiments/34_run_stage1_recovery_lane.sh lane4
 ```
 
 ### 4 H100 node 3
@@ -89,7 +89,7 @@ scripts/company/34_run_stage1_recovery_lane.sh lane4
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 WANDB_MODE=online GPUS=0,1,2,3 \
-scripts/company/34_run_stage1_recovery_lane.sh lane5
+scripts/experiments/34_run_stage1_recovery_lane.sh lane5
 ```
 
 The lane launcher reads `last.pt` before every run. A run that has already

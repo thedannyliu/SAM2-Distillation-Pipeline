@@ -49,7 +49,7 @@ numerically equated with the paper's standard first-frame-mask VOS numbers.
 
 ## Driver and Outputs
 
-- Driver: `scripts/company/49_run_edgetam_memory_ablation.sh`
+- Driver: `scripts/lib/train_eval_engine.sh`
 - Run root:
   `/group-volume/danny-dataset/sam2_distill/runs/edgetam_recipe_diagnostics_v5`
 - W&B project: `edgetam-recipe-diagnostics-v5`
@@ -59,9 +59,9 @@ numerically equated with the paper's standard first-frame-mask VOS numbers.
 Before allocating GPUs, inspect the fully resolved experiment controls:
 
 ```bash
-scripts/company/49_run_edgetam_memory_ablation.sh describe Q0_official_identity_t8_1ep
-scripts/company/49_run_edgetam_memory_ablation.sh describe Q1_tinyvit_overfit16_t8_500ep
-scripts/company/49_run_edgetam_memory_ablation.sh describe Q2_tinyvit_paper_scaled_sav_t8_5ep
+scripts/lib/train_eval_engine.sh describe Q0_official_identity_t8_1ep
+scripts/lib/train_eval_engine.sh describe Q1_tinyvit_overfit16_t8_500ep
+scripts/lib/train_eval_engine.sh describe Q2_tinyvit_paper_scaled_sav_t8_5ep
 ```
 
 ## 2026-07-28 Results

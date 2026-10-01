@@ -45,7 +45,7 @@ For a fuller repo setup, use the checked-in requirements file without changing
 the container PyTorch runtime:
 
 ```bash
-bash scripts/company/00_setup_env.sh \
+bash scripts/core/setup_env.sh \
   --sam2-upstream /user-volume/repo/facebookresearch-sam2 \
   --requirements requirements-edgetam.txt
 ```
@@ -57,7 +57,7 @@ symlinks so there is no duplicate JPEG storage:
 START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
 MOVE_FRAMES_TO_COMBINED=1 \
-scripts/company/10_run_sav_range_formal_image_encoder.sh prepare
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh prepare
 ```
 
 If any shard still needs frame extraction:
@@ -67,7 +67,7 @@ START_SHARD=0 END_SHARD=18 \
 COMBINED_ROOT=/group-volume/danny-dataset/SA-V/sav000_018_formal \
 EXTRACT_MISSING_FRAMES=1 \
 MOVE_FRAMES_TO_COMBINED=1 \
-scripts/company/10_run_sav_range_formal_image_encoder.sh prepare
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh prepare
 ```
 
 Verify:
@@ -174,7 +174,7 @@ export WANDB_RUN_ID=<id from wandb_run.json>
 Disable W&B if needed:
 
 ```bash
-NO_WANDB=1 scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
+NO_WANDB=1 scripts/experiments/10_run_sav_range_formal_image_encoder.sh 4gpu
 ```
 
 To attach W&B live logging to a run that is already training, use the run id
@@ -218,7 +218,7 @@ WARMUP_EPOCHS=3 \
 FINETUNE_EPOCHS=15 \
 CHECKPOINT_SAVE_FREQ=1 \
 NUM_WORKERS=8 \
-scripts/company/10_run_sav_range_formal_image_encoder.sh 1gpu
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh 1gpu
 ```
 
 Four H100s:
@@ -237,7 +237,7 @@ WARMUP_EPOCHS=3 \
 FINETUNE_EPOCHS=15 \
 CHECKPOINT_SAVE_FREQ=1 \
 NUM_WORKERS=8 \
-scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh 4gpu
 ```
 
 Outputs:
@@ -287,13 +287,13 @@ If warmup already completed and only finetune needs to resume, use the
 finetune-only entrypoint with the same environment variables:
 
 ```bash
-scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu-finetune
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh 4gpu-finetune
 ```
 
 or:
 
 ```bash
-scripts/company/10_run_sav_range_formal_image_encoder.sh 1gpu-finetune
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh 1gpu-finetune
 ```
 
 This mode requires `<RUN_DIR>/checkpoints/checkpoint.pt` to exist and does not
@@ -366,7 +366,7 @@ WARMUP_EPOCHS=3 \
 FINETUNE_EPOCHS=15 \
 CHECKPOINT_SAVE_FREQ=1 \
 NUM_WORKERS=8 \
-scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh 4gpu
 ```
 
 Run TinyViT-5M on four H100s:
@@ -387,5 +387,5 @@ WARMUP_EPOCHS=3 \
 FINETUNE_EPOCHS=15 \
 CHECKPOINT_SAVE_FREQ=1 \
 NUM_WORKERS=8 \
-scripts/company/10_run_sav_range_formal_image_encoder.sh 4gpu
+scripts/experiments/10_run_sav_range_formal_image_encoder.sh 4gpu
 ```

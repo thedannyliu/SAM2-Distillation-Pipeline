@@ -40,7 +40,7 @@ evaluation contract must be fixed before interpreting any hybrid.
 
 Implemented entry point:
 
-`scripts/company/53_run_edgetam_official_fidelity.sh gate|all`
+`scripts/edgetam/verify_official_identity.sh gate|all`
 
 ### E1: zero-training encoder swap
 

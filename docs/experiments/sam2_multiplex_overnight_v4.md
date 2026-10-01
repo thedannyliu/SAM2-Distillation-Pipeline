@@ -86,7 +86,7 @@ The summary writes:
 - Screen summary:
   `tools/benchmark/summarize_sam2_multiplex_screen.py`
 - Eight-node runner:
-  `scripts/company/64_run_sam2_multiplex_overnight_v4.sh`
+  `scripts/experiments/64_run_sam2_multiplex_overnight_v4.sh`
 
 ## Company commands
 
@@ -97,7 +97,7 @@ the foreground and records live output.
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
 mkdir -p /user-volume/sam2_multiplex_v4_logs
-scripts/company/64_run_sam2_multiplex_overnight_v4.sh queue 1 2>&1 | \
+scripts/experiments/64_run_sam2_multiplex_overnight_v4.sh queue 1 2>&1 | \
 tee /user-volume/sam2_multiplex_v4_logs/node1_$(date +%Y%m%d_%H%M%S).log
 echo "Node 1 status: ${PIPESTATUS[0]}"
 ```
@@ -109,7 +109,7 @@ After all queues return:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-scripts/company/64_run_sam2_multiplex_overnight_v4.sh summarize 2>&1 | \
+scripts/experiments/64_run_sam2_multiplex_overnight_v4.sh summarize 2>&1 | \
 tee /user-volume/sam2_multiplex_v4_logs/summary_$(date +%Y%m%d_%H%M%S).log
 echo "Summary status: ${PIPESTATUS[0]}"
 cat /danny-dataset/sam2_distill/runs/sam2_multiplex_overnight_v4/comparison/screen_results.md
@@ -123,7 +123,7 @@ Promote only variants listed in `promotion_candidates.txt`:
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 VARIANT="replace_with_one_candidate"
-scripts/company/64_run_sam2_multiplex_overnight_v4.sh promote "$VARIANT" 2>&1 | \
+scripts/experiments/64_run_sam2_multiplex_overnight_v4.sh promote "$VARIANT" 2>&1 | \
 tee "/user-volume/sam2_multiplex_v4_logs/promote_${VARIANT}_$(date +%Y%m%d_%H%M%S).log"
 echo "Promotion status: ${PIPESTATUS[0]}"
 ```

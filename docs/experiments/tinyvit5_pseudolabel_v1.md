@@ -59,8 +59,8 @@ Run root:
 Driver:
 
 ```bash
-scripts/company/58_run_tinyvit5_pseudolabel_lane.sh describe
-scripts/company/58_run_tinyvit5_pseudolabel_lane.sh run
+scripts/experiments/58_run_tinyvit5_pseudolabel_lane.sh describe
+scripts/experiments/58_run_tinyvit5_pseudolabel_lane.sh run
 ```
 
 The lane only starts `PL3` when the val-selected pseudo branch reaches

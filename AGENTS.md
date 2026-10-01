@@ -132,7 +132,7 @@ PACE policy:
 
 Multi-GPU teacher cache policy:
 - Teacher embedding cache uses shard-level data parallelism, not gradient DDP.
-- Use `scripts/company/03_cache_teacher_embeddings.sh --gpus 0,1,2,3` for single-node multi-GPU cache jobs.
+- Use `scripts/experiments/03_cache_teacher_embeddings.sh --gpus 0,1,2,3` for single-node multi-GPU cache jobs.
 - Use `--shard-ids 0-127` to assign an explicit shard range to one job.
 - Use `tools/cache/plan_cache_shards.py --manifest <manifest> --shard-size 512 --num-jobs N` to compute shard ranges for multiple jobs/nodes.
 - Under `torchrun`, each rank writes only shards where `shard_id % WORLD_SIZE == RANK`.
@@ -143,13 +143,13 @@ COCO Stage 1 pilot:
 - Company pilot root: `/group-volume/danny-dataset/sam2_distill`.
 - Use exactly 1000 COCO train images and 100 COCO val images for the quick pilot.
 - Use `docs/stage1/coco_pilot_2xh100.md` as the step-by-step runbook.
-- Use `scripts/company/04_run_coco_stage1_pilot.sh prepare|cache|train|benchmark|all` on the company cluster.
+- Use `scripts/experiments/04_run_coco_stage1_pilot.sh prepare|cache|train|benchmark|all` on the company cluster.
 - Store overlay mask benchmark results under `/group-volume/danny-dataset/sam2_distill/runs/stage1_coco_pilot/benchmark_val/overlays`.
 
 Large-scale Stage 1 MSE speed run:
 - Company root: `/group-volume/danny-dataset/sam2_distill`.
 - Use `docs/stage1/large_scale_mse_8xh100.md` as the step-by-step runbook.
-- Use `scripts/company/05_run_stage1_large_mse_8xh100.sh manifest|plan-cache|cache|train|all`.
+- Use `scripts/experiments/05_run_stage1_large_mse_8xh100.sh manifest|plan-cache|cache|train|all`.
 - Default GPUs: `0,1,2,3,4,5,6,7`.
 - Default objective: MSE on final `image_embed` plus MSE on high-resolution SAM2 features, with L1 and cosine disabled.
 - Default train split is `train`; default validation split for SA-1B manifest is `val_sa1b`.
@@ -159,7 +159,7 @@ Stage 1 data defaults:
 - For the 8xH100 large-scale MSE run, use a deterministic fixed 3% SA-1B downloaded shard subset.
 - Default SA-1B link list: `/group-volume/danny-dataset/SA-1B/sa1b_links.txt`
 - Default 3% image root: `/group-volume/danny-dataset/SA-1B/images_3pct`
-- Use `scripts/company/02_download_sa1b_subset.sh` to select/download/extract the 3% subset.
+- Use `scripts/experiments/02_download_sa1b_subset.sh` to select/download/extract the 3% subset.
 - The SA-1B downloader can fetch the link-list file directly with `SA1B_LINK_URL='<current Meta/fbcdn txt URL>'`; use `REFRESH_LINK_FILE=1` when replacing an expired link list.
 - Default downloader selection: `SA1B_DOWNLOAD_PERCENT=3`, `SA1B_SELECTION_MODE=hash`, `KEEP_ARCHIVES=0`, `EXTRACT_ANNOTATIONS=0`.
 - The downloader removes compressed archives after successful extraction and keeps reproducibility metadata under `/group-volume/danny-dataset/SA-1B/manifests/`.
@@ -224,7 +224,7 @@ Current company artifacts:
 - Full validation split: `/group-volume/danny-dataset/SA-V/sav_val`
 - Full test split: `/group-volume/danny-dataset/SA-V/sav_test`
 - Preparation runbook: `docs/stage2/sav_full_memory_train_data.md`
-- Preparation entry points: `scripts/company/65_prepare_full_sav_memory_data.sh` and `scripts/company/66_prepare_full_sav_frames_4node.sh`
+- Preparation entry points: `scripts/core/data_prepare_sav.sh` and `scripts/core/data_prepare_sav_frames_4node.sh`
 
 Audited release cardinality:
 - 50,453 MP4 files
@@ -257,7 +257,7 @@ as a hard input gate:
 ```bash
 SAV_ROOT=/group-volume/danny-dataset/SA-V \
 SAM2D_ROOT=/group-volume/danny-dataset/sam2_distill \
-scripts/company/65_prepare_full_sav_memory_data.sh audit
+scripts/core/data_prepare_sav.sh audit
 ```
 
 The `/group-volume/danny-dataset` locations above are the writable company

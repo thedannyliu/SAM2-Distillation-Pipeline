@@ -86,7 +86,7 @@ git clone https://github.com/facebookresearch/sam2.git facebookresearch-sam2 || 
 cd $SAM2D_REPO
 git pull origin main
 
-bash scripts/company/00_setup_env.sh \
+bash scripts/core/setup_env.sh \
   --sam2-upstream $SAM2_UPSTREAM
 ```
 
@@ -150,13 +150,13 @@ export SA1B_DOWNLOAD_WORKERS=8
 export KEEP_ARCHIVES=0
 export EXTRACT_ANNOTATIONS=0
 
-DRY_RUN=1 bash scripts/company/02_download_sa1b_subset.sh
+DRY_RUN=1 bash scripts/experiments/02_download_sa1b_subset.sh
 ```
 
 If the dry-run prints a valid shard count, run the actual download:
 
 ```bash
-bash scripts/company/02_download_sa1b_subset.sh
+bash scripts/experiments/02_download_sa1b_subset.sh
 ```
 
 Alternatively, save the URL list manually here:
@@ -198,13 +198,13 @@ export SA1B_DOWNLOAD_WORKERS=8
 export KEEP_ARCHIVES=0
 export EXTRACT_ANNOTATIONS=0
 
-DRY_RUN=1 bash scripts/company/02_download_sa1b_subset.sh
+DRY_RUN=1 bash scripts/experiments/02_download_sa1b_subset.sh
 ```
 
 Run the actual download/extract:
 
 ```bash
-bash scripts/company/02_download_sa1b_subset.sh
+bash scripts/experiments/02_download_sa1b_subset.sh
 ```
 
 Default cleanup behavior:
@@ -276,7 +276,7 @@ export SKIP_FILE_SHA256=1
 export IMAGE_ROOT=/danny-dataset/SA-1B/images_3pct
 export SAMPLE_PERCENT=100
 export VAL_FRACTION=0.1
-bash scripts/company/05_run_stage1_large_mse_8xh100.sh manifest
+bash scripts/experiments/05_run_stage1_large_mse_8xh100.sh manifest
 ```
 
 Check split counts:
@@ -299,7 +299,7 @@ The train split is `train`; validation split is `val_sa1b`. The split is determi
 Estimate shard count:
 
 ```bash
-bash scripts/company/05_run_stage1_large_mse_8xh100.sh plan-cache
+bash scripts/experiments/05_run_stage1_large_mse_8xh100.sh plan-cache
 ```
 
 Cache SAM2.1-Large teacher features on 8 GPUs:
@@ -310,7 +310,7 @@ export SHARD_SIZE=512
 export CACHE_BATCH_SIZE=8
 export CACHE_NUM_WORKERS=8
 
-bash scripts/company/05_run_stage1_large_mse_8xh100.sh cache
+bash scripts/experiments/05_run_stage1_large_mse_8xh100.sh cache
 ```
 
 Each GPU process writes different zarr shards. Completed shards get `.done`; active shards get `.lock`.
@@ -374,7 +374,7 @@ export SAVE_EVERY=5000
 export WANDB_PROJECT=sam2-distill-stage1
 export WANDB_NAME=stage1-mse-sa1b-3pct-8xh100
 
-bash scripts/company/05_run_stage1_large_mse_8xh100.sh train
+bash scripts/experiments/05_run_stage1_large_mse_8xh100.sh train
 ```
 
 Outputs:
@@ -512,7 +512,7 @@ python tools/cache/plan_cache_shards.py \
   --num-jobs 4
 ```
 
-Then run separate cache jobs with `--shard-ids` using `scripts/company/03_cache_teacher_embeddings.sh`.
+Then run separate cache jobs with `--shard-ids` using `scripts/experiments/03_cache_teacher_embeddings.sh`.
 
 ## 10. One Command
 
@@ -527,7 +527,7 @@ export GPUS=0,1,2,3,4,5,6,7
 export WANDB_PROJECT=sam2-distill-stage1
 export WANDB_NAME=stage1-mse-sa1b-3pct-8xh100
 
-bash scripts/company/05_run_stage1_large_mse_8xh100.sh all
+bash scripts/experiments/05_run_stage1_large_mse_8xh100.sh all
 ```
 
 For the first large run, prefer separate `manifest`, `cache`, and `train` steps so failures are isolated.

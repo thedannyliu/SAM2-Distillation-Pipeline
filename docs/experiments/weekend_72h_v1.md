@@ -202,7 +202,7 @@ causal because W1-W4 share the same P3 start and keep BatchNorm frozen.
 ## Reproducibility, retention, and reporting
 
 - Entrypoint:
-  `scripts/company/57_run_weekend_72h_lane.sh`
+  `scripts/experiments/stage2_finetune_capacity_sweep.sh`
 - Suite root:
   `/group-volume/danny-dataset/sam2_distill/runs/weekend_72h_v1`
 - Foreground logs:
@@ -225,8 +225,8 @@ causal because W1-W4 share the same P3 start and keep BatchNorm frozen.
 Use the `describe` action for a no-GPU expansion of every variant:
 
 ```bash
-scripts/company/57_run_weekend_72h_lane.sh edge_official describe
-scripts/company/57_run_weekend_72h_lane.sh edge_compression describe
-scripts/company/57_run_weekend_72h_lane.sh tinyvit describe
-scripts/company/57_run_weekend_72h_lane.sh repvit describe
+scripts/experiments/stage2_finetune_capacity_sweep.sh edge_official describe
+scripts/experiments/stage2_finetune_capacity_sweep.sh edge_compression describe
+scripts/experiments/stage2_finetune_capacity_sweep.sh tinyvit describe
+scripts/experiments/stage2_finetune_capacity_sweep.sh repvit describe
 ```

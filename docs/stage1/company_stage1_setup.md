@@ -28,7 +28,7 @@ git clone https://github.com/thedannyliu/SAM2-Distillation-Pipeline.git
 git clone https://github.com/facebookresearch/sam2.git facebookresearch-sam2
 cd $SAM2D_REPO
 
-bash scripts/company/00_setup_env.sh \
+bash scripts/core/setup_env.sh \
   --sam2-upstream $SAM2_UPSTREAM
 ```
 
@@ -79,7 +79,7 @@ The default script uses `wget` for no-login downloads first. If TinyViT direct d
 
 ```bash
 mkdir -p $SAM2D_ROOT/checkpoints
-bash scripts/company/01_download_weights.sh --out $SAM2D_ROOT/checkpoints
+bash scripts/core/download_weights.sh --out $SAM2D_ROOT/checkpoints
 cat $SAM2D_ROOT/checkpoints/SHA256SUMS.txt
 ```
 
@@ -145,7 +145,7 @@ For a fast PACE smoke test, use a tiny local image folder and `--skip-file-sha25
 Small smoke:
 
 ```bash
-bash scripts/company/03_cache_teacher_embeddings.sh \
+bash scripts/experiments/03_cache_teacher_embeddings.sh \
   --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
   --teacher base_plus \
   --out $SAM2D_ROOT/cache/stage1_teacher/smoke_bplus \
@@ -161,7 +161,7 @@ python tools/cache/inspect_teacher_cache.py \
 Full company cache:
 
 ```bash
-bash scripts/company/03_cache_teacher_embeddings.sh \
+bash scripts/experiments/03_cache_teacher_embeddings.sh \
   --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
   --teacher large \
   --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
@@ -182,7 +182,7 @@ python tools/cache/plan_cache_shards.py \
 Single-node multi-GPU cache job:
 
 ```bash
-bash scripts/company/03_cache_teacher_embeddings.sh \
+bash scripts/experiments/03_cache_teacher_embeddings.sh \
   --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
   --teacher large \
   --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
@@ -200,7 +200,7 @@ rank r handles shard_id where shard_id % world_size == r
 Explicit shard assignment for one job:
 
 ```bash
-bash scripts/company/03_cache_teacher_embeddings.sh \
+bash scripts/experiments/03_cache_teacher_embeddings.sh \
   --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
   --teacher large \
   --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
@@ -213,7 +213,7 @@ bash scripts/company/03_cache_teacher_embeddings.sh \
 One manual GPU:
 
 ```bash
-bash scripts/company/03_cache_teacher_embeddings.sh \
+bash scripts/experiments/03_cache_teacher_embeddings.sh \
   --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
   --teacher large \
   --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \
@@ -226,7 +226,7 @@ bash scripts/company/03_cache_teacher_embeddings.sh \
 For Slurm array jobs, pass `--start-shard $SLURM_ARRAY_TASK_ID --num-shards 1`. For example:
 
 ```bash
-bash scripts/company/03_cache_teacher_embeddings.sh \
+bash scripts/experiments/03_cache_teacher_embeddings.sh \
   --manifest $SAM2D_ROOT/manifests/sa1b_1pct_v1.parquet \
   --teacher large \
   --out $SAM2D_ROOT/cache/stage1_teacher/sam2p1_large_sa1b_1pct_v1 \

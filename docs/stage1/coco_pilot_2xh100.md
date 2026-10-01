@@ -45,7 +45,7 @@ git clone https://github.com/facebookresearch/sam2.git facebookresearch-sam2
 cd $SAM2D_REPO
 git pull origin main
 
-bash scripts/company/00_setup_env.sh \
+bash scripts/core/setup_env.sh \
   --sam2-upstream $SAM2_UPSTREAM
 ```
 
@@ -138,7 +138,7 @@ Keep only the pilot subset under `$SAM2D_ROOT`, then delete zip files and the fu
 ```bash
 cd $SAM2D_REPO
 
-bash scripts/company/04_run_coco_stage1_pilot.sh prepare
+bash scripts/experiments/04_run_coco_stage1_pilot.sh prepare
 ```
 
 This creates exactly 1000 train images and 100 val images in:
@@ -164,7 +164,7 @@ Use both H100s. Each GPU writes separate shards:
 ```bash
 cd $SAM2D_REPO
 
-bash scripts/company/04_run_coco_stage1_pilot.sh cache
+bash scripts/experiments/04_run_coco_stage1_pilot.sh cache
 ```
 
 Inspect cache:
@@ -188,7 +188,7 @@ export MAX_STEPS=1000
 export WANDB_PROJECT=sam2-distill-stage1
 export WANDB_NAME=coco-pilot-stage1
 
-bash scripts/company/04_run_coco_stage1_pilot.sh train
+bash scripts/experiments/04_run_coco_stage1_pilot.sh train
 ```
 
 Outputs:
@@ -225,7 +225,7 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node 2 \
 This uses the trained TinyViT encoder output with the frozen SAM2 decoder and COCO val boxes:
 
 ```bash
-bash scripts/company/04_run_coco_stage1_pilot.sh benchmark
+bash scripts/experiments/04_run_coco_stage1_pilot.sh benchmark
 ```
 
 Results:
@@ -252,7 +252,7 @@ export BATCH_SIZE=4
 export MAX_STEPS=1000
 export WANDB_PROJECT=sam2-distill-stage1
 
-bash scripts/company/04_run_coco_stage1_pilot.sh all
+bash scripts/experiments/04_run_coco_stage1_pilot.sh all
 ```
 
 For first run, prefer running `prepare`, `cache`, `train`, and `benchmark` separately so failures are easier to isolate.

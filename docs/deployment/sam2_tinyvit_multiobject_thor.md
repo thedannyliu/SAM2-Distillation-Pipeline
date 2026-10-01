@@ -242,7 +242,7 @@ The benchmark entry point is
 [`benchmark_sam2_multiobject_scaling.py`](../../tools/benchmark/benchmark_sam2_multiobject_scaling.py).
 It can run legacy or bucket execution and includes a frame-level equivalence
 check. The company wrapper is
-[`59_run_sam2_multiobject_scaling.sh`](../../scripts/company/59_run_sam2_multiobject_scaling.sh).
+[`59_run_sam2_multiobject_scaling.sh`](../../scripts/deploy/benchmark_multiobject_buckets.sh).
 Matched-run comparison is implemented in
 [`summarize_sam2_object_buckets.py`](../../tools/benchmark/summarize_sam2_object_buckets.py).
 Unit coverage for packing, ordering, persistent history, the low-object fast

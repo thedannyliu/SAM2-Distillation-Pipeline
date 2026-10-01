@@ -24,7 +24,7 @@ The source mount must contain these sentinels:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 
-scripts/company/30_stage_complete_sav_in_group.sh preflight
+scripts/experiments/30_stage_complete_sav_in_group.sh preflight
 ```
 
 Preflight prints source sizes and available group-volume capacity. Do not start
@@ -33,7 +33,7 @@ the copy if the source sentinels fail or available capacity is insufficient.
 ## 2. Synchronize raw official splits
 
 ```bash
-scripts/company/30_stage_complete_sav_in_group.sh sync-raw
+scripts/experiments/30_stage_complete_sav_in_group.sh sync-raw
 ```
 
 This uses resumable `rsync` and does not delete target extras or source files.
@@ -42,7 +42,7 @@ Rerunning the command continues or verifies already copied files.
 ## 3. Materialize stable validation frames
 
 ```bash
-scripts/company/30_stage_complete_sav_in_group.sh materialize-val
+scripts/experiments/30_stage_complete_sav_in_group.sh materialize-val
 ```
 
 This reuses all existing train rows and copies only the selected official
@@ -52,7 +52,7 @@ collisions and removing `/mnt` dependencies from Stage 1 validation.
 ## 4. Full audit
 
 ```bash
-scripts/company/30_stage_complete_sav_in_group.sh audit
+scripts/experiments/30_stage_complete_sav_in_group.sh audit
 ```
 
 The audit checks:
@@ -79,5 +79,5 @@ Do not begin the data-lake transfer unless `dataset_complete.ready` exists.
 To run all three mutating/checking steps after preflight:
 
 ```bash
-scripts/company/30_stage_complete_sav_in_group.sh all
+scripts/experiments/30_stage_complete_sav_in_group.sh all
 ```

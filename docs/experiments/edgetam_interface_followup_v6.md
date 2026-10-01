@@ -60,7 +60,7 @@ The existing weekend lane driver exposes the focused subset through
 `EDGE_FOLLOWUP_MODE=core`:
 
 ```bash
-EDGE_FOLLOWUP_MODE=core scripts/company/57_run_weekend_72h_lane.sh edge_compression describe
+EDGE_FOLLOWUP_MODE=core scripts/experiments/stage2_finetune_capacity_sweep.sh edge_compression describe
 ```
 
 In `core` mode, `K2b` and `K2c` are conditional continuations. Their matching
