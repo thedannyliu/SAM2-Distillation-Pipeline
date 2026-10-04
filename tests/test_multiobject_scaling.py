@@ -1036,7 +1036,7 @@ def test_object_slot_variants_do_not_require_missing_teacher_pointer(
     result = subprocess.run(
         [
             "bash",
-            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "scripts/lib/train_eval_engine.sh",
             "describe",
             variant,
         ],
@@ -1070,7 +1070,7 @@ def test_object_slot_v3_variants_set_residual_ranks(
     result = subprocess.run(
         [
             "bash",
-            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "scripts/lib/train_eval_engine.sh",
             "describe",
             variant,
         ],
@@ -1131,7 +1131,7 @@ def test_multiplex_screen_variants_set_one_planned_axis(
     result = subprocess.run(
         [
             "bash",
-            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "scripts/lib/train_eval_engine.sh",
             "describe",
             variant,
         ],
@@ -1186,7 +1186,7 @@ def test_tinyvit21_edgetam_memory_curriculum_is_staged(variant, expected):
     result = subprocess.run(
         [
             "bash",
-            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "scripts/lib/train_eval_engine.sh",
             "describe",
             variant,
         ],
@@ -1237,7 +1237,7 @@ def test_sam2_tv_multiplex_curriculum_is_staged(variant, expected):
     result = subprocess.run(
         [
             "bash",
-            "scripts/company/49_run_edgetam_memory_ablation.sh",
+            "scripts/lib/train_eval_engine.sh",
             "describe",
             variant,
         ],
@@ -1253,7 +1253,7 @@ def test_sam2_tv_multiplex_curriculum_is_staged(variant, expected):
 
 def test_sam2_tv_multiplex_runs_full_val_after_each_stage():
     repo_root = Path(__file__).resolve().parents[1]
-    script = (repo_root / "scripts/company/70_run_sam2_tv_multiplex_v1.sh").read_text()
+    script = (repo_root / "scripts/experiments/70_run_sam2_tv_multiplex_v1.sh").read_text()
 
     run_all = script.split("run_all() {", 1)[1].split("\n}", 1)[0]
     assert 'run_stage "${STAGE1}" val' in run_all

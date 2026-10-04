@@ -24,14 +24,14 @@ Prepare the combined symlink layout:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull origin edgetam-tinyvit-pipeline
 
-scripts/company/09_run_sav000_005_epoch_timing.sh prepare
+scripts/experiments/09_run_sav000_005_epoch_timing.sh prepare
 ```
 
 If a shard has mp4 files but no extracted JPEG frames, prepare will fail. Extract
 frames once with:
 
 ```bash
-EXTRACT_MISSING_FRAMES=1 scripts/company/09_run_sav000_005_epoch_timing.sh prepare
+EXTRACT_MISSING_FRAMES=1 scripts/experiments/09_run_sav000_005_epoch_timing.sh prepare
 ```
 
 The default combined layout uses symlinks and does not duplicate JPEG frames.
@@ -40,7 +40,7 @@ shard-local frame directories, use:
 
 ```bash
 START_SHARD=0 END_SHARD=18 MOVE_FRAMES_TO_COMBINED=1 \
-scripts/company/09_run_sav000_005_epoch_timing.sh prepare
+scripts/experiments/09_run_sav000_005_epoch_timing.sh prepare
 ```
 
 This moves per-video frame directories into the combined root and leaves
@@ -49,27 +49,27 @@ symlinks at the old shard locations, so existing shard-local paths still work.
 Run one epoch on one H100:
 
 ```bash
-scripts/company/09_run_sav000_005_epoch_timing.sh 1gpu
+scripts/experiments/09_run_sav000_005_epoch_timing.sh 1gpu
 ```
 
 Run one epoch on four H100s:
 
 ```bash
-scripts/company/09_run_sav000_005_epoch_timing.sh 4gpu
+scripts/experiments/09_run_sav000_005_epoch_timing.sh 4gpu
 ```
 
 If the aggressive setting OOMs, first retry with:
 
 ```bash
 BATCH_SIZE=2 IMAGE_ENCODER_BATCH=8 IMAGE_ENCODER_CKPT=0 \
-scripts/company/09_run_sav000_005_epoch_timing.sh 1gpu
+scripts/experiments/09_run_sav000_005_epoch_timing.sh 1gpu
 ```
 
 and for 4 GPUs:
 
 ```bash
 BATCH_SIZE=2 IMAGE_ENCODER_BATCH=8 IMAGE_ENCODER_CKPT=0 \
-scripts/company/09_run_sav000_005_epoch_timing.sh 4gpu
+scripts/experiments/09_run_sav000_005_epoch_timing.sh 4gpu
 ```
 
 Outputs are under:

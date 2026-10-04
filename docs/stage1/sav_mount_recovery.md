@@ -45,7 +45,7 @@ TRAIN_FRAMES_PER_VIDEO=16 \
 VAL_FRAMES_PER_VIDEO=8 \
 TEST_FRAMES_PER_VIDEO=0 \
 NUM_WORKERS=64 \
-scripts/company/18_prepare_sav_stage1_frame_cache.sh
+scripts/core/data_prepare_frame_cache.sh
 
 touch /group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.done
 ```

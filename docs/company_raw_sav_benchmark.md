@@ -11,7 +11,7 @@ The benchmark has two modes:
 - image segmentation with box and point prompts
 - video object segmentation with SAM2 memory, initialized from box and point prompts
 
-The main entrypoint is `scripts/company/15_benchmark_raw_sav_shard_suite.sh`.
+The main entrypoint is `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh`.
 
 ## Dataset Preparation
 
@@ -33,8 +33,8 @@ The conversion is implemented in `tools/data/prepare_sav_train_shard_benchmark.p
 
 The suite calls this through its `prepare` stage:
 
-- defaults and input paths: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:7`
-- prepare wrapper: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:57`
+- defaults and input paths: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:7`
+- prepare wrapper: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:57`
 
 ## Models Compared
 
@@ -42,7 +42,7 @@ The suite benchmarks:
 
 - SAM2.1-L
 - SAM2.1-B+
-- Stage1 TinyViT encoder checkpoints listed in `scripts/company/15_benchmark_raw_sav_shard_suite.sh:23`
+- Stage1 TinyViT encoder checkpoints listed in `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:23`
 
 Stage1 checkpoints are encoder-only. For image mode and video mode, they are attached to the original SAM2.1-L prompt/mask/memory stack rather than loaded as full SAM2 checkpoints.
 
@@ -92,9 +92,9 @@ Implementation:
 
 The suite invokes this for every model and both prompt types:
 
-- SAM2 image calls: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:81`
-- Stage1 image calls: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:105`
-- image loop over models/prompts: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:134`
+- SAM2 image calls: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:81`
+- Stage1 image calls: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:105`
+- image loop over models/prompts: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:134`
 
 Image output metrics:
 
@@ -132,9 +132,9 @@ Implementation:
 
 The suite invokes video tracking for every model and both prompt types:
 
-- SAM2 VOS calls: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:148`
-- Stage1 VOS calls: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:181`
-- VOS loop over models/prompts: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:220`
+- SAM2 VOS calls: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:148`
+- Stage1 VOS calls: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:181`
+- VOS loop over models/prompts: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:220`
 
 Video tracking output metrics:
 
@@ -157,11 +157,11 @@ Image mode artifacts are written by `tools/benchmark/benchmark_sav_prompt_masks.
 
 - image artifact selection for first/middle/last annotated frames: `tools/benchmark/benchmark_sav_prompt_masks.py:316`
 - image masks and overlays are saved under `<OUT_ROOT>/image/<model>/<prompt>/frame_artifacts/`
-- suite wiring: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:106`
+- suite wiring: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:106`
 
 Video tracking overlays are generated from saved VOS prediction PNGs:
 
-- scans all prediction roots matching `<OUT_ROOT>/vos/*/*/pred`: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:240`
+- scans all prediction roots matching `<OUT_ROOT>/vos/*/*/pred`: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:240`
 - writes one full-timeline MP4 per selected video: `tools/eval/make_vos_overlay_artifacts.py:95`
 - uses all frames from `JPEGImages_24fps`, not only sparse GT annotation frames: `tools/eval/make_vos_overlay_artifacts.py:52`
 - copies GT and predicted masks under `<OUT_ROOT>/vos/<model>/<prompt>/artifacts/masks/`
@@ -188,7 +188,7 @@ IMAGE_ARTIFACT_VIDEOS=3 \
 VOS_OVERLAY_VIDEOS=3 \
 VOS_OVERLAY_FRAMES=0 \
 OUT_ROOT=/group-volume/danny-dataset/sam2_distill/runs/raw_sav030_stage1_video_suite_10vid_artifacts \
-scripts/company/15_benchmark_raw_sav_shard_suite.sh artifacts
+scripts/experiments/15_benchmark_raw_sav_shard_suite.sh artifacts
 ```
 
 The MP4s are written to:
@@ -214,7 +214,7 @@ The summary code:
 - video tracking rows: `tools/benchmark/summarize_sav_benchmark_suite.py:61`
 - CSV/JSON output fields: `tools/benchmark/summarize_sav_benchmark_suite.py:101`
 
-The suite calls summarization at `scripts/company/15_benchmark_raw_sav_shard_suite.sh:234`.
+The suite calls summarization at `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:234`.
 
 ## Company Command
 
@@ -229,7 +229,7 @@ MAX_VIDEOS=2 \
 MAX_OBJECTS_PER_VIDEO=2 \
 MAX_IMAGE_OBJECTS=200 \
 OUT_ROOT=/group-volume/danny-dataset/sam2_distill/runs/raw_sav030_stage1_video_suite \
-scripts/company/15_benchmark_raw_sav_shard_suite.sh all
+scripts/experiments/15_benchmark_raw_sav_shard_suite.sh all
 ```
 
 Print the final table:
@@ -240,13 +240,13 @@ column -s, -t /group-volume/danny-dataset/sam2_distill/runs/raw_sav030_stage1_vi
 
 To resume after a crash, rerun the same command. Completed `summary.json` and `eval_summary.json` files are skipped by default:
 
-- skip completed image runs: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:87`
-- skip completed VOS runs: `scripts/company/15_benchmark_raw_sav_shard_suite.sh:156`
+- skip completed image runs: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:87`
+- skip completed VOS runs: `scripts/experiments/15_benchmark_raw_sav_shard_suite.sh:156`
 
 To force a full rerun in the same output directory:
 
 ```bash
-SKIP_DONE=0 scripts/company/15_benchmark_raw_sav_shard_suite.sh all
+SKIP_DONE=0 scripts/experiments/15_benchmark_raw_sav_shard_suite.sh all
 ```
 
 Using a fresh `OUT_ROOT` is safer when comparing against older failed runs.

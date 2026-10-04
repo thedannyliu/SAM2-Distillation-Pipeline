@@ -29,7 +29,7 @@ that file and let the extractor detect `Full-Resolution`:
 DAVIS_ZIP=/group-volume/danny-dataset/DAVIS/2017/raw/DAVIS-2017-trainval-Full-Resolution.zip \
 DAVIS_RESOLUTION_DIR=auto \
 DAVIS_SUBSET_ROOT=/group-volume/danny-dataset/DAVIS/2017/trainval_fullres_subset_500 \
-scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh prepare
 ```
 
 `DAVIS-2017-test-challenge-*` is not suitable for mask finetune unless it
@@ -43,8 +43,8 @@ From the company container:
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 
-DRY_RUN=1 scripts/company/07_run_davis_mask_finetune_1gpu.sh all
-scripts/company/07_run_davis_mask_finetune_1gpu.sh all
+DRY_RUN=1 scripts/experiments/07_run_davis_mask_finetune_1gpu.sh all
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh all
 ```
 
 Useful quick overrides:
@@ -59,7 +59,7 @@ MAX_OBJECTS=3 \
 RESOLUTION=1024 \
 IMAGE_ENCODER_BATCH=1 \
 IMAGE_ENCODER_CKPT=1 \
-scripts/company/07_run_davis_mask_finetune_1gpu.sh all
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh all
 ```
 
 The default loss is mask-task only for this quick run:
@@ -88,8 +88,8 @@ place it here:
 Then rerun:
 
 ```bash
-scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
-scripts/company/07_run_davis_mask_finetune_1gpu.sh train
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh prepare
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh train
 ```
 
 The script skips download when `DAVIS_ZIP` already exists. To use a different
@@ -98,7 +98,7 @@ local zip path:
 ```bash
 DAVIS_ZIP=/path/to/DAVIS-2017-trainval-480p.zip \
 DAVIS_RESOLUTION_DIR=auto \
-scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh prepare
 ```
 
 ## Runtime Estimate
@@ -124,7 +124,7 @@ estimated_epoch_hours_hint
 To estimate another run length:
 
 ```bash
-TARGET_STEPS=10000 scripts/company/07_run_davis_mask_finetune_1gpu.sh estimate
+TARGET_STEPS=10000 scripts/experiments/07_run_davis_mask_finetune_1gpu.sh estimate
 ```
 
 For a more stable single-GPU estimate, run at least 50-100 observed steps after

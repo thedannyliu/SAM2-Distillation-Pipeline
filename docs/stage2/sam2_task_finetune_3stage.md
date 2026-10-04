@@ -29,7 +29,7 @@ as the current directory. The audit reports the exact included and excluded
 video counts before any GPU process starts.
 
 When `JPEGImages`, `sav_val`, and `sav_test` are mounted but raw `sav_train`
-is not, run `scripts/company/40_sync_sav_task_annotations_from_datalake.sh`
+is not, run `scripts/core/data_sync_sav_annotations.sh`
 once. It reads only manifest-selected `*_manual.json` objects from the Data
 Lake and writes them under
 `/group-volume/danny-dataset/sam2_distill/data/sav_task_annotations/sav_train`.
@@ -38,7 +38,7 @@ linking that `sav_train` directory together with the three mounted directories;
 the manifest can remain unchanged while its mounted train image paths exist.
 
 If the Data Lake release mount omits files, the storage-heavy fallback is
-`scripts/company/41_sync_sav_runtime_from_datalake.sh`. It copies only
+`scripts/core/data_sync_sav_runtime.sh`. It copies only
 `JPEGImages`, `sav_val`, and `sav_test` to
 `/group-volume/danny-dataset/SA-V`, resumes files whose sizes already match,
 and leaves raw train MP4s out. Confirm group quota before using this fallback.
@@ -91,7 +91,7 @@ primarily on J&F; reject a stage if its target metric regresses materially.
 
 ## Company Command
 
-Run `scripts/company/39_run_sam2_task_finetune_3stage.sh all` on one 4xH100
+Run `scripts/lib/task_finetune_stages.sh all` on one 4xH100
 node. `all` first audits paths and runs an actual 8-video distributed smoke
 train before starting the formal stages. Re-running the same command resumes
 the stage checkpoint and W&B run, and skips completed evaluation summaries.

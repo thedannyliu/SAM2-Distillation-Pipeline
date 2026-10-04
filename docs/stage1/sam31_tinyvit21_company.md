@@ -27,7 +27,7 @@ Relevant code:
 - Student interface: `sam2_distill/models/tinyvit_sam3_adapter.py`
 - Loss: `sam2_distill/training/sam31_stage1_losses.py`
 - Trainer: `tools/train/train_sam31_stage1_online_teacher.py`
-- Company launcher: `scripts/company/26_run_sam31_stage1_tv21.sh`
+- Company launcher: `scripts/experiments/26_run_sam31_stage1_tv21.sh`
 
 ## Company Setup
 
@@ -40,7 +40,7 @@ git pull origin edgetam-tinyvit-pipeline
 
 DATA_ROOT=/group-volume/danny-dataset \
 SAM3_UPSTREAM=/user-volume/repo/facebookresearch-sam3 \
-scripts/company/26_run_sam31_stage1_tv21.sh setup
+scripts/experiments/26_run_sam31_stage1_tv21.sh setup
 ```
 
 The current company checkpoint paths are:
@@ -56,7 +56,7 @@ Run the strict one-batch compatibility test before training:
 DATA_ROOT=/group-volume/danny-dataset \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
 GPUS=0 \
-scripts/company/26_run_sam31_stage1_tv21.sh inspect
+scripts/experiments/26_run_sam31_stage1_tv21.sh inspect
 ```
 
 Expected output includes `status: pass`, the selected checkpoint prefix, and
@@ -73,7 +73,7 @@ DATA_ROOT=/group-volume/danny-dataset \
 MANIFEST=/group-volume/danny-dataset/sam2_distill/manifests/sav_stage1_vbal16_6fps.parquet \
 GPUS=0 \
 WANDB_PROJECT=sam31-distill-stage1 \
-scripts/company/26_run_sam31_stage1_tv21.sh smoke
+scripts/experiments/26_run_sam31_stage1_tv21.sh smoke
 ```
 
 Formal 8-H100 run:
@@ -96,7 +96,7 @@ ADAPTER_MODE=residual_dwconv \
 WANDB_PROJECT=sam31-distill-stage1 \
 WANDB_NAME=tv21m-adapter-sam31-mse-cos025-5ep-v1 \
 RUN_DIR=/group-volume/danny-dataset/sam2_distill/runs/sam31_stage1/tv21m_adapter_mse_cos025_5ep_v1 \
-scripts/company/26_run_sam31_stage1_tv21.sh train
+scripts/experiments/26_run_sam31_stage1_tv21.sh train
 ```
 
 The 300k training frames are selected deterministically from the manifest using

@@ -383,7 +383,7 @@ launched again.
 After reviewing the completed mask results, the broad recovery queue is
 reduced to experiments that are already near completion, close a necessary
 causal comparison, or provide a missing architecture/teacher control.
-`scripts/company/48_run_selected_continuation_lane.sh` distributes them by
+`scripts/experiments/48_run_selected_continuation_lane.sh` distributes them by
 remaining training load:
 
 | Lane | Training/resume work | Evaluation/finalization work |
@@ -589,7 +589,7 @@ remaining optimization/data-selection variants forward as well:
 
 Priority 5 starts the shared resumable hardness mining early; priority 3 later
 reuses the same fingerprinted outputs for A05/A06. The priority runner is
-`scripts/company/47_run_priority_mask_finetune_lane.sh`. Per-variant `flock`
+`scripts/experiments/47_run_priority_mask_finetune_lane.sh`. Per-variant `flock`
 locks prevent the priority and recovery nodes from writing the same checkpoint
 directory concurrently; a later recovery invocation waits, then observes and
 skips the completed run. All priority runs require online W&B, execute

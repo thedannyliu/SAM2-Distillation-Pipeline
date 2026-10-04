@@ -14,8 +14,8 @@ research question.
 Primary code paths:
 
 - Matrix and hypotheses: `tools/experiments/sam2_full_data_50.py`
-- Ten-node runner: `scripts/company/67_run_sam2_full_data_50.sh`
-- Training/evaluation pipeline: `scripts/company/49_run_edgetam_memory_ablation.sh`
+- Ten-node runner: `scripts/experiments/67_run_sam2_full_data_50.sh`
+- Training/evaluation pipeline: `scripts/lib/train_eval_engine.sh`
 - Learned slots/shared K/V: `sam2_distill/models/sam2_object_slots.py`
 - Full SA-V dataset adapter: `sam2_distill/data/sav_task_dataset.py`
 - Result aggregation: `tools/benchmark/summarize_sam2_multiplex_screen.py`

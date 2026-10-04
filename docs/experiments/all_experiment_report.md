@@ -1,6 +1,6 @@
 # All-Experiment Report
 
-`scripts/company/45_report_all_experiments.sh` builds one row per training run
+`scripts/core/report_experiments.sh` builds one row per training run
 or fine-tuning stage across every available runs root. It includes registered
 experiments that have not started and recursively discovers older or
 unregistered runs from checkpoints and standard SA-V benchmark directories.
@@ -32,7 +32,7 @@ Example:
 ```bash
 RUNS_ROOTS=/danny-dataset/sam2_distill/runs:/group-volume/danny-dataset/sam2_distill/runs \
 REPORT_DIR=/user-volume/all_experiment_report \
-scripts/company/45_report_all_experiments.sh
+scripts/core/report_experiments.sh
 ```
 
 The default output is `${REPORT_DIR}/all_experiments.csv`. Re-running the

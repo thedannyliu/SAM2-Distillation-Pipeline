@@ -28,8 +28,8 @@ Run inside the company PyTorch container on one H100:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull
 
-DRY_RUN=1 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
-scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+DRY_RUN=1 scripts/experiments/08_run_sav_tinyvit_image_encoder_1h100.sh all
+scripts/experiments/08_run_sav_tinyvit_image_encoder_1h100.sh all
 ```
 
 By default this first timing run uses at most 20 videos from `sav_000` to avoid
@@ -37,7 +37,7 @@ spending hours extracting frames before the training path is known to work. For
 a full-shard timing run, set:
 
 ```bash
-SAV_MAX_VIDEOS=0 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+SAV_MAX_VIDEOS=0 scripts/experiments/08_run_sav_tinyvit_image_encoder_1h100.sh all
 ```
 
 Useful overrides:
@@ -53,7 +53,7 @@ MAX_OBJECTS=3 \
 RESOLUTION=1024 \
 IMAGE_ENCODER_BATCH=1 \
 IMAGE_ENCODER_CKPT=1 \
-scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+scripts/experiments/08_run_sav_tinyvit_image_encoder_1h100.sh all
 ```
 
 If `JPEGImages_24fps` is missing, the script extracts frames from mp4 files

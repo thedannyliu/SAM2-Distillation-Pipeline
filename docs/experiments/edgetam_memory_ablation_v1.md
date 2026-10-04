@@ -128,9 +128,9 @@ For the reproduction ladder, compare R1-R0 for image KD, R2-R1 for memory KD, an
 
 ## Implementation
 
-- Single-run driver: `scripts/company/49_run_edgetam_memory_ablation.sh`
-- Two-node lanes: `scripts/company/50_run_edgetam_memory_lane.sh`
+- Single-run driver: `scripts/lib/train_eval_engine.sh`
+- Two-node lanes: `scripts/experiments/50_run_edgetam_memory_lane.sh`
 - Training topology and initialization: `tools/train/run_sam2_task_training.py` and `sam2_distill/models/task_finetune.py`
-- Full SA-V evaluation: `scripts/company/25_benchmark_stage1_sav_test.sh`
+- Full SA-V evaluation: `scripts/lib/eval_sav_benchmark.sh`
 
 The driver validates the EdgeTAM checkout, serializes official-checkpoint download, audits SA-V paths, uses per-variant pipeline locks, performs strict checkpoint loading, and records incomplete or failed stages in the same summary table.

@@ -171,7 +171,7 @@ integrity checks only. Fine ranking uses full val.
 
 Entry point:
 
-`scripts/company/55_run_edgetam_behavior_lane.sh staged|joint|scratch`
+`scripts/experiments/55_run_edgetam_behavior_lane.sh staged|joint|scratch`
 
 W&B project:
 

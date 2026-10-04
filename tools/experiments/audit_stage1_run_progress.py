@@ -48,7 +48,7 @@ def expected_runs() -> list[ExpectedRun]:
 
     add_sam2(
         "8gpu_tv21_main",
-        "scripts/company/20_queue_sav_stage1_ablation_8gpu.sh",
+        "scripts/experiments/20_queue_sav_stage1_ablation_8gpu.sh",
         [
             ("tv21_proj_sam21l_msehr", 126135, 8),
             ("tv21_proj_sam21l_msehr_cos025", 126135, 8),
@@ -57,7 +57,7 @@ def expected_runs() -> list[ExpectedRun]:
     )
     add_sam2(
         "4gpu_size_scaling",
-        "scripts/company/21_queue_sav_stage1_ablation_4gpu_size.sh",
+        "scripts/experiments/21_queue_sav_stage1_ablation_4gpu_size.sh",
         [
             ("tv11_proj_sam21l_msehr", 126135, 4),
             ("tv5_proj_sam21l_msehr", 63070, 4),
@@ -66,7 +66,7 @@ def expected_runs() -> list[ExpectedRun]:
     )
     add_sam2(
         "4gpu_loss_ablation",
-        "scripts/company/22_queue_sav_stage1_ablation_4gpu_loss.sh",
+        "scripts/experiments/22_queue_sav_stage1_ablation_4gpu_loss.sh",
         [
             ("tv5_proj_sam21l_msehr_cos025", 63070, 4),
             ("tv21_proj_sam21l_image_only", 252265, 4),
@@ -75,7 +75,7 @@ def expected_runs() -> list[ExpectedRun]:
     )
     add_sam2(
         "4gpu_adapter_teacher",
-        "scripts/company/23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh",
+        "scripts/experiments/23_queue_sav_stage1_ablation_4gpu_adapter_teacher.sh",
         [
             ("tv21_proj_sam21l_msehr_l1_025", 252265, 4),
             ("tv21_adapter_sam21l_msehr_cos025", 252265, 4),
@@ -84,7 +84,7 @@ def expected_runs() -> list[ExpectedRun]:
     )
     add_sam2(
         "4gpu_extra_adapter_cos",
-        "scripts/company/24_queue_sav_stage1_ablation_4gpu_extra.sh",
+        "scripts/experiments/24_queue_sav_stage1_ablation_4gpu_extra.sh",
         [
             ("tv11_adapter_sam21l_msehr", 126135, 4),
             ("tv5_adapter_sam21l_msehr", 63070, 4),
@@ -94,7 +94,7 @@ def expected_runs() -> list[ExpectedRun]:
 
     sam31_queues = {
         "node1_cosine": (
-            "scripts/company/27_queue_sam31_4gpu_cosine.sh",
+            "scripts/experiments/27_queue_sam31_4gpu_cosine.sh",
             [
                 "n1_cos000_adapter_ft_w2k",
                 "n1_cos025_adapter_ft_w2k",
@@ -102,7 +102,7 @@ def expected_runs() -> list[ExpectedRun]:
             ],
         ),
         "node2_interface": (
-            "scripts/company/28_queue_sam31_4gpu_interface.sh",
+            "scripts/experiments/28_queue_sam31_4gpu_interface.sh",
             [
                 "n2_projection_cos025_ft_w2k",
                 "n2_adapter_cos025_frozen",
@@ -110,7 +110,7 @@ def expected_runs() -> list[ExpectedRun]:
             ],
         ),
         "node3_relations": (
-            "scripts/company/29_queue_sam31_4gpu_relations.sh",
+            "scripts/experiments/29_queue_sam31_4gpu_relations.sh",
             [
                 "n3_cos150_adapter_ft_w2k",
                 "n3_relation010_adapter_ft_w2k",

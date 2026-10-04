@@ -137,7 +137,7 @@ differences.
 
 Entry point:
 
-`scripts/company/56_run_backbone_task_expansion_lane.sh tinyvit|repvit`
+`scripts/experiments/stage2_capacity_selection.sh tinyvit|repvit`
 
 Run roots:
 

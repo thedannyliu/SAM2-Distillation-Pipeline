@@ -168,7 +168,7 @@ Node 1:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 mkdir -p /user-volume/sam2_multiobject_training_logs
 GPUS=0,1,2,3 \
-scripts/company/60_run_sam2_multiobject_training.sh \
+scripts/experiments/60_run_sam2_multiobject_training.sh \
   run MO0_mem4_task_dense8_5ep 2>&1 | \
 tee /user-volume/sam2_multiobject_training_logs/MO0_mem4_task_dense8_5ep.log
 echo "MO0 status: ${PIPESTATUS[0]}"
@@ -180,7 +180,7 @@ Node 2:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 mkdir -p /user-volume/sam2_multiobject_training_logs
 GPUS=0,1,2,3 \
-scripts/company/60_run_sam2_multiobject_training.sh \
+scripts/experiments/60_run_sam2_multiobject_training.sh \
   run MO1_mem2_task_dense8_5ep 2>&1 | \
 tee /user-volume/sam2_multiobject_training_logs/MO1_mem2_task_dense8_5ep.log
 echo "MO1 status: ${PIPESTATUS[0]}"
@@ -192,7 +192,7 @@ Node 3:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 mkdir -p /user-volume/sam2_multiobject_training_logs
 GPUS=0,1,2,3 \
-scripts/company/60_run_sam2_multiobject_training.sh \
+scripts/experiments/60_run_sam2_multiobject_training.sh \
   run MO2_mem2_logits_dense8_5ep 2>&1 | \
 tee /user-volume/sam2_multiobject_training_logs/MO2_mem2_logits_dense8_5ep.log
 echo "MO2 status: ${PIPESTATUS[0]}"
@@ -204,7 +204,7 @@ Node 4:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 mkdir -p /user-volume/sam2_multiobject_training_logs
 GPUS=0,1,2,3 \
-scripts/company/60_run_sam2_multiobject_training.sh \
+scripts/experiments/60_run_sam2_multiobject_training.sh \
   run MO3_mem2_memlogits_dense8_5ep 2>&1 | \
 tee /user-volume/sam2_multiobject_training_logs/MO3_mem2_memlogits_dense8_5ep.log
 echo "MO3 status: ${PIPESTATUS[0]}"
@@ -280,8 +280,8 @@ the terminal, write a persistent log with `tee`, and create W&B runs in
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
-scripts/company/59_run_sam2_multiobject_scaling.sh describe
-scripts/company/59_run_sam2_multiobject_scaling.sh all
+scripts/deploy/benchmark_multiobject_buckets.sh describe
+scripts/deploy/benchmark_multiobject_buckets.sh all
 echo "Multi-object scaling status: $?"
 ```
 
@@ -292,7 +292,7 @@ requirement when MO-D0 finds too few 16-object videos:
 ```bash
 OBJECT_COUNTS=1,2,4,8 \
 MAX_VIDEOS=16 \
-scripts/company/59_run_sam2_multiobject_scaling.sh all
+scripts/deploy/benchmark_multiobject_buckets.sh all
 echo "Eight-object scaling status: $?"
 ```
 
@@ -301,13 +301,13 @@ cohort once:
 
 ```bash
 # Node A
-GPU=0 scripts/company/59_run_sam2_multiobject_scaling.sh tv21
+GPU=0 scripts/deploy/benchmark_multiobject_buckets.sh tv21
 echo "TinyViT-21M scaling status: $?"
 ```
 
 ```bash
 # Node B
-GPU=0 scripts/company/59_run_sam2_multiobject_scaling.sh sam21l
+GPU=0 scripts/deploy/benchmark_multiobject_buckets.sh sam21l
 echo "SAM2.1-L scaling status: $?"
 ```
 
@@ -418,7 +418,7 @@ EXECUTION_MODE=legacy \
 OBJECT_COUNTS=1,2,4,8 \
 MAX_VIDEOS=16 \
 SKIP_DONE=0 \
-scripts/company/59_run_sam2_multiobject_scaling.sh tv21 2>&1 | \
+scripts/deploy/benchmark_multiobject_buckets.sh tv21 2>&1 | \
 tee /user-volume/sam2_multiobject_scaling_logs/mx1p_tv21_legacy.log
 echo "Legacy status: ${PIPESTATUS[0]}"
 ```
@@ -436,7 +436,7 @@ VERIFY_BUCKET_FRAMES=8 \
 OBJECT_COUNTS=1,2,4,8 \
 MAX_VIDEOS=16 \
 SKIP_DONE=0 \
-scripts/company/59_run_sam2_multiobject_scaling.sh tv21 2>&1 | \
+scripts/deploy/benchmark_multiobject_buckets.sh tv21 2>&1 | \
 tee /user-volume/sam2_multiobject_scaling_logs/mx1p_tv21_bucket4.log
 echo "Persistent bucket-4 status: ${PIPESTATUS[0]}"
 ```

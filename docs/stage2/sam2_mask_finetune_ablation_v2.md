@@ -72,7 +72,7 @@ First validate a two-update control smoke run:
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 mkdir -p /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh smoke 2>&1 | tee /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2/smoke.log
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh smoke 2>&1 | tee /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2/smoke.log
 ```
 
 Mine common base-error scores once. A00-A04, A07-A08, and A10-A11 do not depend
@@ -81,32 +81,32 @@ on this pass and may run concurrently; A05, A06, and A09 require it.
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 mkdir -p /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh prepare-hardness 2>&1 | tee /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2/prepare-hardness.log
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh prepare-hardness 2>&1 | tee /danny-dataset/sam2_distill/runs/sam2_mask_finetune_ablation_v2/prepare-hardness.log
 ```
 
 Launch one of the following on each 4-H100 node. Do not combine them with shell
 backgrounding; each terminal keeps its own live output.
 
 ```bash
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A00_e2e_t4_box1_control
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A01_e2e_t4_box0
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A02_e2e_t4_official_prompt
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A03_decmem_t4
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A04_memory_t4
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A05_e2e_t8
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A06_e2e_t8_s4_t16_hard
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A07_e2e_t4_warmup5
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A08_e2e_t4_gb8
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A09_e2e_t4_hard50x2
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A10_e2e_t4_box0_imgkd
-GPUS=0,1,2,3 scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh run A11_e2e_t4_box0_imgmemkd
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A00_e2e_t4_box1_control
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A01_e2e_t4_box0
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A02_e2e_t4_official_prompt
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A03_decmem_t4
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A04_memory_t4
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A05_e2e_t8
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A06_e2e_t8_s4_t16_hard
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A07_e2e_t4_warmup5
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A08_e2e_t4_gb8
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A09_e2e_t4_hard50x2
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A10_e2e_t4_box0_imgkd
+GPUS=0,1,2,3 scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh run A11_e2e_t4_box0_imgmemkd
 ```
 
 Each completed job atomically upserts the central table. Rebuild it at any time,
 including any finished v1 rows discoverable under `MASK_ABLATION_V1_ROOT`:
 
 ```bash
-scripts/company/44_run_sam2_mask_finetune_ablation_v2.sh summarize
+scripts/experiments/44_run_sam2_mask_finetune_ablation_v2.sh summarize
 ```
 
 The central result is

@@ -123,7 +123,7 @@ Run roots:
 
 Entry point:
 
-`scripts/company/52_run_tinyvit_max_jf.sh tv5|tv11|tv21 all`
+`scripts/core/stage2_finetune_tinyvit.sh tv5|tv11|tv21 all`
 
 ## Decision rules
 

@@ -98,14 +98,14 @@ SAV_SELECTION_SEED=sav_train_1pct_v1 \
 SAV_INCLUDE_EVAL_SPLITS=1 \
 REFRESH_SAV_URL_LIST=1 \
 DRY_RUN=1 \
-scripts/company/06_download_sav_subset.sh
+scripts/experiments/06_download_sav_subset.sh
 
 SAV_TRAIN_PERCENT=1 \
 SAV_SELECTION_SEED=sav_train_1pct_v1 \
 SAV_INCLUDE_EVAL_SPLITS=1 \
 REFRESH_SAV_URL_LIST=1 \
 SAV_BUDGET_GB=300 \
-scripts/company/06_download_sav_subset.sh
+scripts/experiments/06_download_sav_subset.sh
 ```
 
 The script writes:
@@ -127,11 +127,11 @@ Use the company helper script to enforce the budget, download, and extract:
 ```bash
 REFRESH_SAV_URL_LIST=1 \
 DRY_RUN=1 \
-scripts/company/06_download_sav_subset.sh
+scripts/experiments/06_download_sav_subset.sh
 
 REFRESH_SAV_URL_LIST=1 \
 SAV_BUDGET_GB=300 \
-scripts/company/06_download_sav_subset.sh
+scripts/experiments/06_download_sav_subset.sh
 ```
 
 If the official page provides archive sizes, select a URL subset that leaves
@@ -194,8 +194,8 @@ mask-finetune path running quickly:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-DRY_RUN=1 scripts/company/07_run_davis_mask_finetune_1gpu.sh all
-scripts/company/07_run_davis_mask_finetune_1gpu.sh all
+DRY_RUN=1 scripts/experiments/07_run_davis_mask_finetune_1gpu.sh all
+scripts/experiments/07_run_davis_mask_finetune_1gpu.sh all
 ```
 
 The script downloads DAVIS under `/group-volume/danny-dataset/DAVIS/2017`, uses
@@ -208,7 +208,7 @@ observed seconds per step. See `docs/company_davis_mask_finetune.md`.
 If DAVIS download returns `403 Forbidden`, manually place
 `DAVIS-2017-trainval-480p.zip` at
 `/group-volume/danny-dataset/DAVIS/2017/raw/DAVIS-2017-trainval-480p.zip` and
-rerun `scripts/company/07_run_davis_mask_finetune_1gpu.sh prepare`.
+rerun `scripts/experiments/07_run_davis_mask_finetune_1gpu.sh prepare`.
 
 ## Company SA-V sav_000 Image-Encoder Timing
 
@@ -217,8 +217,8 @@ freezing non-image modules:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-DRY_RUN=1 scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
-scripts/company/08_run_sav_tinyvit_image_encoder_1h100.sh all
+DRY_RUN=1 scripts/experiments/08_run_sav_tinyvit_image_encoder_1h100.sh all
+scripts/experiments/08_run_sav_tinyvit_image_encoder_1h100.sh all
 ```
 
 The default timing run extracts and trains on at most 20 videos to keep the
@@ -232,11 +232,11 @@ and other non-image components. See
 `docs/company_sav000_tinyvit_image_encoder_1h100.md`.
 
 For full `sav_000` through `sav_005` one-epoch timing on either one H100 or
-four H100s, use `scripts/company/09_run_sav000_005_epoch_timing.sh`; see
+four H100s, use `scripts/experiments/09_run_sav000_005_epoch_timing.sh`; see
 `docs/company_sav000_005_epoch_timing.md`.
 
 For formal SA-V range training with W&B/TensorBoard, warmup, and full image
-encoder finetuning, use `scripts/company/10_run_sav_range_formal_image_encoder.sh`;
+encoder finetuning, use `scripts/experiments/10_run_sav_range_formal_image_encoder.sh`;
 see `docs/company_sav_formal_image_encoder_run.md`.
 
 ## TinyViT Config

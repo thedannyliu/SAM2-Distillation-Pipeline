@@ -209,11 +209,11 @@ Central summary:
 Entry points:
 
 - Single experiment/config audit:
-  `scripts/company/49_run_edgetam_memory_ablation.sh describe <variant>`
+  `scripts/lib/train_eval_engine.sh describe <variant>`
 - Two-node foreground lane:
-  `scripts/company/51_run_edgetam_memory_recovery_lane.sh recovery1|recovery2`
+  `scripts/experiments/51_run_edgetam_memory_recovery_lane.sh recovery1|recovery2`
 - Universal status report:
-  `scripts/company/45_report_all_experiments.sh`
+  `scripts/core/report_experiments.sh`
 
 ## Decision after this suite
 

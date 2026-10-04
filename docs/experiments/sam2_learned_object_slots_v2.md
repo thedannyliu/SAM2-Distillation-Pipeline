@@ -62,7 +62,7 @@ Pull once because `/user-volume/repo` is shared:
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
-chmod +x scripts/company/62_run_sam2_object_slots_v2.sh
+chmod +x scripts/experiments/62_run_sam2_object_slots_v2.sh
 mkdir -p /user-volume/sam2_object_slots_v2_logs
 echo "Repository sync status: $?"
 ```
@@ -73,7 +73,7 @@ Node 1:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/62_run_sam2_object_slots_v2.sh \
+scripts/experiments/62_run_sam2_object_slots_v2.sh \
   run MX5_slot8_decoder_t8_logits2_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v2_logs/MX5_slot8_decoder_t8_logits2_5ep.log
 echo "MX5 status: ${PIPESTATUS[0]}"
@@ -85,7 +85,7 @@ Node 2:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/62_run_sam2_object_slots_v2.sh \
+scripts/experiments/62_run_sam2_object_slots_v2.sh \
   run MX6_slot8_sharedkv_t8_mem1_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v2_logs/MX6_slot8_sharedkv_t8_mem1_5ep.log
 echo "MX6 status: ${PIPESTATUS[0]}"
@@ -97,7 +97,7 @@ Node 3:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/62_run_sam2_object_slots_v2.sh \
+scripts/experiments/62_run_sam2_object_slots_v2.sh \
   run MX7_slot8_sharedkv_t8_mem4_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v2_logs/MX7_slot8_sharedkv_t8_mem4_5ep.log
 echo "MX7 status: ${PIPESTATUS[0]}"
@@ -109,7 +109,7 @@ Node 4:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/62_run_sam2_object_slots_v2.sh \
+scripts/experiments/62_run_sam2_object_slots_v2.sh \
   run MX8_slot8_sharedkv_t8_mem1_logits4_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v2_logs/MX8_slot8_sharedkv_t8_mem1_logits4_5ep.log
 echo "MX8 status: ${PIPESTATUS[0]}"
@@ -119,7 +119,7 @@ After all nodes finish:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-scripts/company/62_run_sam2_object_slots_v2.sh summarize 2>&1 | \
+scripts/experiments/62_run_sam2_object_slots_v2.sh summarize 2>&1 | \
 tee /user-volume/sam2_object_slots_v2_logs/summary.log
 echo "Summary status: ${PIPESTATUS[0]}"
 ```

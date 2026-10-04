@@ -57,8 +57,8 @@ Implementation:
 
 - `sam2_distill/models/sam2_object_slots.py`
 - `tools/train/run_sam2_task_training.py`
-- `scripts/company/49_run_edgetam_memory_ablation.sh`
-- `scripts/company/63_run_sam2_object_slots_v3.sh`
+- `scripts/lib/train_eval_engine.sh`
+- `scripts/experiments/63_run_sam2_object_slots_v3.sh`
 
 ## Controlled four-node matrix
 
@@ -107,9 +107,9 @@ Pull once because `/user-volume/repo` is shared by the four nodes:
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 git pull --ff-only
-chmod +x scripts/company/63_run_sam2_object_slots_v3.sh
+chmod +x scripts/experiments/63_run_sam2_object_slots_v3.sh
 mkdir -p /user-volume/sam2_object_slots_v3_logs
-scripts/company/63_run_sam2_object_slots_v3.sh describe
+scripts/experiments/63_run_sam2_object_slots_v3.sh describe
 echo "Repository/preflight status: $?"
 ```
 
@@ -119,7 +119,7 @@ Node 1:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/63_run_sam2_object_slots_v3.sh \
+scripts/experiments/63_run_sam2_object_slots_v3.sh \
   run MX9_slot8_sharedkv_r4_t8_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v3_logs/MX9_slot8_sharedkv_r4_t8_5ep.log
 echo "MX9 status: ${PIPESTATUS[0]}"
@@ -131,7 +131,7 @@ Node 2:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/63_run_sam2_object_slots_v3.sh \
+scripts/experiments/63_run_sam2_object_slots_v3.sh \
   run MX10_slot8_sharedkv_r8_t8_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v3_logs/MX10_slot8_sharedkv_r8_t8_5ep.log
 echo "MX10 status: ${PIPESTATUS[0]}"
@@ -143,7 +143,7 @@ Node 3:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/63_run_sam2_object_slots_v3.sh \
+scripts/experiments/63_run_sam2_object_slots_v3.sh \
   run MX11_slot8_sharedkv_r16_t8_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v3_logs/MX11_slot8_sharedkv_r16_t8_5ep.log
 echo "MX11 status: ${PIPESTATUS[0]}"
@@ -155,7 +155,7 @@ Node 4:
 cd /user-volume/repo/SAM2-Distillation-Pipeline
 GPUS=0,1,2,3 \
 SKIP_DONE=1 \
-scripts/company/63_run_sam2_object_slots_v3.sh \
+scripts/experiments/63_run_sam2_object_slots_v3.sh \
   run MX12_slot8_sharedkv_r8_ptr8_t8_5ep 2>&1 | \
 tee /user-volume/sam2_object_slots_v3_logs/MX12_slot8_sharedkv_r8_ptr8_t8_5ep.log
 echo "MX12 status: ${PIPESTATUS[0]}"
@@ -165,7 +165,7 @@ After all nodes finish:
 
 ```bash
 cd /user-volume/repo/SAM2-Distillation-Pipeline
-scripts/company/63_run_sam2_object_slots_v3.sh summarize 2>&1 | \
+scripts/experiments/63_run_sam2_object_slots_v3.sh summarize 2>&1 | \
 tee /user-volume/sam2_object_slots_v3_logs/summary_$(date +%Y%m%d_%H%M%S).log
 echo "Summary status: ${PIPESTATUS[0]}"
 cat /group-volume/danny-dataset/sam2_distill/runs/sam2_object_slots_v3/comparison/object_slot_results.md
